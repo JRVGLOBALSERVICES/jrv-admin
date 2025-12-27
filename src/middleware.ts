@@ -1,38 +1,44 @@
+import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { createSupabaseMiddlewareClient } from "@/lib/supabase/middleware";
+import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow login + static assets
-  if (
-    // pathname.startsWith("/") ||
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon.ico")
-  ) {
-    return;
+  if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
+    return NextResponse.next();
   }
 
-  // Only protect admin routes
-  if (!pathname.startsWith("/admin")) {
-    return;
+  if (!pathname.startsWith("/admin")) return NextResponse.next();
+
+  let res = NextResponse.next();
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            res.cookies.set({ name, value, ...(options ?? {}) });
+          });
+        },
+      },
+    }
+  );
+
+  const { data } = await supabase.auth.getUser();
+
+  if (!data.user) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/admin/login";
+    return NextResponse.redirect(url);
   }
 
-  const { supabase, res } = createSupabaseMiddlewareClient(req);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    const loginUrl = new URL("/", req.url);
-    return Response.redirect(loginUrl);
-  }
-
-  // 🔥 IMPORTANT: return the mutated response
   return res;
 }
 
-export const config = {
-  matcher: ["/admin/:path*"],
-};
+export const config = { matcher: ["/admin/:path*"] };

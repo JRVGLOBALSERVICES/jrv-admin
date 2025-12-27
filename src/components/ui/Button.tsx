@@ -91,7 +91,7 @@ const variants: Record<ButtonVariant, string> = {
   primary: "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm",
   secondary:
     "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10",
-  ghost: "bg-transparent text-black hover:bg-black/5 active:bg-black/10",
+  ghost: "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-white",
   danger:
     "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm",
 };
