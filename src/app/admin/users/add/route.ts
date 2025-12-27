@@ -44,7 +44,7 @@ export async function POST(req: Request) {
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "invite",
     email,
-    options: { redirectTo: `${origin}/admin/login` },
+    options: { redirectTo: `${origin}` },
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -76,7 +76,7 @@ export async function POST(req: Request) {
     `JRV Admin Access\n\n` +
     `You’ve been added as: ${role.toUpperCase()}\n\n` +
     `Open this link to set your password:\n${inviteLink}\n\n` +
-    `Login page:\n${origin}/admin/login`;
+    `Login page:\n${origin}`;
 
   const waUrl = whatsappE164
     ? `https://wa.me/${toWaPhoneDigits(whatsappE164)}?text=${encodeURIComponent(msg)}`

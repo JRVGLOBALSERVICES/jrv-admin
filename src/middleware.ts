@@ -6,7 +6,7 @@ export async function middleware(req: NextRequest) {
 
   // Allow login + static assets
   if (
-    pathname.startsWith("/admin/login") ||
+    // pathname.startsWith("/") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon.ico")
   ) {
@@ -25,7 +25,7 @@ export async function middleware(req: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    const loginUrl = new URL("/admin/login", req.url);
+    const loginUrl = new URL("/", req.url);
     return Response.redirect(loginUrl);
   }
 

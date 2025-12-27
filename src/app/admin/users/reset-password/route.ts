@@ -18,7 +18,7 @@ export async function POST(req: Request) {
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "recovery",
     email: cleanEmail,
-    options: { redirectTo: `${origin}/admin/login` },
+    options: { redirectTo: `${origin}` },
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -36,7 +36,7 @@ export async function POST(req: Request) {
   const message =
     `JRV Admin Password Reset\n\n` +
     `Tap the link below to set a new password:\n${resetLink}\n\n` +
-    `Login page:\n${origin}/admin/login`;
+    `Login page:\n${origin}`;
 
   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
 
