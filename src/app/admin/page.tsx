@@ -1,258 +1,335 @@
+import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
 
-function startOfDay(d: Date) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
-function startOfMonth(d: Date) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function startOfYear(d: Date) { return new Date(d.getFullYear(), 0, 1); }
-function startOfQuarter(d: Date) {
-  const q = Math.floor(d.getMonth() / 3);
-  return new Date(d.getFullYear(), q * 3, 1);
-}
-function startOfWeek(d: Date) {
-  const x = startOfDay(d);
-  const day = (x.getDay() + 6) % 7; // Monday start
-  x.setDate(x.getDate() - day);
-  return x;
-}
+type Period = "daily" | "weekly" | "monthly" | "quarterly";
 
-type AgreementRow = {
+type Row = {
   id: string;
+  car_type: string | null;
+  number_plate: string | null;
+  // plate_number: string | null; // if you also have it
+  mobile: string | null;
   total_price: number | null;
-
-  // date fields
-  updated_at?: string | null;
-  date_start?: string | null;
-  created_at?: string | null;
-
-  // agreement fields
-  car_id?: string | null;
-  number_plate?: string | null;    // may be null in your dataset
-  make?: string | null;            // empty currently
-  model?: string | null;           // empty currently
-
-  // legacy fallbacks (some exports had these)
-  car_type?: string | null;
+  deposit_price: number | null;
+  status: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  created_at: string | null;
+  updated_at: string | null;
 };
 
-type CarRow = {
-  id: string;
-  plate_number: string | null;
-  catalog_id: string | null;
-};
+function startOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+function startOfWeekMonday(d: Date) {
+  const day = d.getDay(); // 0 Sun
+  const diff = (day === 0 ? -6 : 1) - day; // Monday as start
+  const monday = new Date(d);
+  monday.setDate(d.getDate() + diff);
+  return startOfDay(monday);
+}
+function startOfMonth(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
+}
+function startOfQuarter(d: Date) {
+  const q = Math.floor(d.getMonth() / 3) * 3;
+  return new Date(d.getFullYear(), q, 1, 0, 0, 0, 0);
+}
+function toISO(d: Date) {
+  return d.toISOString();
+}
+function fmtDate(v?: string | null) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+  });
+}
+function fmtMoney(v?: number | null) {
+  if (v == null) return "—";
+  return `RM ${Number(v).toLocaleString("en-MY")}`;
+}
+function getPlate(r: Row) {
+  const a = (r.number_plate ?? "").trim();
+  // const b = (r.plate_number ?? "").trim();
+  return a || "—";
+}
+function getCarType(r: Row) {
+  return (r.car_type ?? "").trim() || "Unknown";
+}
+function getRange(period: Period, now = new Date()) {
+  const end = new Date(now); // inclusive-ish; we’ll use lt end+1 for day
+  let start: Date;
 
-type CatalogRow = {
-  id: string;
-  make: string | null;
-  model: string | null;
-};
+  if (period === "daily") start = startOfDay(now);
+  else if (period === "weekly") start = startOfWeekMonday(now);
+  else if (period === "monthly") start = startOfMonth(now);
+  else start = startOfQuarter(now);
 
-function cleanText(v: any): string | null {
-  const s = String(v ?? "").trim();
-  if (!s) return null;
-  return s;
+  // End boundary: now (works fine for live dashboard)
+  return { start, end };
 }
 
-function cleanPlate(v: any): string | null {
-  const s = cleanText(v);
-  if (!s) return null;
-  return s.replace(/\s+/g, " ").replace(/[<>]/g, "").toUpperCase();
-}
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ period?: string; q?: string }>;
+}) {
+  const sp = await searchParams;
+  const period = (sp.period as Period) || "monthly";
+  const q = (sp.q ?? "").trim().toLowerCase();
 
-function cleanPhone(v: any): string | null {
-  const s = cleanText(v);
-  if (!s) return null;
-  // remove weird chars like "<"
-  const fixed = s.replace(/[<>]/g, "").trim();
-  // keep + and digits only
-  const keep = fixed.startsWith("+")
-    ? "+" + fixed.slice(1).replace(/\D/g, "")
-    : fixed.replace(/\D/g, "");
-  return keep || null;
-}
+  const { start, end } = getRange(period, new Date());
 
-function eventDateISO(a: AgreementRow): string | null {
-  return a.updated_at ?? a.date_start ?? a.created_at ?? null;
-}
-
-function eventDateMs(a: AgreementRow): number {
-  const iso = eventDateISO(a);
-  if (!iso) return 0;
-  const t = new Date(iso).getTime();
-  return Number.isFinite(t) ? t : 0;
-}
-
-export default async function AdminDashboard() {
   const supabase = await createSupabaseServer();
 
-  // last 365 days based on updated_at/date_start/created_at
-  const now = new Date();
-  const from = new Date(now);
-  from.setDate(from.getDate() - 365);
-
-  // Pull agreements + car_id + plate/make/model (even if empty)
-  const { data: agreementsRaw, error } = await supabase
+  // Pull agreements for the range based on date_start (you requested)
+  let query = supabase
     .from("agreements")
-    .select("id,total_price,updated_at,date_start,created_at,car_id,number_plate,make,model,car_type")
-    .or(
-      `updated_at.gte.${from.toISOString()},date_start.gte.${from.toISOString()},created_at.gte.${from.toISOString()}`
+    .select(
+      "id, car_type, number_plate, mobile, total_price, deposit_price, status, date_start, date_end, created_at, updated_at"
     )
-    .order("updated_at", { ascending: false, nullsFirst: false });
+    .gte("date_start", toISO(start))
+    .lte("date_start", toISO(end));
+
+  // optional search by car_type / plate
+  if (q) {
+    // OR filter
+    query = query.or(`car_type.ilike.%${q}%,number_plate.ilike.%${q}%`);
+  }
+
+  // sort by car_type, then latest start date
+  const { data, error } = await query
+    .order("car_type", { ascending: true, nullsFirst: false })
+    .order("date_start", { ascending: false })
+    .limit(2000);
 
   if (error) {
     return (
-      <div className="p-4 bg-white rounded-xl border">
-        <div className="font-semibold">Dashboard error</div>
-        <div className="text-sm text-red-600">{error.message}</div>
+      <div className="p-6">
+        <div className="text-lg font-semibold">Dashboard</div>
+        <div className="mt-2 rounded-lg border p-3 text-sm text-red-600">
+          {error.message}
+        </div>
       </div>
     );
   }
 
-  const agreements = (agreementsRaw ?? []) as AgreementRow[];
+  const rows = (data ?? []) as Row[];
 
-  // --------------------------
-  // Resolve missing plate/make/model from Cars + Catalog
-  // --------------------------
-  const carIds = Array.from(
-    new Set(agreements.map((a) => a.car_id).filter(Boolean) as string[])
+  // aggregate
+  const totalRevenue = rows.reduce(
+    (sum, r) => sum + (Number(r.total_price) || 0),
+    0
+  );
+  const totalDeposit = rows.reduce(
+    (sum, r) => sum + (Number(r.deposit_price) || 0),
+    0
   );
 
-  // only fetch cars if needed
-  const carsMap = new Map<string, CarRow>();
-  if (carIds.length) {
-    const { data: cars } = await supabase
-      .from("cars")
-      .select("id,plate_number,catalog_id")
-      .in("id", carIds);
-
-    (cars ?? []).forEach((c: any) => carsMap.set(c.id, c));
+  const byCarType = new Map<string, { count: number; revenue: number }>();
+  for (const r of rows) {
+    const key = getCarType(r);
+    const prev = byCarType.get(key) || { count: 0, revenue: 0 };
+    prev.count += 1;
+    prev.revenue += Number(r.total_price) || 0;
+    byCarType.set(key, prev);
   }
 
-  const catalogIds = Array.from(
-    new Set(
-      [...carsMap.values()]
-        .map((c) => c.catalog_id)
-        .filter(Boolean) as string[]
-    )
-  );
+  const breakdown = Array.from(byCarType.entries())
+    .map(([car_type, v]) => ({ car_type, ...v }))
+    .sort((a, b) => a.car_type.localeCompare(b.car_type));
 
-  const catalogMap = new Map<string, CatalogRow>();
-  if (catalogIds.length) {
-    const { data: catalog } = await supabase
-      .from("car_catalog")
-      .select("id,make,model")
-      .in("id", catalogIds);
+  const periodLabel =
+    period === "daily"
+      ? "Today"
+      : period === "weekly"
+      ? "This week"
+      : period === "monthly"
+      ? "This month"
+      : "This quarter";
 
-    (catalog ?? []).forEach((r: any) => catalogMap.set(r.id, r));
-  }
-
-  const normalized = agreements.map((a) => {
-    // plate
-    const car = a.car_id ? carsMap.get(a.car_id) : undefined;
-    const plate =
-      cleanPlate(a.number_plate) ??
-      cleanPlate(car?.plate_number) ??
-      null;
-
-    // make/model
-    let make = cleanText(a.make);
-    let model = cleanText(a.model);
-
-    if ((!make || !model) && car?.catalog_id) {
-      const cat = catalogMap.get(car.catalog_id);
-      make = make ?? cleanText(cat?.make);
-      model = model ?? cleanText(cat?.model);
-    }
-
-    // last fallback: if you only have car_type like "Toyota Vios"
-    if ((!make || !model) && a.car_type) {
-      const parts = String(a.car_type).trim().split(/\s+/);
-      if (!make && parts.length) make = parts[0];
-      if (!model && parts.length > 1) model = parts.slice(1).join(" ");
-    }
-
-    return {
-      ...a,
-      number_plate: plate,
-      make: make ?? null,
-      model: model ?? null,
-      mobile: cleanPhone((a as any).mobile) ?? null,
-    };
-  });
-
-  // sort by updated_at > date_start > created_at
-  normalized.sort((a, b) => eventDateMs(b) - eventDateMs(a));
-
-  const sum = (arr: AgreementRow[]) =>
-    arr.reduce((acc, r) => acc + (Number(r.total_price ?? 0) || 0), 0);
-
-  const inRange = (r: AgreementRow, start: Date) => {
-    const t = eventDateMs(r);
-    return t >= start.getTime();
-  };
-
-  const daily = sum(normalized.filter((r) => inRange(r, startOfDay(now))));
-  const weekly = sum(normalized.filter((r) => inRange(r, startOfWeek(now))));
-  const monthly = sum(normalized.filter((r) => inRange(r, startOfMonth(now))));
-  const quarterly = sum(normalized.filter((r) => inRange(r, startOfQuarter(now))));
-  const yearly = sum(normalized.filter((r) => inRange(r, startOfYear(now))));
-
-  const byKey = (keyFn: (r: AgreementRow) => string) => {
-    const map = new Map<string, number>();
-    for (const r of normalized) {
-      const k = keyFn(r);
-      const v = Number(r.total_price ?? 0) || 0;
-      map.set(k, (map.get(k) ?? 0) + v);
-    }
-    return [...map.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-  };
-
-  const topPlates = byKey((r) => r.number_plate?.trim() || "Unknown plate");
-  const topMakes = byKey((r) => r.make?.trim() || "Unknown make");
-  const topModels = byKey((r) => r.model?.trim() || "Unknown model");
-
-  const Card = ({ title, value }: { title: string; value: number }) => (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="text-sm opacity-60">{title}</div>
-      <div className="text-2xl font-semibold">RM {value.toLocaleString()}</div>
-    </div>
-  );
-
-  const List = ({ title, items }: { title: string; items: [string, number][] }) => (
-    <div className="rounded-xl border bg-white p-4">
-      <div className="font-semibold mb-3">{title}</div>
-      <div className="space-y-2 text-sm">
-        {items.map(([k, v]) => (
-          <div key={k} className="flex items-center justify-between gap-3">
-            <div className="truncate">{k}</div>
-            <div className="font-medium">RM {v.toLocaleString()}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+  const tabs: Array<{ key: Period; label: string }> = [
+    { key: "daily", label: "Daily" },
+    { key: "weekly", label: "Weekly" },
+    { key: "monthly", label: "Monthly" },
+    { key: "quarterly", label: "Quarterly" },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="text-xl font-semibold">Dashboard</div>
-        <div className="text-sm opacity-60">
-          Analytics from Agreements (sorted by updated_at → date_start → created_at)
+    <div className="p-4 md:p-6 space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className="text-2xl font-semibold">Dashboard</div>
+          <div className="text-sm opacity-70">
+            {periodLabel} • {fmtDate(start.toISOString())} →{" "}
+            {fmtDate(end.toISOString())}
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 md:flex-row md:items-center">
+          <form
+            className="flex items-center gap-2"
+            action="/admin"
+            method="get"
+          >
+            <input type="hidden" name="period" value={period} />
+            <input
+              name="q"
+              defaultValue={sp.q ?? ""}
+              placeholder="Search car type / plate…"
+              className="h-10 w-full md:w-72 rounded-lg border px-3 text-sm"
+            />
+            <button className="h-10 rounded-lg bg-black px-4 text-sm font-medium text-white hover:bg-black/90 active:scale-[0.98]">
+              Search
+            </button>
+          </form>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <Card title="Today" value={daily} />
-        <Card title="This week" value={weekly} />
-        <Card title="This month" value={monthly} />
-        <Card title="This quarter" value={quarterly} />
-        <Card title="This year" value={yearly} />
+      {/* Period tabs */}
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((t) => {
+          const active = t.key === period;
+          const href = `/admin?period=${t.key}${
+            q ? `&q=${encodeURIComponent(q)}` : ""
+          }`;
+          return (
+            <Link
+              key={t.key}
+              href={href}
+              className={[
+                "h-9 inline-flex items-center rounded-lg border px-3 text-sm transition",
+                active
+                  ? "bg-black text-white border-black"
+                  : "bg-white hover:bg-black/5 active:bg-black/10",
+              ].join(" ")}
+            >
+              {t.label}
+            </Link>
+          );
+        })}
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-3">
-        <List title="Top Plates" items={topPlates} />
-        <List title="Top Makes" items={topMakes} />
-        <List title="Top Models" items={topModels} />
+      {/* KPIs */}
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs uppercase tracking-wide opacity-60">
+            Agreements
+          </div>
+          <div className="mt-1 text-2xl font-semibold">{rows.length}</div>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs uppercase tracking-wide opacity-60">
+            Total Revenue
+          </div>
+          <div className="mt-1 text-2xl font-semibold">
+            {fmtMoney(totalRevenue)}
+          </div>
+        </div>
+        <div className="rounded-xl border bg-white p-4">
+          <div className="text-xs uppercase tracking-wide opacity-60">
+            Total Deposit
+          </div>
+          <div className="mt-1 text-2xl font-semibold">
+            {fmtMoney(totalDeposit)}
+          </div>
+        </div>
+      </div>
+
+      {/* Breakdown by car_type */}
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="font-semibold">By Car Type</div>
+          <div className="text-xs opacity-60">{breakdown.length} types</div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[700px] w-full text-sm">
+            <thead className="bg-black/[0.03]">
+              <tr className="text-left">
+                <th className="p-3">Car Type</th>
+                <th className="p-3">Count</th>
+                <th className="p-3">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {breakdown.map((b) => (
+                <tr key={b.car_type} className="border-t">
+                  <td className="p-3 font-medium">{b.car_type}</td>
+                  <td className="p-3">{b.count}</td>
+                  <td className="p-3">{fmtMoney(b.revenue)}</td>
+                </tr>
+              ))}
+              {!breakdown.length ? (
+                <tr>
+                  <td colSpan={3} className="p-6 opacity-60">
+                    No data in this period.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Agreements list */}
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="font-semibold">Agreements</div>
+          <Link className="text-sm underline" href="/admin/agreements">
+            View all
+          </Link>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1100px] w-full text-sm">
+            <thead className="bg-black/[0.03]">
+              <tr className="text-left">
+                <th className="p-3">Start</th>
+                <th className="p-3">End</th>
+                <th className="p-3">Plate</th>
+                <th className="p-3">Car Type</th>
+                <th className="p-3">Phone</th>
+                <th className="p-3">Total</th>
+                <th className="p-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.slice(0, 200).map((r) => (
+                <tr key={r.id} className="border-t">
+                  <td className="p-3">{fmtDate(r.date_start)}</td>
+                  <td className="p-3">{fmtDate(r.date_end)}</td>
+                  <td className="p-3 font-medium">{getPlate(r)}</td>
+                  <td className="p-3">{getCarType(r)}</td>
+                  <td className="p-3">{r.mobile ?? "—"}</td>
+                  <td className="p-3">{fmtMoney(r.total_price)}</td>
+                  <td className="p-3">
+                    <span className="rounded-full border px-2 py-1 text-xs">
+                      {r.status ?? "—"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {!rows.length ? (
+                <tr>
+                  <td colSpan={7} className="p-6 opacity-60">
+                    No agreements found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        {rows.length > 200 ? (
+          <div className="px-4 py-3 border-t text-xs opacity-60">
+            Showing first 200 agreements for performance.
+          </div>
+        ) : null}
       </div>
     </div>
   );
