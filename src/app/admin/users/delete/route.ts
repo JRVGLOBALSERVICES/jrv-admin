@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { logAdminAction } from "@/lib/audit/log";
 
 type Body = { user_id: string };
 
@@ -12,15 +11,12 @@ export async function POST(req: Request) {
   const { user_id } = (await req.json()) as Body;
   if (!user_id) return NextResponse.json({ error: "user_id required" }, { status: 400 });
 
-  const { error } = await supabaseAdmin.from("admin_users").delete().eq("user_id", user_id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Remove admin role first
+  await supabaseAdmin.from("admin_users").delete().eq("user_id", user_id);
 
-  await logAdminAction({
-    actor_user_id: gate.user.id,
-    target_user_id: user_id,
-    action: "REMOVE_ADMIN",
-    details: {},
-  });
+  // Delete auth user
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true });
 }

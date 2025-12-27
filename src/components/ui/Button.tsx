@@ -1,112 +1,179 @@
 "use client";
 
 import * as React from "react";
+import { cn } from "@/lib/utils/cn";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-export type ButtonSize = "sm" | "md" | "lg";
-export type HapticsMode = "off" | "auto";
-export type SoundMode = "off" | "on";
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonSize = "sm" | "md" | "lg";
 
-function cn(...classes: Array<string | false | undefined | null>) {
-  return classes.filter(Boolean).join(" ");
+type HapticsMode = "auto" | "on" | "off";
+type SoundMode = "auto" | "on" | "off";
+
+export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  loading?: boolean;
+  haptics?: HapticsMode;
+  sound?: SoundMode;
+  fullWidth?: boolean;
+};
+
+function isTouchLike(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    "ontouchstart" in window ||
+    (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0)
+  );
 }
 
-function playClickSound() {
-  try {
-    const AudioCtx =
-      window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
+/** ===== Reliable WebAudio click tick (shared AudioContext) ===== */
+let sharedCtx: AudioContext | null = null;
 
-    const ctx = new AudioCtx();
+function getAudioCtx(): AudioContext | null {
+  if (typeof window === "undefined") return null;
+  const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtx) return null;
+
+  if (!sharedCtx) sharedCtx = new AudioCtx();
+  return sharedCtx;
+}
+
+// tiny "tick" sound using WebAudio (no file needed)
+function playClickTick() {
+  try {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+
+    // iOS / Safari sometimes starts suspended; resume within the user gesture
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(() => {});
+    }
+
     const o = ctx.createOscillator();
     const g = ctx.createGain();
 
-    o.type = "sine";
-    o.frequency.value = 520;
-    g.gain.value = 0.025;
+    o.type = "triangle";
+    o.frequency.value = 420;
+
+    const t = ctx.currentTime;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.03, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
 
     o.connect(g);
     g.connect(ctx.destination);
 
-    o.start();
-    setTimeout(() => {
-      o.stop();
-      ctx.close().catch(() => {});
-    }, 30);
-  } catch {}
+    o.start(t);
+    o.stop(t + 0.07);
+  } catch {
+    // ignore
+  }
 }
 
-export const Button = React.forwardRef<
-  HTMLButtonElement,
-  React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: ButtonVariant;
-    size?: ButtonSize;
-    loading?: boolean;
-    fullWidth?: boolean;
-    haptics?: HapticsMode;
-    sound?: SoundMode;
+function doHapticPulse(durationMs = 10) {
+  try {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(durationMs);
+    }
+  } catch {
+    // ignore
   }
->(function Button(
-  {
-    className,
-    variant = "primary",
-    size = "md",
-    loading = false,
-    fullWidth = false,
-    haptics = "auto",
-    sound = "off",
-    disabled,
-    onClick,
-    children,
-    ...props
-  },
-  ref
-) {
-  const base =
-    "inline-flex items-center justify-center rounded-lg font-medium transition " +
-    "focus:outline-none focus:ring-2 focus:ring-black/20 " +
-    "active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none";
+}
 
-  const variants: Record<ButtonVariant, string> = {
-    primary: "bg-black text-white hover:bg-black/90",
-    secondary:
-      "bg-white border border-black/15 hover:bg-black/5 text-black",
-    ghost: "bg-transparent hover:bg-black/5 text-black",
-    danger:
-      "bg-red-600 text-white hover:bg-red-600/90 focus:ring-red-500/30",
-  };
+const base =
+  "inline-flex items-center justify-center gap-2 rounded-lg font-medium select-none " +
+  "transition will-change-transform " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/60 " +
+  "disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none " +
+  "active:scale-[0.98]";
 
-  const sizes: Record<ButtonSize, string> = {
-    sm: "h-9 px-3 text-sm",
-    md: "h-10 px-4 text-sm",
-    lg: "h-11 px-5 text-base",
-  };
+const variants: Record<ButtonVariant, string> = {
+  primary: "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm",
+  secondary:
+    "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10",
+  ghost: "bg-transparent text-black hover:bg-black/5 active:bg-black/10",
+  danger:
+    "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm",
+};
 
+const sizes: Record<ButtonSize, string> = {
+  sm: "h-9 px-3 text-sm",
+  md: "h-10 px-4 text-sm",
+  lg: "h-11 px-5 text-base",
+};
+
+function Spinner() {
   return (
-    <button
-      ref={ref}
-      disabled={disabled || loading}
-      className={cn(
-        base,
-        variants[variant],
-        sizes[size],
-        fullWidth && "w-full",
-        className
-      )}
-      onClick={(e) => {
-        if (sound === "on") playClickSound();
-        if (
-          haptics === "auto" &&
-          typeof navigator !== "undefined" &&
-          "vibrate" in navigator
-        ) {
-          navigator.vibrate?.(10);
-        }
-        onClick?.(e);
-      }}
-      {...props}
-    >
-      {loading ? "Please wait…" : children}
-    </button>
+    <span
+      className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent opacity-80"
+      aria-hidden="true"
+    />
   );
-});
+}
+
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  (
+    {
+      className,
+      variant = "primary",
+      size = "md",
+      loading = false,
+      haptics = "auto",
+      sound = "auto",
+      fullWidth = false,
+      disabled,
+      onClick,
+      children,
+      type,
+      ...props
+    },
+    ref
+  ) => {
+    const isDisabled = disabled || loading;
+
+    const shouldHaptic =
+      haptics === "on" || (haptics === "auto" && isTouchLike());
+
+    // ✅ "auto" = mobile/touch only (more sensible)
+    const shouldSound = sound === "on" || (sound === "auto" && isTouchLike());
+
+    const handleClick: React.MouseEventHandler<HTMLButtonElement> = (e) => {
+      if (isDisabled) {
+        e.preventDefault();
+        return;
+      }
+
+      // feedback FIRST for perceived responsiveness
+      if (shouldHaptic) doHapticPulse(10);
+      if (shouldSound) playClickTick();
+
+      onClick?.(e);
+    };
+
+    // default button type: "button" (prevents accidental form submits)
+    const resolvedType = type ?? "button";
+
+    return (
+      <button
+        ref={ref}
+        type={resolvedType}
+        className={cn(
+          base,
+          variants[variant],
+          sizes[size],
+          fullWidth && "w-full",
+          className
+        )}
+        disabled={isDisabled}
+        aria-disabled={isDisabled}
+        onClick={handleClick}
+        {...props}
+      >
+        {loading ? <Spinner /> : null}
+        <span className={cn(loading && "opacity-90")}>{children}</span>
+      </button>
+    );
+  }
+);
+
+Button.displayName = "Button";

@@ -1,32 +1,48 @@
-import { createSupabaseServer } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { createServerClient } from "@supabase/ssr";
 
-export async function requireSuperadmin() {
-  const supabase = await createSupabaseServer();
+export async function requireSuperadmin(): Promise<
+  | { ok: true; user: { id: string; email?: string | null } }
+  | { ok: false; status: number; message: string }
+> {
+  const cookieStore = await cookies();
 
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabase.auth.getUser();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll() {
+          // no-op in server actions/routes (not needed here)
+        },
+      },
+    }
+  );
 
-  if (userErr || !user) {
-    return { ok: false as const, status: 401, message: "Not authenticated" };
+  const { data: u, error: uErr } = await supabase.auth.getUser();
+  if (uErr || !u?.user) {
+    return { ok: false, status: 401, message: "Not authenticated" };
   }
 
-  // IMPORTANT: this query is allowed by your non-recursive RLS:
-  // admin_users SELECT where user_id = auth.uid()
-  const { data: row, error: roleErr } = await supabase
+  const { data: adminRow, error: rErr } = await supabase
     .from("admin_users")
     .select("role")
-    .eq("user_id", user.id)
+    .eq("user_id", u.user.id)
     .maybeSingle();
 
-  if (roleErr || !row?.role) {
-    return { ok: false as const, status: 403, message: "No admin role" };
+  if (rErr) {
+    return { ok: false, status: 500, message: rErr.message };
   }
 
-  if (row.role !== "superadmin") {
-    return { ok: false as const, status: 403, message: "Superadmin only" };
+  if (!adminRow || adminRow.role !== "superadmin") {
+    return { ok: false, status: 403, message: "Access denied" };
   }
 
-  return { ok: true as const, user };
+  return {
+    ok: true,
+    user: { id: u.user.id, email: u.user.email },
+  };
 }

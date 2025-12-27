@@ -16,7 +16,11 @@ export async function GET() {
   const rows = admins ?? [];
   const userIds = new Set(rows.map((r) => r.user_id).filter(Boolean));
 
-  const emailById = new Map<string, string | null>();
+  const userById = new Map<
+    string,
+    { email: string | null; banned_until: string | null }
+  >();
+
   let page = 1;
   const perPage = 200;
 
@@ -25,15 +29,34 @@ export async function GET() {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     for (const u of data.users) {
-      if (userIds.has(u.id)) emailById.set(u.id, u.email ?? null);
+      if (userIds.has(u.id)) {
+        // banned_until exists on user object when banned
+        const bannedUntil = (u as any).banned_until ?? null;
+        userById.set(u.id, { email: u.email ?? null, banned_until: bannedUntil });
+      }
     }
 
-    if ([...userIds].every((id) => emailById.has(id))) break;
+    if ([...userIds].every((id) => userById.has(id))) break;
     if (data.users.length < perPage) break;
     page += 1;
   }
 
+  const now = Date.now();
+
   return NextResponse.json({
-    rows: rows.map((r) => ({ ...r, email: emailById.get(r.user_id) ?? null })),
+    rows: rows.map((r) => {
+      const u = userById.get(r.user_id);
+      const bannedUntil = u?.banned_until ?? null;
+      const disabled =
+        !!bannedUntil && new Date(bannedUntil).getTime() > now;
+
+      return {
+        ...r,
+        email: u?.email ?? null,
+        banned_until: bannedUntil,
+        disabled,
+        status: disabled ? "disabled" : "active",
+      };
+    }),
   });
 }

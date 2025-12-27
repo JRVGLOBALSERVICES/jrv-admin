@@ -12,13 +12,17 @@ export async function POST(req: Request) {
   const { user_id } = (await req.json()) as Body;
   if (!user_id) return NextResponse.json({ error: "user_id required" }, { status: 400 });
 
-  const { error } = await supabaseAdmin.from("admin_users").delete().eq("user_id", user_id);
+  // ✅ Unban user
+  const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, {
+    ban_duration: "none",
+  });
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   await logAdminAction({
     actor_user_id: gate.user.id,
     target_user_id: user_id,
-    action: "REMOVE_ADMIN",
+    action: "ENABLE_USER",
     details: {},
   });
 

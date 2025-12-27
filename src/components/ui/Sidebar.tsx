@@ -170,6 +170,13 @@ export function Sidebar() {
           <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" />
         ),
       },
+      {
+      href: "/admin/audit",
+      label: "Audit Log",
+      icon: (
+        <Icon d="M12 3a7 7 0 1 0 7 7m-7-4v4l3 3M5 21h14" />
+      ),
+    },
     ],
     []
   );
@@ -295,7 +302,7 @@ export function Sidebar() {
               variant="secondary"
               size="sm"
               className={collapsed ? "w-full justify-center px-0" : "w-full"}
-              sound="off"
+              sound="on"
             >
               {collapsed ? "⎋" : "Logout"}
             </Button>
