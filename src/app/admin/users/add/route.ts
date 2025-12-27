@@ -38,13 +38,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 
-  const origin = new URL(req.url).origin;
+  const origin = 'https://jrv-admin.vercel.app';
 
   // ✅ Generate invite link (no email delivery needed)
   const { data, error } = await supabaseAdmin.auth.admin.generateLink({
     type: "invite",
     email,
-    options: { redirectTo: `${origin}` },
+    options: { redirectTo: `https://jrv-admin.vercel.app` },
   });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
