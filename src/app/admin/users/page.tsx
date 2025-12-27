@@ -1,269 +1,298 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRole } from "@/lib/auth/useRole";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 
 type AdminRow = {
-  id: string;
   user_id: string;
+  email: string;
+  phone: string | null;
   role: "admin" | "superadmin";
-  email: string | null;
+  status: "active" | "disabled";
   created_at: string;
+  created_by: string | null;
 };
 
-export default function AdminUsersPage() {
-  const { role, loading } = useRole();
+function Badge({ status }: { status: "active" | "disabled" }) {
+  return (
+    <span
+      className={[
+        "inline-flex items-center rounded-full px-2 py-1 text-xs font-medium",
+        status === "active"
+          ? "bg-green-100 text-green-700"
+          : "bg-red-100 text-red-700",
+      ].join(" ")}
+    >
+      {status === "active" ? "Active" : "Disabled"}
+    </span>
+  );
+}
 
+export default function AdminUsersPage() {
   const [rows, setRows] = useState<AdminRow[]>([]);
-  const [email, setEmail] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
-  const [newRole, setNewRole] = useState<"admin" | "superadmin">("admin");
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Create form
+  const [cEmail, setCEmail] = useState("");
+  const [cPhone, setCPhone] = useState("");
+  const [cRole, setCRole] = useState<"admin" | "superadmin">("admin");
+  const [cPass, setCPass] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [lastInvite, setLastInvite] = useState<{
-    invite_link: string;
-    whatsapp_url: string;
-  } | null>(null);
+  // Modal for password set
+  const [pwUserId, setPwUserId] = useState<string | null>(null);
+  const [pw, setPw] = useState("");
 
-  /* =========================
-     Load admin users
-     ========================= */
-  async function load() {
-    const res = await fetch("/admin/users/list");
+  const fetchRows = async () => {
+    setLoading(true);
+    setErr(null);
+    const res = await fetch("/admin/users/api", { cache: "no-store" });
     const json = await res.json();
-    if (!res.ok) throw new Error(json?.error ?? "Failed to load admins");
-    setRows(json.rows ?? []);
-  }
+    if (!res.ok) {
+      setErr(json?.error || "Failed to load users");
+      setLoading(false);
+      return;
+    }
+    setRows(json.data || []);
+    setLoading(false);
+  };
 
   useEffect(() => {
-    if (role === "superadmin") load().catch(console.error);
-  }, [role]);
+    fetchRows();
+  }, []);
 
-  /* =========================
-     Guards
-     ========================= */
-  if (loading) return <div className="p-6">Loading…</div>;
-  if (role !== "superadmin")
-    return <div className="p-6 text-red-600">Access denied</div>;
-
-  /* =========================
-     Actions
-     ========================= */
-  async function inviteAdmin() {
-    if (!email) return alert("Email required");
-
+  const post = async (payload: any) => {
     setBusy(true);
-    setLastInvite(null);
-
+    setErr(null);
     try {
-      const res = await fetch("/admin/users/add", {
+      const res = await fetch("/admin/users/api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, role: newRole, whatsapp }),
+        body: JSON.stringify(payload),
       });
-
       const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Invite failed");
-
-      setEmail("");
-      setWhatsapp("");
-      setLastInvite({
-        invite_link: json.invite_link,
-        whatsapp_url: json.whatsapp_url,
-      });
-
-      window.open(json.whatsapp_url, "_blank", "noopener,noreferrer");
-      await load();
+      if (!res.ok) throw new Error(json?.error || "Action failed");
+      await fetchRows();
     } catch (e: any) {
-      alert(e.message);
+      setErr(e.message);
     } finally {
       setBusy(false);
     }
-  }
+  };
 
-  async function disableUser(user_id: string) {
-    if (!confirm("Disable this user? They will not be able to login.")) return;
+  const sorted = useMemo(() => {
+    // superadmins first, then active, then newest
+    return [...rows].sort((a, b) => {
+      if (a.role !== b.role) return a.role === "superadmin" ? -1 : 1;
+      if (a.status !== b.status) return a.status === "active" ? -1 : 1;
+      return (
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    });
+  }, [rows]);
 
-    setBusy(true);
-    try {
-      const res = await fetch("/admin/users/disable", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Disable failed");
-      await load();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resetPassword(email: string) {
-    if (!confirm("Generate password reset link and send via WhatsApp?")) return;
-
-    setBusy(true);
-    try {
-      const res = await fetch("/admin/users/reset-password", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Reset failed");
-
-      window.open(json.whatsapp_url, "_blank", "noopener,noreferrer");
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function removeAdmin(user_id: string) {
-    if (!confirm("Remove admin access for this user?")) return;
-
-    setBusy(true);
-    try {
-      const res = await fetch("/admin/users/remove", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id }),
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Remove failed");
-      await load();
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  /* =========================
-     Render
-     ========================= */
   return (
-    <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold">Admin Users</h1>
-        <p className="text-sm opacity-70">
-          Superadmin can invite, disable and manage admins.
-        </p>
-      </header>
+    <div className="space-y-4">
+      <div className="text-xl font-semibold">Admin Users</div>
 
-      {/* Invite */}
-      <section className="rounded-xl border bg-white p-4 space-y-3">
-        <h2 className="font-medium">Invite Admin</h2>
+      {err ? (
+        <div className="rounded-lg border bg-red-50 text-red-700 p-3 text-sm">
+          {err}
+        </div>
+      ) : null}
 
-        <input
-          className="w-full border rounded-lg px-3 py-2"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
+      {/* Create */}
+      <Card className="p-4 space-y-3">
+        <div className="font-semibold">Create Admin</div>
+        <div className="grid md:grid-cols-4 gap-2">
+          <input
+            className="w-full border rounded-lg px-3 py-2"
+            placeholder="Email"
+            value={cEmail}
+            onChange={(e) => setCEmail(e.target.value)}
+          />
+          <input
+            className="w-full border rounded-lg px-3 py-2"
+            placeholder="Phone (optional)"
+            value={cPhone}
+            onChange={(e) => setCPhone(e.target.value)}
+          />
+          <select
+            className="w-full border rounded-lg px-3 py-2"
+            value={cRole}
+            onChange={(e) => setCRole(e.target.value as any)}
+          >
+            <option value="admin">admin</option>
+            <option value="superadmin">superadmin</option>
+          </select>
+          <input
+            className="w-full border rounded-lg px-3 py-2"
+            placeholder="Temp Password (6+)"
+            value={cPass}
+            onChange={(e) => setCPass(e.target.value)}
+          />
+        </div>
 
-        <select
-          className="w-full border rounded-lg px-3 py-2"
-          value={newRole}
-          onChange={(e) => setNewRole(e.target.value as any)}
-        >
-          <option value="admin">Admin</option>
-          <option value="superadmin">Superadmin</option>
-        </select>
+        <div className="flex justify-end">
+          <Button
+            loading={busy}
+            sound="on"
+            onClick={() =>
+              post({
+                action: "create",
+                email: cEmail,
+                phone: cPhone,
+                role: cRole,
+                tempPassword: cPass,
+              })
+            }
+          >
+            Create
+          </Button>
+        </div>
+      </Card>
 
-        <input
-          className="w-full border rounded-lg px-3 py-2"
-          placeholder="WhatsApp number (optional)"
-          value={whatsapp}
-          onChange={(e) => setWhatsapp(e.target.value)}
-        />
-
-        <Button
-          fullWidth
-          loading={busy}
-          onClick={inviteAdmin}
-          sound="on"
-          haptics="auto"
-        >
-          Generate & Send WhatsApp Invite
-        </Button>
-
-        {lastInvite && (
-          <div className="rounded-lg border bg-gray-50 p-3 text-xs break-all">
-            <div className="font-medium mb-1">Invite link</div>
-            {lastInvite.invite_link}
-          </div>
-        )}
-      </section>
-
-      {/* List */}
-      <section className="rounded-xl border bg-white overflow-x-auto">
-        <table className="min-w-[720px] w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="p-3 text-left">Email</th>
-              <th className="p-3 text-left">Role</th>
-              <th className="p-3 text-left">User ID</th>
-              <th className="p-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b">
-                <td className="p-3">
-                  {r.email ?? <span className="opacity-60">unknown</span>}
-                </td>
-                <td className="p-3">
-                  <span className="rounded bg-black text-white px-2 py-1 text-xs capitalize">
-                    {r.role}
-                  </span>
-                </td>
-                <td className="p-3 font-mono text-xs">{r.user_id}</td>
-                <td className="p-3 text-right space-x-2">
-                  {r.email && (
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      sound="off"
-                      onClick={() => resetPassword(r.email!)}
-                    >
-                      Reset PW
-                    </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="danger"
-                    sound="off"
-                    onClick={() => disableUser(r.user_id)}
-                  >
-                    Disable
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    sound="off"
-                    onClick={() => removeAdmin(r.user_id)}
-                  >
-                    Remove Admin
-                  </Button>
-                </td>
-              </tr>
-            ))}
-
-            {!rows.length && (
+      {/* Table */}
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-[980px] w-full text-sm">
+            <thead className="bg-black/5">
               <tr>
-                <td className="p-6 opacity-60" colSpan={4}>
-                  No admin users found.
-                </td>
+                <th className="p-3 text-left">Email</th>
+                <th className="p-3 text-left">Phone</th>
+                <th className="p-3 text-left">Role</th>
+                <th className="p-3 text-left">Status</th>
+                <th className="p-3 text-right">Actions</th>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center opacity-60">
+                    Loading…
+                  </td>
+                </tr>
+              ) : null}
+
+              {!loading && !sorted.length ? (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center opacity-60">
+                    No admin users
+                  </td>
+                </tr>
+              ) : null}
+
+              {sorted.map((u) => (
+                <tr key={u.user_id} className="border-t">
+                  <td className="p-3">{u.email}</td>
+                  <td className="p-3">{u.phone ?? "-"}</td>
+                  <td className="p-3 capitalize">{u.role}</td>
+                  <td className="p-3">
+                    <Badge status={u.status} />
+                  </td>
+                  <td className="p-3">
+                    <div className="flex gap-2 justify-end flex-wrap">
+                      {u.role !== "superadmin" ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() =>
+                              post({
+                                action: "toggle",
+                                user_id: u.user_id,
+                                enable: u.status !== "active",
+                              })
+                            }
+                            sound="on"
+                          >
+                            {u.status === "active" ? "Disable" : "Enable"}
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => {
+                              setPwUserId(u.user_id);
+                              setPw("");
+                            }}
+                            sound="on"
+                          >
+                            Set Password
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="danger"
+                            onClick={() => {
+                              if (
+                                confirm(
+                                  `Delete ${u.email}? This removes auth + admin record.`
+                                )
+                              ) {
+                                post({ action: "delete", user_id: u.user_id });
+                              }
+                            }}
+                            sound="on"
+                          >
+                            Delete
+                          </Button>
+                        </>
+                      ) : (
+                        <span className="text-xs opacity-60">Protected</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Password modal */}
+      {pwUserId ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <button
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setPwUserId(null)}
+          />
+          <div className="relative w-full max-w-md rounded-xl border bg-white p-4 space-y-3">
+            <div className="font-semibold">Set Password</div>
+            <input
+              className="w-full border rounded-lg px-3 py-2"
+              placeholder="New password (6+)"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              type="password"
+            />
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => setPwUserId(null)}
+                sound="on"
+              >
+                Cancel
+              </Button>
+              <Button
+                loading={busy}
+                onClick={() =>
+                  post({
+                    action: "set_password",
+                    user_id: pwUserId,
+                    newPassword: pw,
+                  }).then(() => setPwUserId(null))
+                }
+                sound="on"
+              >
+                Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

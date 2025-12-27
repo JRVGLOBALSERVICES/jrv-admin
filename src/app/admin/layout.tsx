@@ -2,10 +2,9 @@ import { Sidebar } from "@/components/ui/Sidebar";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <Sidebar />
-      {/* content pushes right on md */}
-      <main className="p-4 sm:p-6 md:pl-[17rem]">
+      <main className="md:ml-64 ml-0 p-4 md:p-6">
         {children}
       </main>
     </div>

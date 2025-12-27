@@ -1,48 +1,26 @@
-import { cookies } from "next/headers";
-import { createServerClient } from "@supabase/ssr";
+import { createSupabaseServer } from "@/lib/supabase/server";
 
-export async function requireSuperadmin(): Promise<
-  | { ok: true; user: { id: string; email?: string | null } }
-  | { ok: false; status: number; message: string }
-> {
-  const cookieStore = await cookies();
+export async function requireSuperadmin() {
+  const supabase = await createSupabaseServer();
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {
-          // no-op in server actions/routes (not needed here)
-        },
-      },
-    }
-  );
-
-  const { data: u, error: uErr } = await supabase.auth.getUser();
-  if (uErr || !u?.user) {
-    return { ok: false, status: 401, message: "Not authenticated" };
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) {
+    const err = new Error("Unauthorized");
+    (err as any).status = 401;
+    throw err;
   }
 
-  const { data: adminRow, error: rErr } = await supabase
+  const { data, error } = await supabase
     .from("admin_users")
-    .select("role")
-    .eq("user_id", u.user.id)
+    .select("role,status")
+    .eq("user_id", auth.user.id)
     .maybeSingle();
 
-  if (rErr) {
-    return { ok: false, status: 500, message: rErr.message };
+  if (error || !data || data.role !== "superadmin" || data.status !== "active") {
+    const err = new Error("Forbidden");
+    (err as any).status = 403;
+    throw err;
   }
 
-  if (!adminRow || adminRow.role !== "superadmin") {
-    return { ok: false, status: 403, message: "Access denied" };
-  }
-
-  return {
-    ok: true,
-    user: { id: u.user.id, email: u.user.email },
-  };
+  return auth.user;
 }

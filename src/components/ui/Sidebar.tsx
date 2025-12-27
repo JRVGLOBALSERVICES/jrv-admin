@@ -9,27 +9,13 @@ import { useRole } from "@/lib/auth/useRole";
 
 function Icon({ d }: { d: string }) {
   return (
-    <svg
-      className="h-5 w-5"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
-      <path
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d={d}
-      />
+    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d={d} />
     </svg>
   );
 }
 
-type Item = {
-  href: string;
-  label: string;
-  icon: React.ReactNode;
-};
+type Item = { href: string; label: string; icon: React.ReactNode };
 
 function NavItem({
   item,
@@ -50,10 +36,8 @@ function NavItem({
       title={collapsed ? item.label : undefined}
       className={[
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
-        active
-          ? "bg-black text-white"
-          : "text-black hover:bg-black/5 active:bg-black/10",
-        collapsed ? "justify-center" : "",
+        active ? "bg-black text-white" : "text-black hover:bg-black/5 active:bg-black/10",
+        collapsed ? "justify-center px-2" : "",
       ].join(" ")}
     >
       <span className="shrink-0">{item.icon}</span>
@@ -77,7 +61,6 @@ function Group({
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
-  // When collapsed, force open (we only show icons anyway)
   useEffect(() => {
     if (collapsed) setOpen(true);
   }, [collapsed]);
@@ -90,7 +73,7 @@ function Group({
         className={[
           "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs uppercase tracking-wide",
           "text-black/60 hover:bg-black/5",
-          collapsed ? "justify-center" : "",
+          collapsed ? "justify-center px-2" : "",
         ].join(" ")}
         title={collapsed ? title : undefined}
       >
@@ -107,12 +90,7 @@ function Group({
       {open && (
         <div className="space-y-1">
           {items.map((it) => (
-            <NavItem
-              key={it.href}
-              item={it}
-              collapsed={collapsed}
-              onNavigate={onNavigate}
-            />
+            <NavItem key={it.href} item={it} collapsed={collapsed} onNavigate={onNavigate} />
           ))}
         </div>
       )}
@@ -122,76 +100,35 @@ function Group({
 
 export function Sidebar() {
   const { role, loading } = useRole();
-
-  // Mobile drawer open
   const [mobileOpen, setMobileOpen] = useState(false);
-
-  // Desktop collapse (icons-only)
   const [collapsed, setCollapsed] = useState(false);
+  const pathname = usePathname();
 
-  const coreItems: Item[] = useMemo(
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
+
+  const mainItems: Item[] = useMemo(
     () => [
-      {
-        href: "/admin",
-        label: "Dashboard",
-        icon: (
-          <Icon d="M3 10.5h6V21H3V10.5Zm12 0h6V21h-6V10.5ZM3 3h6v6H3V3Zm12 0h6v6h-6V3Z" />
-        ),
-      },
-      {
-        href: "/admin/agreements",
-        label: "Agreements",
-        icon: (
-          <Icon d="M8 7h8m-8 4h8m-8 4h5M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
-        ),
-      },
-      {
-        href: "/admin/cars",
-        label: "Cars",
-        icon: (
-          <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
-        ),
-      },
-      {
-        href: "/admin/catalog",
-        label: "Catalog",
-        icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
-      },
+      { href: "/admin", label: "Dashboard", icon: <Icon d="M3 10.5h6V21H3V10.5Zm12 0h6V21h-6V10.5ZM3 3h6v6H3V3Zm12 0h6v6h-6V3Z" /> },
+      { href: "/admin/agreements", label: "Agreements", icon: <Icon d="M8 7h8m-8 4h8m-8 4h5M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /> },
+      { href: "/admin/cars", label: "Cars", icon: <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" /> },
+      { href: "/admin/catalog", label: "Catalog", icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" /> },
     ],
     []
   );
 
-  const adminItems: Item[] = useMemo(
+  const superItems: Item[] = useMemo(
     () => [
-      {
-        href: "/admin/users",
-        label: "Admin Users",
-        icon: (
-          <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" />
-        ),
-      },
-      {
-      href: "/admin/audit",
-      label: "Audit Log",
-      icon: (
-        <Icon d="M12 3a7 7 0 1 0 7 7m-7-4v4l3 3M5 21h14" />
-      ),
-    },
+      { href: "/admin/users", label: "Admin Users", icon: <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" /> },
+      { href: "/admin/audit", label: "Audit Logs", icon: <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" /> },
     ],
     []
   );
 
   const widthClass = collapsed ? "w-16" : "w-64";
 
-  // Close drawer on route change (nice UX)
-  const pathname = usePathname();
-  useEffect(() => {
-    setMobileOpen(false);
-  }, [pathname]);
-
   return (
     <>
-      {/* MOBILE TOP BAR */}
+      {/* Mobile top bar */}
       <div className="md:hidden flex items-center justify-between border-b bg-white px-4 py-3">
         <button
           type="button"
@@ -209,7 +146,6 @@ export function Sidebar() {
         <div className="w-[44px]" />
       </div>
 
-      {/* MOBILE OVERLAY */}
       {mobileOpen && (
         <button
           aria-label="Close menu"
@@ -218,7 +154,6 @@ export function Sidebar() {
         />
       )}
 
-      {/* SIDEBAR */}
       <aside
         className={[
           "fixed inset-y-0 left-0 z-50 border-r bg-white transition-transform md:translate-x-0",
@@ -229,20 +164,8 @@ export function Sidebar() {
         <div className="flex h-full flex-col">
           {/* Header */}
           <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
-            <Link
-              href="/admin"
-              className={[
-                "flex items-center gap-2",
-                collapsed ? "justify-center w-full" : "",
-              ].join(" ")}
-            >
-              <Image
-                src="/logo.png"
-                alt="JRV"
-                width={32}
-                height={32}
-                priority
-              />
+            <Link href="/admin" className={["flex items-center gap-2", collapsed ? "justify-center w-full" : ""].join(" ")}>
+              <Image src="/logo.png" alt="JRV" width={32} height={32} priority />
               {!collapsed && (
                 <div className="min-w-0">
                   <div className="font-semibold leading-tight">JRV Admin</div>
@@ -253,7 +176,6 @@ export function Sidebar() {
               )}
             </Link>
 
-            {/* Desktop collapse toggle */}
             <button
               type="button"
               onClick={() => setCollapsed((v) => !v)}
@@ -263,7 +185,6 @@ export function Sidebar() {
               ⇔
             </button>
 
-            {/* Mobile close */}
             <button
               type="button"
               onClick={() => setMobileOpen(false)}
@@ -276,22 +197,9 @@ export function Sidebar() {
 
           {/* Nav */}
           <nav className="flex-1 space-y-3 px-2 py-4">
-            <Group
-              title="Main"
-              items={coreItems}
-              collapsed={collapsed}
-              defaultOpen={true}
-              onNavigate={() => setMobileOpen(false)}
-            />
-
+            <Group title="Main" items={mainItems} collapsed={collapsed} defaultOpen onNavigate={() => setMobileOpen(false)} />
             {role === "superadmin" && (
-              <Group
-                title="Admin"
-                items={adminItems}
-                collapsed={collapsed}
-                defaultOpen={true}
-                onNavigate={() => setMobileOpen(false)}
-              />
+              <Group title="Superadmin" items={superItems} collapsed={collapsed} defaultOpen onNavigate={() => setMobileOpen(false)} />
             )}
           </nav>
 

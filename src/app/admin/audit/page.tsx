@@ -1,88 +1,69 @@
-"use client";
+import { createSupabaseServer } from "@/lib/supabase/server";
+import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
 
-import { useEffect, useState } from "react";
-import { useRole } from "@/lib/auth/useRole";
-import { Button } from "@/components/ui/Button";
+export default async function AuditPage() {
+  await requireSuperadmin();
+  const supabase = await createSupabaseServer();
 
-type AuditRow = {
-  id: string;
-  action: string;
-  actor_email: string | null;
-  target_email: string | null;
-  details: any;
-  created_at: string;
-};
+  const { data: logs, error } = await supabase
+    .from("admin_audit_logs")
+    .select("id,actor_user_id,action,target_user_id,meta,created_at")
+    .order("created_at", { ascending: false })
+    .limit(200);
 
-export default function AuditPage() {
-  const { role, loading } = useRole();
-  const [rows, setRows] = useState<AuditRow[]>([]);
-  const [busy, setBusy] = useState(false);
+  if (error) return <div className="text-red-600">{error.message}</div>;
 
-  async function load() {
-    setBusy(true);
-    try {
-      const res = await fetch("/admin/audit/list");
-      const json = await res.json();
-      if (!res.ok) throw new Error(json?.error ?? "Failed to load audit");
-      setRows(json.rows ?? []);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // Fetch emails for actor/target from admin_users
+  const ids = Array.from(
+    new Set(
+      (logs ?? [])
+        .flatMap((l: any) => [l.actor_user_id, l.target_user_id])
+        .filter(Boolean)
+    )
+  );
 
-  useEffect(() => {
-    if (role === "superadmin") load();
-  }, [role]);
+  const { data: admins } = await supabase
+    .from("admin_users")
+    .select("user_id,email,role")
+    .in("user_id", ids);
 
-  if (loading) return <div className="p-6">Loading…</div>;
-  if (role !== "superadmin")
-    return <div className="p-6 text-red-600">Access denied</div>;
+  const emailOf = (uid: string) =>
+    admins?.find((a: any) => a.user_id === uid)?.email ?? uid;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Audit Log</h1>
-        <Button size="sm" onClick={load} loading={busy}>
-          Refresh
-        </Button>
-      </div>
+      <div className="text-xl font-semibold">Audit Logs</div>
 
-      <div className="overflow-x-auto rounded-xl border bg-white">
-        <table className="min-w-[900px] w-full text-sm">
-          <thead className="bg-gray-50 border-b">
-            <tr>
-              <th className="p-3 text-left">Time</th>
-              <th className="p-3 text-left">Action</th>
-              <th className="p-3 text-left">Actor</th>
-              <th className="p-3 text-left">Target</th>
-              <th className="p-3 text-left">Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b">
-                <td className="p-3 whitespace-nowrap">
-                  {new Date(r.created_at).toLocaleString()}
-                </td>
-                <td className="p-3 font-mono text-xs">{r.action}</td>
-                <td className="p-3">{r.actor_email ?? "—"}</td>
-                <td className="p-3">{r.target_email ?? "—"}</td>
-                <td className="p-3">
-                  <pre className="text-xs whitespace-pre-wrap opacity-80">
-                    {JSON.stringify(r.details ?? {}, null, 2)}
-                  </pre>
-                </td>
-              </tr>
-            ))}
-            {!rows.length && (
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-[900px] w-full text-sm">
+            <thead className="bg-black/5">
               <tr>
-                <td colSpan={5} className="p-6 opacity-60">
-                  No audit entries yet.
-                </td>
+                <th className="p-3 text-left">When</th>
+                <th className="p-3 text-left">Actor</th>
+                <th className="p-3 text-left">Action</th>
+                <th className="p-3 text-left">Target</th>
+                <th className="p-3 text-left">Meta</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {(logs ?? []).map((l: any) => (
+                <tr key={l.id} className="border-t">
+                  <td className="p-3">{new Date(l.created_at).toLocaleString()}</td>
+                  <td className="p-3">{emailOf(l.actor_user_id)}</td>
+                  <td className="p-3 font-medium">{l.action}</td>
+                  <td className="p-3">{l.target_user_id ? emailOf(l.target_user_id) : "-"}</td>
+                  <td className="p-3 text-xs opacity-80">
+                    {l.meta ? JSON.stringify(l.meta) : "-"}
+                  </td>
+                </tr>
+              ))}
+              {!logs?.length ? (
+                <tr><td className="p-6 text-center opacity-60" colSpan={5}>No audit logs</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
