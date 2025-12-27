@@ -3,10 +3,14 @@ import type { CookieOptions } from "@supabase/ssr";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-type CookieToSet = { name: string; value: string; options?: CookieOptions };
+type CookieToSet = {
+  name: string;
+  value: string;
+  options?: CookieOptions;
+};
 
 export function createSupabaseMiddlewareClient(req: NextRequest) {
-  let res = NextResponse.next();
+  const res = NextResponse.next();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,7 +22,11 @@ export function createSupabaseMiddlewareClient(req: NextRequest) {
         },
         setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            res.cookies.set({ name, value, ...(options ?? {}) });
+            res.cookies.set({
+              name,
+              value,
+              ...(options ?? {}),
+            });
           });
         },
       },
