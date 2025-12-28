@@ -157,7 +157,7 @@ export default function AdminUsersPage() {
       {/* Table */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-[980px] w-full text-sm">
+          <table className="min-w-245 w-full text-sm">
             <thead className="bg-black/5">
               <tr>
                 <th className="p-3 text-left">Email</th>

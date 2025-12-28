@@ -1,11 +1,11 @@
-// src/lib/auth/requireSuperadmin.ts
+// src/lib/auth/requireSuperadminGate.ts
 import { createSupabaseServer } from "@/lib/supabase/server";
 
 export type GateOk = { ok: true; id: string; role: "superadmin" };
 export type GateFail = { ok: false; status: number; message: string };
 export type Gate = GateOk | GateFail;
 
-export async function requireSuperadmin(): Promise<Gate> {
+export async function requireSuperadminGate(): Promise<Gate> {
   const supabase = await createSupabaseServer();
 
   const { data: auth } = await supabase.auth.getUser();

@@ -1,21 +1,18 @@
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import ExpiringSoon from "../admin/_components/ExpiringSoon";
 
 type Period = "daily" | "weekly" | "monthly" | "quarterly";
 
-type Row = {
+type AgreementLite = {
   id: string;
   car_type: string | null;
   number_plate: string | null;
-  // plate_number: string | null; // if you also have it
   mobile: string | null;
-  total_price: number | null;
-  deposit_price: number | null;
   status: string | null;
   date_start: string | null;
   date_end: string | null;
-  created_at: string | null;
-  updated_at: string | null;
+  total_price: number | null;
 };
 
 function startOfDay(d: Date) {
@@ -23,7 +20,7 @@ function startOfDay(d: Date) {
 }
 function startOfWeekMonday(d: Date) {
   const day = d.getDay(); // 0 Sun
-  const diff = (day === 0 ? -6 : 1) - day; // Monday as start
+  const diff = (day === 0 ? -6 : 1) - day;
   const monday = new Date(d);
   monday.setDate(d.getDate() + diff);
   return startOfDay(monday);
@@ -52,16 +49,15 @@ function fmtMoney(v?: number | null) {
   if (v == null) return "—";
   return `RM ${Number(v).toLocaleString("en-MY")}`;
 }
-function getPlate(r: Row) {
-  const a = (r.number_plate ?? "").trim();
-  // const b = (r.plate_number ?? "").trim();
-  return a || "—";
+function getPlate(r: AgreementLite) {
+  const p2 = (r.number_plate ?? "").trim();
+  return p2 || "—";
 }
-function getCarType(r: Row) {
+function getCarType(r: AgreementLite) {
   return (r.car_type ?? "").trim() || "Unknown";
 }
+
 function getRange(period: Period, now = new Date()) {
-  const end = new Date(now); // inclusive-ish; we’ll use lt end+1 for day
   let start: Date;
 
   if (period === "daily") start = startOfDay(now);
@@ -69,43 +65,32 @@ function getRange(period: Period, now = new Date()) {
   else if (period === "monthly") start = startOfMonth(now);
   else start = startOfQuarter(now);
 
-  // End boundary: now (works fine for live dashboard)
-  return { start, end };
+  return { start, end: now };
 }
 
 export default async function AdminDashboard({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; q?: string }>;
+  searchParams: Promise<{ period?: string }>;
 }) {
   const sp = await searchParams;
   const period = (sp.period as Period) || "monthly";
-  const q = (sp.q ?? "").trim().toLowerCase();
 
   const { start, end } = getRange(period, new Date());
 
   const supabase = await createSupabaseServer();
 
-  // Pull agreements for the range based on date_start (you requested)
-  let query = supabase
+  // ====== Revenue analytics for selected period (by date_start)
+  const { data: agreements, error } = await supabase
     .from("agreements")
     .select(
-      "id, car_type, number_plate, mobile, total_price, deposit_price, status, date_start, date_end, created_at, updated_at"
+      "id, car_type, number_plate, mobile, status, date_start, date_end, total_price"
     )
     .gte("date_start", toISO(start))
-    .lte("date_start", toISO(end));
-
-  // optional search by car_type / plate
-  if (q) {
-    // OR filter
-    query = query.or(`car_type.ilike.%${q}%,number_plate.ilike.%${q}%`);
-  }
-
-  // sort by car_type, then latest start date
-  const { data, error } = await query
+    .lte("date_start", toISO(end))
     .order("car_type", { ascending: true, nullsFirst: false })
     .order("date_start", { ascending: false })
-    .limit(2000);
+    .limit(5000);
 
   if (error) {
     return (
@@ -118,15 +103,10 @@ export default async function AdminDashboard({
     );
   }
 
-  const rows = (data ?? []) as Row[];
+  const rows = (agreements ?? []) as AgreementLite[];
 
-  // aggregate
   const totalRevenue = rows.reduce(
     (sum, r) => sum + (Number(r.total_price) || 0),
-    0
-  );
-  const totalDeposit = rows.reduce(
-    (sum, r) => sum + (Number(r.deposit_price) || 0),
     0
   );
 
@@ -143,15 +123,6 @@ export default async function AdminDashboard({
     .map(([car_type, v]) => ({ car_type, ...v }))
     .sort((a, b) => a.car_type.localeCompare(b.car_type));
 
-  const periodLabel =
-    period === "daily"
-      ? "Today"
-      : period === "weekly"
-      ? "This week"
-      : period === "monthly"
-      ? "This month"
-      : "This quarter";
-
   const tabs: Array<{ key: Period; label: string }> = [
     { key: "daily", label: "Daily" },
     { key: "weekly", label: "Weekly" },
@@ -159,72 +130,67 @@ export default async function AdminDashboard({
     { key: "quarterly", label: "Quarterly" },
   ];
 
+  // ====== Expiring soon (next 48 hours by default — change as you like)
+  const now = new Date();
+  const soonUntil = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  const { data: expiring, error: expErr } = await supabase
+    .from("agreements")
+    .select(
+      "id, car_type, number_plate, mobile, status, date_start, date_end, total_price"
+    )
+    .gte("date_end", toISO(now))
+    .lte("date_end", toISO(soonUntil))
+    .order("date_end", { ascending: true })
+    .limit(50);
+
+  const expiringRows = (expiring ?? []) as AgreementLite[];
+
   return (
     <div className="p-4 md:p-6 space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-2xl font-semibold">Dashboard</div>
           <div className="text-sm opacity-70">
-            {periodLabel} • {fmtDate(start.toISOString())} →{" "}
-            {fmtDate(end.toISOString())}
+            Period: <span className="font-medium">{period}</span> •{" "}
+            {fmtDate(start.toISOString())} → {fmtDate(end.toISOString())}
           </div>
         </div>
 
-        <div className="flex flex-col gap-2 md:flex-row md:items-center">
-          <form
-            className="flex items-center gap-2"
-            action="/admin"
-            method="get"
-          >
-            <input type="hidden" name="period" value={period} />
-            <input
-              name="q"
-              defaultValue={sp.q ?? ""}
-              placeholder="Search car type / plate…"
-              className="h-10 w-full md:w-72 rounded-lg border px-3 text-sm"
-            />
-            <button className="h-10 rounded-lg bg-black px-4 text-sm font-medium text-white hover:bg-black/90 active:scale-[0.98]">
-              Search
-            </button>
-          </form>
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((t) => {
+            const active = t.key === period;
+            const href = `/admin?period=${t.key}`;
+            return (
+              <Link
+                key={t.key}
+                href={href}
+                className={[
+                  "h-9 inline-flex items-center rounded-lg border px-3 text-sm transition",
+                  active
+                    ? "bg-black text-white border-black"
+                    : "bg-white hover:bg-black/5 active:bg-black/10",
+                ].join(" ")}
+              >
+                {t.label}
+              </Link>
+            );
+          })}
         </div>
       </div>
 
-      {/* Period tabs */}
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => {
-          const active = t.key === period;
-          const href = `/admin?period=${t.key}${
-            q ? `&q=${encodeURIComponent(q)}` : ""
-          }`;
-          return (
-            <Link
-              key={t.key}
-              href={href}
-              className={[
-                "h-9 inline-flex items-center rounded-lg border px-3 text-sm transition",
-                active
-                  ? "bg-black text-white border-black"
-                  : "bg-white hover:bg-black/5 active:bg-black/10",
-              ].join(" ")}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
-
-      {/* KPIs */}
+      {/* KPI row */}
       <div className="grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border bg-white p-4">
           <div className="text-xs uppercase tracking-wide opacity-60">
-            Agreements
+            Agreements (period)
           </div>
           <div className="mt-1 text-2xl font-semibold">{rows.length}</div>
         </div>
         <div className="rounded-xl border bg-white p-4">
           <div className="text-xs uppercase tracking-wide opacity-60">
-            Total Revenue
+            Total Revenue (period)
           </div>
           <div className="mt-1 text-2xl font-semibold">
             {fmtMoney(totalRevenue)}
@@ -232,24 +198,83 @@ export default async function AdminDashboard({
         </div>
         <div className="rounded-xl border bg-white p-4">
           <div className="text-xs uppercase tracking-wide opacity-60">
-            Total Deposit
+            Top Car Type (period)
           </div>
           <div className="mt-1 text-2xl font-semibold">
-            {fmtMoney(totalDeposit)}
+            {breakdown[0]?.car_type ?? "—"}
+          </div>
+          <div className="text-xs opacity-60">
+            {breakdown[0]
+              ? `${breakdown[0].count} agreements • ${fmtMoney(
+                  breakdown[0].revenue
+                )}`
+              : ""}
           </div>
         </div>
       </div>
 
-      {/* Breakdown by car_type */}
+      {/* Placeholder Tracking Section */}
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="px-4 py-3 border-b flex items-center justify-between">
-          <div className="font-semibold">By Car Type</div>
-          <div className="text-xs opacity-60">{breakdown.length} types</div>
+          <div className="font-semibold">Website & Tracking (placeholder)</div>
+          <div className="text-xs opacity-60">
+            Wire this to your trackers table later
+          </div>
+        </div>
+
+        <div className="p-4 grid gap-3 md:grid-cols-4">
+          <div className="rounded-xl border p-4">
+            <div className="text-xs uppercase tracking-wide opacity-60">
+              Website Views
+            </div>
+            <div className="mt-1 text-2xl font-semibold">—</div>
+            <div className="text-xs opacity-60">Total page loads</div>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <div className="text-xs uppercase tracking-wide opacity-60">
+              Traffic Split
+            </div>
+            <div className="mt-1 text-2xl font-semibold">—</div>
+            <div className="text-xs opacity-60">Organic vs Ads</div>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <div className="text-xs uppercase tracking-wide opacity-60">
+              WhatsApp Clicks
+            </div>
+            <div className="mt-1 text-2xl font-semibold">—</div>
+            <div className="text-xs opacity-60">CTA button taps</div>
+          </div>
+
+          <div className="rounded-xl border p-4">
+            <div className="text-xs uppercase tracking-wide opacity-60">
+              Model Clicks
+            </div>
+            <div className="mt-1 text-2xl font-semibold">—</div>
+            <div className="text-xs opacity-60">Car card / model taps</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Expiring Soon with live countdown */}
+      <ExpiringSoon
+        title="Expiring Soon"
+        subtitle="Agreements ending in the next 48 hours"
+        rows={expiringRows}
+        error={expErr?.message ?? null}
+      />
+
+      {/* Revenue breakdown by car_type */}
+      <div className="rounded-xl border bg-white overflow-hidden">
+        <div className="px-4 py-3 border-b flex items-center justify-between">
+          <div className="font-semibold">Revenue by Car Type</div>
+          <div className="text-xs opacity-60">Sorted A → Z</div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[700px] w-full text-sm">
-            <thead className="bg-black/[0.03]">
+          <table className="min-w-175 w-full text-sm">
+            <thead className="bg-black/3">
               <tr className="text-left">
                 <th className="p-3">Car Type</th>
                 <th className="p-3">Count</th>
@@ -276,60 +301,17 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      {/* Agreements list */}
-      <div className="rounded-xl border bg-white overflow-hidden">
-        <div className="px-4 py-3 border-b flex items-center justify-between">
-          <div className="font-semibold">Agreements</div>
-          <Link className="text-sm underline" href="/admin/agreements">
-            View all
-          </Link>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-[1100px] w-full text-sm">
-            <thead className="bg-black/[0.03]">
-              <tr className="text-left">
-                <th className="p-3">Start</th>
-                <th className="p-3">End</th>
-                <th className="p-3">Plate</th>
-                <th className="p-3">Car Type</th>
-                <th className="p-3">Phone</th>
-                <th className="p-3">Total</th>
-                <th className="p-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.slice(0, 200).map((r) => (
-                <tr key={r.id} className="border-t">
-                  <td className="p-3">{fmtDate(r.date_start)}</td>
-                  <td className="p-3">{fmtDate(r.date_end)}</td>
-                  <td className="p-3 font-medium">{getPlate(r)}</td>
-                  <td className="p-3">{getCarType(r)}</td>
-                  <td className="p-3">{r.mobile ?? "—"}</td>
-                  <td className="p-3">{fmtMoney(r.total_price)}</td>
-                  <td className="p-3">
-                    <span className="rounded-full border px-2 py-1 text-xs">
-                      {r.status ?? "—"}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {!rows.length ? (
-                <tr>
-                  <td colSpan={7} className="p-6 opacity-60">
-                    No agreements found.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-
-        {rows.length > 200 ? (
-          <div className="px-4 py-3 border-t text-xs opacity-60">
-            Showing first 200 agreements for performance.
-          </div>
-        ) : null}
+      {/* Quick links */}
+      <div className="flex flex-wrap gap-3">
+        <Link className="underline" href="/admin/agreements">
+          Manage Agreements
+        </Link>
+        <Link className="underline" href="/admin/cars">
+          Manage Cars
+        </Link>
+        <Link className="underline" href="/admin/catalog">
+          Manage Catalog
+        </Link>
       </div>
     </div>
   );

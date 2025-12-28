@@ -1,27 +1,56 @@
 "use client";
+
 import { useEffect, useState } from "react";
 
 export type Role = "superadmin" | "admin" | null;
 
 export function useRole() {
   const [role, setRole] = useState<Role>(null);
+  const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  async function load() {
+    try {
+      setLoading(true);
+      const res = await fetch("/admin/me", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "cache-control": "no-store" },
+      });
+
+      const json = await res.json();
+
+      setRole((json?.role as Role) ?? null);
+      setStatus((json?.status as string | null) ?? null);
+    } catch {
+      setRole(null);
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     let alive = true;
-    (async () => {
-      try {
-        const res = await fetch("/admin/me", { credentials: "include" });
-        const json = await res.json();
-        if (!alive) return;
-        setRole((json?.role as Role) ?? null);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
 
-    return () => { alive = false; };
+    const run = async () => {
+      await load();
+      if (!alive) return;
+    };
+
+    run();
+
+    // refresh when tab refocuses (prevents “role null again”)
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      alive = false;
+      window.removeEventListener("focus", onFocus);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { role, loading };
+  return { role, status, loading, refresh: load };
 }

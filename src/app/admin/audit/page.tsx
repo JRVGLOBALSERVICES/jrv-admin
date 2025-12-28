@@ -36,7 +36,7 @@ export default async function AuditPage() {
 
       <div className="rounded-xl border bg-white overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-[900px] w-full text-sm">
+          <table className="min-w-225 w-full text-sm">
             <thead className="bg-black/5">
               <tr>
                 <th className="p-3 text-left">When</th>

@@ -9,8 +9,18 @@ import { useRole } from "@/lib/auth/useRole";
 
 function Icon({ d }: { d: string }) {
   return (
-    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" d={d} />
+    <svg
+      className="h-5 w-5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
+      <path
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d={d}
+      />
     </svg>
   );
 }
@@ -36,7 +46,9 @@ function NavItem({
       title={collapsed ? item.label : undefined}
       className={[
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
-        active ? "bg-black text-white" : "text-black hover:bg-black/5 active:bg-black/10",
+        active
+          ? "bg-black text-white"
+          : "text-black hover:bg-black/5 active:bg-black/10",
         collapsed ? "justify-center px-2" : "",
       ].join(" ")}
     >
@@ -90,7 +102,12 @@ function Group({
       {open && (
         <div className="space-y-1">
           {items.map((it) => (
-            <NavItem key={it.href} item={it} collapsed={collapsed} onNavigate={onNavigate} />
+            <NavItem
+              key={it.href}
+              item={it}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
           ))}
         </div>
       )}
@@ -104,22 +121,65 @@ export function Sidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   const mainItems: Item[] = useMemo(
     () => [
-      { href: "/admin", label: "Dashboard", icon: <Icon d="M3 10.5h6V21H3V10.5Zm12 0h6V21h-6V10.5ZM3 3h6v6H3V3Zm12 0h6v6h-6V3Z" /> },
-      { href: "/admin/agreements", label: "Agreements", icon: <Icon d="M8 7h8m-8 4h8m-8 4h5M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /> },
-      { href: "/admin/cars", label: "Cars", icon: <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" /> },
-      { href: "/admin/catalog", label: "Catalog", icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" /> },
+      {
+        href: "/admin",
+        label: "Dashboard",
+        icon: (
+          <Icon d="M3 10.5h6V21H3V10.5Zm12 0h6V21h-6V10.5ZM3 3h6v6H3V3Zm12 0h6v6h-6V3Z" />
+        ),
+      },
+      {
+        href: "/admin/agreements",
+        label: "Agreements",
+        icon: (
+          <Icon d="M8 7h8m-8 4h8m-8 4h5M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
+        ),
+      },
+      {
+        href: "/admin/cars",
+        label: "Cars",
+        icon: (
+          <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
+        ),
+      },
+      {
+        href: "/admin/catalog",
+        label: "Catalog",
+        icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
+      },
     ],
     []
   );
 
   const superItems: Item[] = useMemo(
     () => [
-      { href: "/admin/users", label: "Admin Users", icon: <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" /> },
-      { href: "/admin/audit", label: "Audit Logs", icon: <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" /> },
+      {
+        href: "/admin/users",
+        label: "Admin Users",
+        icon: (
+          <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" />
+        ),
+      },
+      {
+        href: "/admin/audit",
+        label: "Audit Logs",
+        icon: (
+          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+        ),
+      },
+      {
+        href: "/admin/cars/logs",
+        label: "Car Logs",
+        icon: (
+          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+        ),
+      },
     ],
     []
   );
@@ -143,7 +203,7 @@ export function Sidebar() {
           <span className="font-semibold">JRV Admin</span>
         </Link>
 
-        <div className="w-[44px]" />
+        <div className="w-11" />
       </div>
 
       {mobileOpen && (
@@ -164,8 +224,20 @@ export function Sidebar() {
         <div className="flex h-full flex-col">
           {/* Header */}
           <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
-            <Link href="/admin" className={["flex items-center gap-2", collapsed ? "justify-center w-full" : ""].join(" ")}>
-              <Image src="/logo.png" alt="JRV" width={32} height={32} priority />
+            <Link
+              href="/admin"
+              className={[
+                "flex items-center gap-2",
+                collapsed ? "justify-center w-full" : "",
+              ].join(" ")}
+            >
+              <Image
+                src="/logo.png"
+                alt="JRV"
+                width={32}
+                height={32}
+                priority
+              />
               {!collapsed && (
                 <div className="min-w-0">
                   <div className="font-semibold leading-tight">JRV Admin</div>
@@ -197,9 +269,21 @@ export function Sidebar() {
 
           {/* Nav */}
           <nav className="flex-1 space-y-3 px-2 py-4">
-            <Group title="Main" items={mainItems} collapsed={collapsed} defaultOpen onNavigate={() => setMobileOpen(false)} />
+            <Group
+              title="Main"
+              items={mainItems}
+              collapsed={collapsed}
+              defaultOpen
+              onNavigate={() => setMobileOpen(false)}
+            />
             {role === "superadmin" && (
-              <Group title="Superadmin" items={superItems} collapsed={collapsed} defaultOpen onNavigate={() => setMobileOpen(false)} />
+              <Group
+                title="Superadmin"
+                items={superItems}
+                collapsed={collapsed}
+                defaultOpen
+                onNavigate={() => setMobileOpen(false)}
+              />
             )}
           </nav>
 

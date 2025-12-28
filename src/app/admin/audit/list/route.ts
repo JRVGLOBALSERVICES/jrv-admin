@@ -14,7 +14,7 @@ function jsonError(message: string, status = 400) {
  * Audit helper
  * - Uses service role client (supabaseAdmin)
  * - Never throws (doesn't break main action)
- * - Logs to server console if insert fails (so you can see WHY)
+ * - Logs to server console if insert fails
  */
 async function audit(
   actorId: string,
@@ -43,11 +43,13 @@ async function audit(
 }
 
 /**
- * GET  -> list admin users
- * POST -> action-based mutations
+ * GET  -> list admin users (superadmin only)
+ * POST -> action-based mutations (superadmin only)
  */
 export async function GET() {
-  await requireSuperadmin();
+  const gate = await requireSuperadmin();
+  if (!gate.ok) return jsonError(gate.message, gate.status);
+
   const supabase = await createSupabaseServer();
 
   const { data, error } = await supabase
@@ -60,7 +62,11 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const actor = await requireSuperadmin();
+  const gate = await requireSuperadmin();
+  if (!gate.ok) return jsonError(gate.message, gate.status);
+
+  const actorId = gate.id;
+
   const body = (await req.json()) as any;
   const action = String(body?.action ?? "");
 
@@ -78,8 +84,15 @@ export async function POST(req: Request) {
       .maybeSingle();
 
     if (error) throw new Error(error.message);
+
     return data as
-      | { user_id: string; role: Role; status: Status; email?: string | null; phone?: string | null }
+      | {
+          user_id: string;
+          role: Role;
+          status: Status;
+          email?: string | null;
+          phone?: string | null;
+        }
       | null;
   };
 
@@ -94,7 +107,8 @@ export async function POST(req: Request) {
       if (!email) return jsonError("Email required");
       if (!tempPassword || tempPassword.length < 6)
         return jsonError("Temp password must be 6+ chars");
-      if (role !== "admin" && role !== "superadmin") return jsonError("Invalid role");
+      if (role !== "admin" && role !== "superadmin")
+        return jsonError("Invalid role");
 
       // Create auth user
       const { data: created, error: createErr } =
@@ -114,16 +128,18 @@ export async function POST(req: Request) {
         phone,
         role,
         status: "active",
-        created_by: actor.id,
+        created_by: actorId,
       });
 
       if (insErr) {
         // rollback auth user if db insert fails
-        await supabaseAdmin.auth.admin.deleteUser(created.user.id).catch(() => {});
+        await supabaseAdmin.auth.admin
+          .deleteUser(created.user.id)
+          .catch(() => {});
         return jsonError(insErr.message, 400);
       }
 
-      await audit(actor.id, "CREATE_ADMIN", created.user.id, {
+      await audit(actorId, "CREATE_ADMIN", created.user.id, {
         email,
         phone,
         role,
@@ -137,25 +153,30 @@ export async function POST(req: Request) {
     if (action === "update") {
       const user_id = String(body.user_id ?? "");
       const role = body.role as Role | undefined;
-      const phone = typeof body.phone === "string" ? body.phone.trim() : undefined;
+      const phone =
+        typeof body.phone === "string" ? body.phone.trim() : undefined;
       const status = body.status as Status | undefined;
 
       if (!user_id) return jsonError("user_id required");
 
-      // Protect superadmins and self
       const target = await getTarget(user_id);
       if (!target) return jsonError("Target not found", 404);
-      if (user_id === actor.id) return jsonError("You cannot edit yourself here", 403);
-      if (target.role === "superadmin") return jsonError("Cannot modify another superadmin", 403);
+
+      if (user_id === actorId)
+        return jsonError("You cannot edit yourself here", 403);
+      if (target.role === "superadmin")
+        return jsonError("Cannot modify another superadmin", 403);
 
       const patch: any = {};
       if (role) {
-        if (role !== "admin" && role !== "superadmin") return jsonError("Invalid role");
+        if (role !== "admin" && role !== "superadmin")
+          return jsonError("Invalid role");
         patch.role = role;
       }
       if (phone !== undefined) patch.phone = phone || null;
       if (status) {
-        if (status !== "active" && status !== "disabled") return jsonError("Invalid status");
+        if (status !== "active" && status !== "disabled")
+          return jsonError("Invalid status");
         patch.status = status;
       }
 
@@ -168,9 +189,14 @@ export async function POST(req: Request) {
 
       if (error) return jsonError(error.message, 400);
 
-      await audit(actor.id, "UPDATE_ADMIN", user_id, {
+      await audit(actorId, "UPDATE_ADMIN", user_id, {
         ...patch,
-        prev: { role: target.role, status: target.status, phone: target.phone ?? null, email: target.email ?? null },
+        prev: {
+          role: target.role,
+          status: target.status,
+          phone: target.phone ?? null,
+          email: target.email ?? null,
+        },
       });
 
       return NextResponse.json({ ok: true });
@@ -182,12 +208,16 @@ export async function POST(req: Request) {
       const newPassword = String(body.newPassword ?? "");
 
       if (!user_id) return jsonError("user_id required");
-      if (!newPassword || newPassword.length < 6) return jsonError("Password must be 6+ chars");
+      if (!newPassword || newPassword.length < 6)
+        return jsonError("Password must be 6+ chars");
 
       const target = await getTarget(user_id);
       if (!target) return jsonError("Target not found", 404);
-      if (user_id === actor.id) return jsonError("You cannot change your own password here", 403);
-      if (target.role === "superadmin") return jsonError("Cannot change another superadmin password", 403);
+
+      if (user_id === actorId)
+        return jsonError("You cannot change your own password here", 403);
+      if (target.role === "superadmin")
+        return jsonError("Cannot change another superadmin password", 403);
 
       const { error } = await supabaseAdmin.auth.admin.updateUserById(user_id, {
         password: newPassword,
@@ -195,7 +225,7 @@ export async function POST(req: Request) {
 
       if (error) return jsonError(error.message, 400);
 
-      await audit(actor.id, "SET_PASSWORD", user_id, {
+      await audit(actorId, "SET_PASSWORD", user_id, {
         email: target.email ?? null,
       });
 
@@ -211,8 +241,11 @@ export async function POST(req: Request) {
 
       const target = await getTarget(user_id);
       if (!target) return jsonError("Target not found", 404);
-      if (user_id === actor.id) return jsonError("You cannot disable yourself", 403);
-      if (target.role === "superadmin") return jsonError("Cannot disable another superadmin", 403);
+
+      if (user_id === actorId)
+        return jsonError("You cannot disable yourself", 403);
+      if (target.role === "superadmin")
+        return jsonError("Cannot disable another superadmin", 403);
 
       const nextStatus: Status = enable ? "active" : "disabled";
 
@@ -223,7 +256,7 @@ export async function POST(req: Request) {
 
       if (error) return jsonError(error.message, 400);
 
-      await audit(actor.id, enable ? "ENABLE_ADMIN" : "DISABLE_ADMIN", user_id, {
+      await audit(actorId, enable ? "ENABLE_ADMIN" : "DISABLE_ADMIN", user_id, {
         prev_status: target.status,
         next_status: nextStatus,
         email: target.email ?? null,
@@ -239,11 +272,14 @@ export async function POST(req: Request) {
 
       const target = await getTarget(user_id);
       if (!target) return jsonError("Target not found", 404);
-      if (user_id === actor.id) return jsonError("You cannot delete yourself", 403);
-      if (target.role === "superadmin") return jsonError("Cannot delete another superadmin", 403);
 
-      // ✅ log FIRST (so you still capture it even if deletion succeeds)
-      await audit(actor.id, "DELETE_ADMIN", user_id, {
+      if (user_id === actorId)
+        return jsonError("You cannot delete yourself", 403);
+      if (target.role === "superadmin")
+        return jsonError("Cannot delete another superadmin", 403);
+
+      // ✅ log FIRST
+      await audit(actorId, "DELETE_ADMIN", user_id, {
         email: target.email ?? null,
         role: target.role ?? null,
         status: target.status ?? null,
@@ -259,7 +295,9 @@ export async function POST(req: Request) {
       if (delRowErr) return jsonError(delRowErr.message, 400);
 
       // delete auth user
-      const { error: delAuthErr } = await supabaseAdmin.auth.admin.deleteUser(user_id);
+      const { error: delAuthErr } = await supabaseAdmin.auth.admin.deleteUser(
+        user_id
+      );
       if (delAuthErr) return jsonError(delAuthErr.message, 400);
 
       return NextResponse.json({ ok: true });

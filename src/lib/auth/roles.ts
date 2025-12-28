@@ -1,4 +1,3 @@
-// src/lib/auth/roles.ts
 export type Role = "superadmin" | "admin";
 
 export const PERMISSIONS = {
@@ -12,4 +11,4 @@ export const PERMISSIONS = {
     deleteAgreements: false,
     deleteCars: false,
   },
-};
+} as const;

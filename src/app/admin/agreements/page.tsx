@@ -217,8 +217,8 @@ export default async function AgreementsPage() {
 
       {/* Desktop */}
       <div className="hidden md:block overflow-x-auto rounded-xl border bg-white">
-        <table className="min-w-[1100px] w-full text-sm">
-          <thead className="bg-black/[0.03]">
+        <table className="min-w-225 w-full text-sm">
+          <thead className="bg-black/3">
             <tr className="text-left">
               <th className="p-3">Plate</th>
               <th className="p-3">Model</th>
