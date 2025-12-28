@@ -16,7 +16,7 @@ type Period = "daily" | "weekly" | "monthly" | "quarterly";
 type AgreementLite = {
   id: string;
   car_type: string | null;
-  number_plate: string | null;
+  plate_number: string | null;
   mobile: string | null;
   status: string | null;
   date_start: string | null;
@@ -59,7 +59,7 @@ function fmtMoney(v?: number | null) {
   return `RM ${Number(v).toLocaleString("en-MY")}`;
 }
 function getPlate(r: AgreementLite) {
-  const p2 = (r.number_plate ?? "").trim();
+  const p2 = (r.plate_number ?? "").trim();
   return p2 || "—";
 }
 function getCarType(r: AgreementLite) {
@@ -93,7 +93,7 @@ export default async function AdminDashboard({
   const { data: agreements, error } = await supabase
     .from("agreements")
     .select(
-      "id, car_type, number_plate, mobile, status, date_start, date_end, total_price"
+      "id, car_type, plate_number, mobile, status, date_start, date_end, total_price"
     )
     .gte("date_start", toISO(start))
     .lte("date_start", toISO(end))
@@ -146,7 +146,7 @@ export default async function AdminDashboard({
   const { data: expiring, error: expErr } = await supabase
     .from("agreements")
     .select(
-      "id, car_type, number_plate, mobile, status, date_start, date_end, total_price"
+      "id, car_type, plate_number, mobile, status, date_start, date_end, total_price"
     )
     .gte("date_end", toISO(now))
     .lte("date_end", toISO(soonUntil))

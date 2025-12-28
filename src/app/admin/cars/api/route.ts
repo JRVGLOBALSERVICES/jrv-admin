@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carAuditLog } from "@/lib/audit/carAudit";
 
@@ -9,27 +10,21 @@ function jsonError(message: string, status = 400) {
 
 type CarPayload = {
   id?: string;
-
   plate_number: string;
   catalog_id: string;
-
   status: string;
   location: string;
-
   daily_price: number | null;
   price_3_days: number | null;
   weekly_price: number | null;
   monthly_price: number | null;
   deposit: number | null;
-
   body_type: string | null;
   seats: number | null;
   transmission: string | null;
   color: string | null;
-
   primary_image_url: string | null;
   images: string[];
-
   bluetooth: boolean;
   smoking_allowed: boolean;
   fuel_type: string | null;
@@ -37,7 +32,6 @@ type CarPayload = {
   usb: boolean;
   android_auto: boolean;
   apple_carplay: boolean;
-
   notes?: string | null;
 };
 
@@ -47,28 +41,30 @@ const toNumOrNull = (v: any) => {
   return Number.isFinite(n) ? n : null;
 };
 
-const buildCarLabel = (make?: any, model?: any) => {
-  const a = String(make ?? "").trim();
-  const b = String(model ?? "").trim();
-  return [a, b].filter(Boolean).join(" ").trim();
-};
-
 export async function GET(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
 
+  const supabase = await createSupabaseServer();
   const url = new URL(req.url);
-  const mode = String(url.searchParams.get("mode") ?? "").trim();
+  const mode = String(url.searchParams.get("mode") ?? "");
 
-  if (mode !== "dropdown") return jsonError("Unknown mode", 400);
+  if (mode !== "dropdown") {
+    return jsonError("Invalid mode", 400);
+  }
 
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabase
     .from("cars")
     .select(
       `
       id,
       plate_number,
       catalog_id,
+      deposit,
+      daily_price,
+      price_3_days,
+      weekly_price,
+      monthly_price,
       catalog:catalog_id ( make, model )
     `
     )
@@ -77,21 +73,23 @@ export async function GET(req: Request) {
 
   if (error) return jsonError(error.message, 500);
 
-  const rows = (data ?? [])
-    .map((c: any) => {
-      const plate = String(c?.plate_number ?? "").trim();
-      if (!plate) return null;
-
-      const car_label = buildCarLabel(c?.catalog?.make, c?.catalog?.model);
-
+  const rows =
+    (data ?? []).map((c: any) => {
+      const make = String(c?.catalog?.make ?? "").trim();
+      const model = String(c?.catalog?.model ?? "").trim();
+      const car_label = [make, model].filter(Boolean).join(" ").trim();
       return {
         id: c.id,
-        plate_number: plate,
-        catalog_id: c?.catalog_id ?? null,
+        plate_number: String(c.plate_number ?? "").trim(),
+        catalog_id: c.catalog_id,
         car_label,
+        deposit: c.deposit,
+        daily_price: c.daily_price,
+        price_3_days: c.price_3_days,
+        weekly_price: c.weekly_price,
+        monthly_price: c.monthly_price,
       };
-    })
-    .filter(Boolean);
+    }) ?? [];
 
   return NextResponse.json({ ok: true, rows });
 }
@@ -125,7 +123,10 @@ export async function POST(req: Request) {
     if (beforeErr) return jsonError(beforeErr.message, 400);
     if (!before) return jsonError("Car not found", 404);
 
-    const { error: delErr } = await supabaseAdmin.from("cars").delete().eq("id", id);
+    const { error: delErr } = await supabaseAdmin
+      .from("cars")
+      .delete()
+      .eq("id", id);
     if (delErr) return jsonError(delErr.message, 400);
 
     await carAuditLog({
@@ -143,27 +144,21 @@ export async function POST(req: Request) {
 
   const clean: CarPayload = {
     id: payload.id ? String(payload.id) : undefined,
-
     plate_number: String(payload.plate_number ?? "").trim(),
     catalog_id: String(payload.catalog_id ?? "").trim(),
-
     status: String(payload.status ?? "available"),
     location: String(payload.location ?? "Seremban"),
-
     daily_price: toNumOrNull(payload.daily_price),
     price_3_days: toNumOrNull(payload.price_3_days),
     weekly_price: toNumOrNull(payload.weekly_price),
     monthly_price: toNumOrNull(payload.monthly_price),
     deposit: toNumOrNull(payload.deposit),
-
     body_type: payload.body_type ?? null,
     seats: payload.seats == null ? null : Number(payload.seats),
     transmission: payload.transmission ?? null,
     color: payload.color ?? null,
-
     primary_image_url: payload.primary_image_url ?? null,
     images: Array.isArray(payload.images) ? payload.images.slice(0, 4) : [],
-
     bluetooth: !!payload.bluetooth,
     smoking_allowed: !!payload.smoking_allowed,
     fuel_type: payload.fuel_type ?? null,
@@ -171,7 +166,6 @@ export async function POST(req: Request) {
     usb: !!payload.usb,
     android_auto: !!payload.android_auto,
     apple_carplay: !!payload.apple_carplay,
-
     notes: payload.notes ?? null,
   };
 
@@ -184,10 +178,7 @@ export async function POST(req: Request) {
 
       const { data: created, error: insErr } = await supabaseAdmin
         .from("cars")
-        .insert({
-          ...clean,
-          updated_at: now,
-        })
+        .insert({ ...clean, updated_at: now })
         .select("id")
         .maybeSingle();
 
@@ -197,12 +188,7 @@ export async function POST(req: Request) {
         actor_user_id: actorId,
         action: "CREATE_CAR",
         car_id: created?.id ?? null,
-        meta: {
-          after: {
-            ...clean,
-            id: created?.id ?? null,
-          },
-        },
+        meta: { after: { ...clean, id: created?.id ?? null } },
       });
 
       return NextResponse.json({ ok: true, id: created?.id ?? null });
@@ -224,10 +210,7 @@ export async function POST(req: Request) {
 
       const { data: after, error: updErr } = await supabaseAdmin
         .from("cars")
-        .update({
-          ...clean,
-          updated_at: now,
-        })
+        .update({ ...clean, updated_at: now })
         .eq("id", clean.id)
         .select("*")
         .maybeSingle();

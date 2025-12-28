@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 type Row = {
   id: string;
   car_type: string | null;
-  number_plate: string | null;
+  plate_number: string | null;
   mobile: string | null;
   status: string | null;
   date_start: string | null;
@@ -15,7 +15,7 @@ type Row = {
 };
 
 function getPlate(r: Row) {
-  const p2 = (r.number_plate ?? "").trim();
+  const p2 = (r.plate_number ?? "").trim();
   return p2 || "—";
 }
 
