@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -25,13 +25,13 @@ type InitialAgreement = {
   id?: string;
   customer_name?: string;
   id_number?: string;
-  mobile?: string; // usually stored without "+"
+  mobile?: string;
   status?: string;
   car_id?: string;
-  date_start?: string; // "YYYY-MM-DD"
-  date_end?: string; // "YYYY-MM-DD"
-  start_time?: string; // "HH:mm"
-  end_time?: string; // "HH:mm"
+  date_start?: string;
+  date_end?: string;
+  start_time?: string;
+  end_time?: string;
   total_price?: string | number;
   deposit_price?: string | number;
   agreement_url?: string | null;
@@ -58,7 +58,6 @@ function diffDays(startIso: string, endIso: string) {
   return Math.ceil((b - a) / (24 * 60 * 60 * 1000));
 }
 
-// your simple price suggestion (kept)
 function suggestPrice(car: CarRow | null, days: number) {
   if (!car || days <= 0) return 0;
   if (days >= 30 && car.monthly_price != null) return Number(car.monthly_price);
@@ -66,6 +65,35 @@ function suggestPrice(car: CarRow | null, days: number) {
   if (days >= 3 && car.price_3_days != null) return Number(car.price_3_days);
   if (car.daily_price != null) return Number(car.daily_price) * days;
   return 0;
+}
+
+// ✅ simple sound player
+function useSfx() {
+  const clickRef = useRef<HTMLAudioElement | null>(null);
+  const okRef = useRef<HTMLAudioElement | null>(null);
+  const failRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => {
+    clickRef.current = new Audio("/sfx/click.mp3");
+    okRef.current = new Audio("/sfx/success.mp3");
+    failRef.current = new Audio("/sfx/fail.mp3");
+  }, []);
+
+  const play = (which: "click" | "ok" | "fail") => {
+    const el =
+      which === "click"
+        ? clickRef.current
+        : which === "ok"
+        ? okRef.current
+        : failRef.current;
+    if (!el) return;
+    try {
+      el.currentTime = 0;
+      void el.play();
+    } catch {}
+  };
+
+  return { play };
 }
 
 export function AgreementForm({
@@ -77,7 +105,13 @@ export function AgreementForm({
   initial?: InitialAgreement;
   onDoneHref?: string;
 }) {
-  const { email: agentEmail } = useRole(); // ✅ get email from hook
+  const roleState = useRole(); // expect { role, email }
+  const agentEmail = roleState?.email ?? "";
+  const agentRole = roleState?.role ?? "admin";
+  const isSuperadmin = agentRole === "superadmin";
+  const isEdit = mode === "edit";
+
+  const { play } = useSfx();
 
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -111,10 +145,32 @@ export function AgreementForm({
   const [deposit, setDeposit] = useState(String(initial?.deposit_price ?? "0"));
   const [status, setStatus] = useState(initial?.status ?? "New");
 
+  // ✅ Track if user manually typed price/deposit
+  const [totalTouched, setTotalTouched] = useState(false);
+  const [depositTouched, setDepositTouched] = useState(false);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initial?.agreement_url ?? null
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // ✅ Dirty detection (for auto "Editted")
+  const initialSnapshot = useMemo(() => {
+    return {
+      carId: initial?.car_id ?? "",
+      customerName: initial?.customer_name ?? "",
+      idNumber: initial?.id_number ?? "",
+      mobile: (initial?.mobile ?? "").toString(),
+      startDate: initial?.date_start ?? "",
+      startTime: initial?.start_time ?? "",
+      endDate: initial?.date_end ?? "",
+      endTime: initial?.end_time ?? "",
+      total: String(initial?.total_price ?? "0"),
+      deposit: String(initial?.deposit_price ?? "0"),
+      status: initial?.status ?? "New",
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initial?.id]);
 
   useEffect(() => {
     (async () => {
@@ -140,23 +196,66 @@ export function AgreementForm({
   const endIso = endDate ? `${endDate}T${endTime}:00` : "";
   const durationDays = startIso && endIso ? diffDays(startIso, endIso) : 0;
 
-  // auto-fill deposit from car (user can still edit)
+  // ✅ auto-fill deposit from car (only if user didn't touch deposit)
   useEffect(() => {
     if (!selectedCar) return;
+    if (depositTouched) return;
+
     const carDep = selectedCar.deposit;
     if (carDep == null) return;
     const current = toMoney(deposit);
     if (current <= 0) setDeposit(String(carDep));
-  }, [selectedCar]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedCar, depositTouched]); // keep deps
 
-  // auto-suggest total when dates/car change (user can override)
+  // ✅ ALWAYS recalc when car/dates change unless user manually edited total
   useEffect(() => {
     if (!selectedCar) return;
     if (!durationDays) return;
+    if (totalTouched) return;
+
     const suggested = suggestPrice(selectedCar, durationDays);
-    if (suggested <= 0) return;
-    if (toMoney(total) <= 0) setTotal(String(suggested));
-  }, [selectedCar, durationDays]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (suggested > 0) setTotal(String(suggested.toFixed(2)));
+  }, [selectedCar, durationDays, totalTouched]);
+
+  // ✅ Auto-status Editted on any edit (unless already Cancelled)
+  useEffect(() => {
+    if (!isEdit) return;
+    if (!initial?.id) return;
+
+    const dirty =
+      carId !== initialSnapshot.carId ||
+      customerName !== initialSnapshot.customerName ||
+      idNumber !== initialSnapshot.idNumber ||
+      mobile !==
+        (initialSnapshot.mobile.startsWith("+")
+          ? initialSnapshot.mobile
+          : `+${initialSnapshot.mobile}`) ||
+      startDate !== initialSnapshot.startDate ||
+      startTime !== initialSnapshot.startTime ||
+      endDate !== initialSnapshot.endDate ||
+      endTime !== initialSnapshot.endTime ||
+      String(total) !== String(initialSnapshot.total) ||
+      String(deposit) !== String(initialSnapshot.deposit);
+
+    if (!dirty) return;
+
+    // if user set Cancelled, keep it
+    setStatus((s) => (s === "Cancelled" ? "Cancelled" : "Editted"));
+  }, [
+    isEdit,
+    initial?.id,
+    carId,
+    customerName,
+    idNumber,
+    mobile,
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    total,
+    deposit,
+    initialSnapshot,
+  ]);
 
   const validate = () => {
     if (!customerName.trim()) return "Customer name required";
@@ -191,6 +290,7 @@ export function AgreementForm({
   };
 
   const preview = async () => {
+    play("click");
     setErr(null);
     const v = validate();
     if (v) return setErr(v);
@@ -203,7 +303,7 @@ export function AgreementForm({
         body: JSON.stringify({
           action: "preview",
           payload: {
-            agent_email: agentEmail, // ✅
+            agent_email: agentEmail,
             customer_name: customerName,
             id_number: idNumber,
             mobile,
@@ -225,14 +325,17 @@ export function AgreementForm({
       if (!res.ok) throw new Error(json?.error || "Preview failed");
       setPreviewUrl(json.preview_url);
       setConfirmOpen(true);
+      play("ok");
     } catch (e: any) {
       setErr(e?.message || "Preview failed");
+      play("fail");
     } finally {
       setBusy(false);
     }
   };
 
   const confirm = async () => {
+    play("click");
     setErr(null);
     const v = validate();
     if (v) return setErr(v);
@@ -248,7 +351,7 @@ export function AgreementForm({
           action,
           payload: {
             id: mode === "edit" ? initial?.id : undefined,
-            agent_email: agentEmail, // ✅
+            agent_email: agentEmail,
             customer_name: customerName,
             id_number: idNumber,
             mobile,
@@ -269,16 +372,54 @@ export function AgreementForm({
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Save failed");
 
-      if (json.whatsapp_url) {
+      play("ok");
+
+      if (json.whatsapp_url)
         window.open(json.whatsapp_url, "_blank", "noopener,noreferrer");
-      }
       window.location.href = onDoneHref;
     } catch (e: any) {
       setErr(e?.message || "Save failed");
+      play("fail");
     } finally {
       setBusy(false);
     }
   };
+
+  const deleteAgreement = async () => {
+    if (!isEdit || !initial?.id) return;
+    if (!isSuperadmin) return;
+
+    const ok = window.confirm("Delete this agreement? (Superadmin only)");
+    if (!ok) return;
+
+    play("click");
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/admin/agreements/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete", id: initial.id }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "Delete failed");
+      play("ok");
+      window.location.href = onDoneHref;
+    } catch (e: any) {
+      setErr(e?.message || "Delete failed");
+      play("fail");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // ✅ status control rules:
+  // - superadmin: can select any
+  // - admin: can only set Cancelled; otherwise status is locked (and auto becomes Editted on changes)
+  const statusDisabled = !isSuperadmin && status !== "Cancelled";
+  const statusOptions = isSuperadmin
+    ? ["New", "Confirmed", "Editted", "Cancelled"]
+    : ["Cancelled"];
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -297,9 +438,22 @@ export function AgreementForm({
             <div className="text-xs opacity-60 mt-1">Agent: {agentEmail}</div>
           ) : null}
         </div>
-        <Link href={onDoneHref} className="underline">
-          Back
-        </Link>
+
+        <div className="flex gap-2 items-center">
+          {isEdit && isSuperadmin ? (
+            <Button
+              variant="secondary"
+              onClick={deleteAgreement}
+              loading={busy}
+            >
+              Delete
+            </Button>
+          ) : null}
+
+          <Link href={onDoneHref} className="underline">
+            Back
+          </Link>
+        </div>
       </div>
 
       {err ? (
@@ -409,18 +563,29 @@ export function AgreementForm({
               type="number"
               className="w-full border rounded-lg px-3 py-2"
               value={total}
-              onChange={(e) => setTotal(e.target.value)}
+              onChange={(e) => {
+                setTotalTouched(true);
+                setTotal(e.target.value);
+              }}
             />
+            <div className="text-[11px] opacity-60 mt-1">
+              Auto-recalculates when dates change unless you edit it manually.
+            </div>
           </div>
+
           <div>
             <div className="text-xs opacity-60 mb-1">Deposit (RM)</div>
             <input
               type="number"
               className="w-full border rounded-lg px-3 py-2"
               value={deposit}
-              onChange={(e) => setDeposit(e.target.value)}
+              onChange={(e) => {
+                setDepositTouched(true);
+                setDeposit(e.target.value);
+              }}
             />
           </div>
+
           <div>
             <div className="text-xs opacity-60 mb-1">Duration (days)</div>
             <input
@@ -429,17 +594,48 @@ export function AgreementForm({
               readOnly
             />
           </div>
+
           <div>
             <div className="text-xs opacity-60 mb-1">Status</div>
-            <select
-              className="w-full border rounded-lg px-3 py-2 bg-white"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-            >
-              <option value="New">New</option>
-              <option value="Confirmed">Confirmed</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+
+            {isSuperadmin ? (
+              <select
+                className="w-full border rounded-lg px-3 py-2 bg-white"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  className="w-full border rounded-lg px-3 py-2 bg-black/5"
+                  value={status}
+                  readOnly
+                />
+                <select
+                  className="w-full border rounded-lg px-3 py-2 bg-white"
+                  value={status === "Cancelled" ? "Cancelled" : ""}
+                  onChange={(e) => {
+                    if (e.target.value === "Cancelled") setStatus("Cancelled");
+                  }}
+                >
+                  <option value="">(Admin) Only Cancel allowed</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+            )}
+
+            {!isSuperadmin ? (
+              <div className="text-[11px] opacity-60 mt-1">
+                Admin cannot set Confirmed/New. Edits auto-mark as{" "}
+                <b>Editted</b>.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -458,14 +654,7 @@ export function AgreementForm({
           />
           <div className="relative w-full max-w-6xl rounded-xl border bg-white overflow-hidden">
             <div className="p-3 border-b flex items-center justify-between">
-              <div className="font-semibold flex items-center gap-2">
-                {/* <img
-                  src="https://jrv-admin.vercel.app/logo.png"
-                  alt="JRV"
-                  className="h-6 w-auto"
-                /> */}
-                <span>Agreement Preview</span>
-              </div>
+              <div className="font-semibold">Agreement Preview</div>
               <div className="flex gap-2">
                 <Button
                   variant="secondary"
@@ -516,11 +705,9 @@ export function AgreementForm({
         @media (max-width: 768px) {
           .AgreementViewer {
             height: 80vh;
-            // width: 95%;
           }
           .AgreementFrame {
-            width: 50vh;
-            // height: fit-content;
+            width: 95vw;
           }
         }
       `}</style>

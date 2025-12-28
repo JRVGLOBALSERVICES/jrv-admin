@@ -309,13 +309,24 @@ export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
 
-  const actorEmail =
-    (gate as any)?.email || (gate as any)?.actor?.email || "admin@unknown";
-  const actorId = (gate as any)?.id || (gate as any)?.actor?.id || null;
+  const supabase = await createSupabaseServer();
+
+  // ✅ resolve real user email if gate didn't include it
+  let actorEmail = (gate as any)?.email || (gate as any)?.actor?.email || "";
+
+  let actorId = (gate as any)?.id || (gate as any)?.actor?.id || null;
+
   const actorRole =
     (gate as any)?.role || (gate as any)?.actor?.role || "admin";
 
-  const supabase = await createSupabaseServer();
+  if (!actorEmail) {
+    const { data } = await supabase.auth
+      .getUser()
+      .catch(() => ({ data: null as any }));
+    actorEmail = data?.user?.email ?? "admin@unknown";
+    actorId = actorId ?? data?.user?.id ?? null;
+  }
+
   const body = await req.json().catch(() => ({}));
   const action = asStr(body?.action);
 
@@ -445,6 +456,7 @@ export async function POST(req: Request) {
         must(payload.total_price, "Total price required")
       );
       const deposit_price = toMoneyString(payload.deposit_price ?? 0);
+      const agent_email = asStr(payload.agent_email) || actorEmail;
 
       const element = createElement(AgreementPdf as any, {
         data: {
@@ -458,6 +470,7 @@ export async function POST(req: Request) {
           date_end: fmtHuman(date_end_iso),
           total_price,
           deposit_price,
+          agent_email,
         },
       });
 
@@ -576,6 +589,17 @@ export async function POST(req: Request) {
         payload.deposit_price ?? existing.deposit_price ?? 0
       );
 
+      // ✅ status rules
+      let nextStatus =
+        asStr(payload.status) || asStr(existing.status) || "Editted";
+
+      // admin can ONLY set Cancelled; anything else -> Editted
+      if (actorRole !== "superadmin") {
+        if (nextStatus !== "Cancelled") nextStatus = "Editted";
+      }
+
+      const agent_email = asStr(payload.agent_email) || actorEmail;
+
       const element = createElement(AgreementPdf as any, {
         data: {
           logo_url: "https://jrv-admin.vercel.app/logo.png",
@@ -588,6 +612,8 @@ export async function POST(req: Request) {
           date_end: fmtHuman(date_end_iso),
           total_price,
           deposit_price,
+          status: nextStatus,
+          agent_email,
         },
       });
 
