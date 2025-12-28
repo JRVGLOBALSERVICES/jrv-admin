@@ -206,8 +206,8 @@ export default async function CarLogsPage({
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="min-w-[1200px] w-full text-sm">
-            <thead className="bg-black/[0.03]">
+          <table className="min-w-300 w-full text-sm">
+            <thead className="bg-black/3">
               <tr className="text-left">
                 <th className="p-3">Time</th>
                 <th className="p-3">Action</th>
@@ -279,11 +279,11 @@ export default async function CarLogsPage({
                     </td>
 
                     <td className="p-3">
-                      <details className="max-w-[720px]">
+                      <details className="max-w-180">
                         <summary className="cursor-pointer text-xs underline opacity-80">
                           View JSON
                         </summary>
-                        <pre className="mt-2 whitespace-pre-wrap break-words text-xs bg-black/[0.03] rounded-lg p-3">
+                        <pre className="mt-2 whitespace-pre-wrap wrap-break-word text-xs bg-black/3 rounded-lg p-3">
                           {JSON.stringify(r.meta ?? {}, null, 2)}
                         </pre>
                       </details>
