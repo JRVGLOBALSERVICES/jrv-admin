@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 
-type CatalogRow = { id: string; make: string | null; model: string | null };
+type CatalogRow = {
+  id: string;
+  make: string | null;
+  model: string | null;
+  default_images?: string | null; // ✅
+};
 
 const LOCATIONS = [
   "Seremban",
@@ -92,12 +97,12 @@ export default function NewCarPage() {
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  // ✅ Make first then model
+  // Make -> Model
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [catalogId, setCatalogId] = useState("");
 
-  // car basics
+  // basics
   const [plate, setPlate] = useState("");
   const [status, setStatus] = useState("available");
   const [location, setLocation] =
@@ -131,7 +136,6 @@ export default function NewCarPage() {
   const [primaryImageUrl, setPrimaryImageUrl] = useState<string>("");
   const [gallery, setGallery] = useState<string[]>(["", "", "", ""]);
 
-  // upload state
   const [uploadingPrimary, setUploadingPrimary] = useState(false);
   const [uploadingGalleryIdx, setUploadingGalleryIdx] = useState<number | null>(
     null
@@ -151,9 +155,10 @@ export default function NewCarPage() {
     })();
   }, []);
 
-  const makes = useMemo(() => {
-    return uniq(catalog.map((r) => (r.make ?? "").trim()).filter(Boolean));
-  }, [catalog]);
+  const makes = useMemo(
+    () => uniq(catalog.map((r) => (r.make ?? "").trim()).filter(Boolean)),
+    [catalog]
+  );
 
   const modelsForMake = useMemo(() => {
     if (!make) return [];
@@ -169,6 +174,7 @@ export default function NewCarPage() {
   useEffect(() => {
     setModel("");
     setCatalogId("");
+    // NOTE: don’t clear primaryImageUrl here
   }, [make]);
 
   // resolve catalogId when make+model set
@@ -183,7 +189,20 @@ export default function NewCarPage() {
     setCatalogId(row?.id ?? "");
   }, [catalog, make, model]);
 
-  // ✅ Upload primary (one-by-one, no overwrite)
+  // ✅ catalog default primary
+  const catalogDefaultPrimary = useMemo(() => {
+    if (!catalogId) return "";
+    const row = catalog.find((c) => c.id === catalogId);
+    return String(row?.default_images ?? "").trim();
+  }, [catalog, catalogId]);
+
+  // ✅ when selecting a catalog that has default image AND no uploaded primary yet, use it
+  useEffect(() => {
+    if (!primaryImageUrl && catalogDefaultPrimary) {
+      setPrimaryImageUrl(catalogDefaultPrimary);
+    }
+  }, [catalogDefaultPrimary, primaryImageUrl]);
+
   const handlePrimaryUpload = async (file: File) => {
     setErr(null);
     setUploadingPrimary(true);
@@ -197,7 +216,6 @@ export default function NewCarPage() {
     }
   };
 
-  // ✅ Upload gallery idx (one-by-one, safe)
   const handleGalleryUpload = async (idx: number, file: File) => {
     setErr(null);
     setUploadingGalleryIdx(idx);
@@ -205,7 +223,7 @@ export default function NewCarPage() {
       const url = await uploadImage(file);
       setGallery((prev) => {
         const next = [...prev];
-        next[idx] = url;
+        next[idx] = url; // ✅ only that index
         return next;
       });
     } catch (e: any) {
@@ -218,7 +236,12 @@ export default function NewCarPage() {
   const validate = () => {
     if (!catalogId) return "Select Make + Model from catalog";
     if (!plate.trim()) return "Plate number required";
-    if (!primaryImageUrl) return "Primary image required";
+
+    // ✅ allow either uploaded primary OR catalog default
+    const effectivePrimary = primaryImageUrl || catalogDefaultPrimary;
+    if (!effectivePrimary)
+      return "No primary image available (upload one or set catalog default).";
+
     if (gallery.some((x) => !x)) return "Please upload all 4 gallery images";
     return null;
   };
@@ -227,6 +250,8 @@ export default function NewCarPage() {
     setErr(null);
     const v = validate();
     if (v) return setErr(v);
+
+    const effectivePrimary = primaryImageUrl || catalogDefaultPrimary;
 
     setSaving(true);
     try {
@@ -253,7 +278,7 @@ export default function NewCarPage() {
             transmission,
             color,
 
-            primary_image_url: primaryImageUrl,
+            primary_image_url: effectivePrimary, // ✅
             images: gallery, // ✅ 4 urls
 
             bluetooth,
@@ -283,8 +308,8 @@ export default function NewCarPage() {
         <div>
           <div className="text-xl font-semibold">New Car</div>
           <div className="text-sm opacity-70">
-            Select <b>Make</b> first, then <b>Model</b>. Upload 1 primary + 4
-            gallery.
+            Select <b>Make</b> first, then <b>Model</b>. Upload 4 gallery
+            images. Primary uses uploaded image, else catalog default.
           </div>
         </div>
 
@@ -540,8 +565,9 @@ export default function NewCarPage() {
           {/* Primary */}
           <div className="rounded-xl border p-3 space-y-2 bg-white">
             <div className="text-xs opacity-60">
-              Primary Thumbnail (used for listing)
+              Primary Thumbnail (upload optional if catalog default exists)
             </div>
+
             <input
               type="file"
               accept="image/*"
@@ -551,19 +577,34 @@ export default function NewCarPage() {
                 if (f) handlePrimaryUpload(f);
               }}
             />
+
             <div className="text-xs opacity-60">
               {uploadingPrimary
                 ? "Uploading…"
-                : primaryImageUrl
-                ? "Uploaded ✅"
-                : "Required"}
+                : primaryImageUrl || catalogDefaultPrimary
+                ? "Ready ✅"
+                : "Missing"}
             </div>
-            {primaryImageUrl ? (
-              <img
-                src={primaryImageUrl}
-                alt="Primary"
-                className="h-28 rounded-lg border object-cover"
-              />
+
+            {primaryImageUrl || catalogDefaultPrimary ? (
+              <div className="space-y-2">
+                <img
+                  src={primaryImageUrl || catalogDefaultPrimary}
+                  alt="Primary"
+                  className="h-28 rounded-lg border object-cover"
+                />
+
+                {/* allow clearing uploaded primary -> fall back to catalog default */}
+                {primaryImageUrl ? (
+                  <button
+                    type="button"
+                    className="text-xs underline opacity-80"
+                    onClick={() => setPrimaryImageUrl("")}
+                  >
+                    Remove uploaded primary (use catalog default)
+                  </button>
+                ) : null}
+              </div>
             ) : null}
           </div>
 
@@ -587,7 +628,10 @@ export default function NewCarPage() {
                   <input
                     type="file"
                     accept="image/*"
-                    disabled={uploadingGalleryIdx !== null}
+                    disabled={
+                      uploadingGalleryIdx !== null &&
+                      uploadingGalleryIdx !== idx
+                    }
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) handleGalleryUpload(idx, f);
@@ -622,7 +666,6 @@ export default function NewCarPage() {
           </div>
         </div>
 
-        {/* Submit */}
         <Button loading={saving} onClick={submit} className="w-full">
           Create Car
         </Button>

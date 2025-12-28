@@ -4,7 +4,7 @@ import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { CarForm } from "../_components/CarForm";
 
 export default async function EditCarPage({
-    params,
+  params,
 }: {
   params: Promise<{ id: string }>;
 }) {
@@ -62,17 +62,16 @@ export default async function EditCarPage({
 
   const { data: catalog } = await supabase
     .from("car_catalog")
-    .select("id, make, model")
+    .select("id, make, model, default_images") // ✅ IMPORTANT
     .order("make", { ascending: true })
     .order("model", { ascending: true });
 
-  // normalize images to string[]
   const images = Array.isArray(car.images) ? car.images : [];
 
   return (
     <CarForm
       mode="edit"
-      gateRole={gate.role}               // ✅ needed for Delete button
+      gateRole={gate.role}
       initial={{ ...car, images }}
       catalog={(catalog ?? []) as any}
     />

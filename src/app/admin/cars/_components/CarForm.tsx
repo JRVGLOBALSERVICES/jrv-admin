@@ -4,7 +4,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 
-type CatalogRow = { id: string; make: string | null; model: string | null };
+type CatalogRow = {
+  id: string;
+  make: string | null;
+  model: string | null;
+
+  // ✅ add this column in your car_catalog table
+  default_images?: string | null;
+};
 
 const LOCATIONS = [
   "Seremban",
@@ -38,10 +45,8 @@ async function uploadImage(file: File): Promise<string> {
 
   const res = await fetch("/admin/upload", { method: "POST", body: fd });
   const json = await res.json();
-
   if (!res.ok) throw new Error(json?.error || "Upload failed");
   if (!json?.url) throw new Error("Upload did not return url");
-
   return String(json.url);
 }
 
@@ -111,39 +116,27 @@ export function CarForm({
   const [hydratedFromCatalog, setHydratedFromCatalog] = useState(false);
 
   // core
-  const [id] = useState<string>(initial.id); // ✅ keep stable
+  const [id] = useState<string>(initial.id); // keep stable
   const [plate, setPlate] = useState(initial.plate_number ?? "");
   const [status, setStatus] = useState(initial.status ?? "available");
   const [location, setLocation] = useState(initial.location ?? "Seremban");
 
   // prices
-  const [dailyPrice, setDailyPrice] = useState(
-    String(initial.daily_price ?? "")
-  );
-  const [price3Days, setPrice3Days] = useState(
-    String(initial.price_3_days ?? "")
-  );
-  const [weeklyPrice, setWeeklyPrice] = useState(
-    String(initial.weekly_price ?? "")
-  );
-  const [monthlyPrice, setMonthlyPrice] = useState(
-    String(initial.monthly_price ?? "")
-  );
+  const [dailyPrice, setDailyPrice] = useState(String(initial.daily_price ?? ""));
+  const [price3Days, setPrice3Days] = useState(String(initial.price_3_days ?? ""));
+  const [weeklyPrice, setWeeklyPrice] = useState(String(initial.weekly_price ?? ""));
+  const [monthlyPrice, setMonthlyPrice] = useState(String(initial.monthly_price ?? ""));
   const [deposit, setDeposit] = useState(String(initial.deposit ?? ""));
 
   // specs
   const [bodyType, setBodyType] = useState(initial.body_type ?? "Local");
   const [seats, setSeats] = useState(String(initial.seats ?? "5"));
-  const [transmission, setTransmission] = useState(
-    initial.transmission ?? "auto"
-  );
+  const [transmission, setTransmission] = useState(initial.transmission ?? "auto");
   const [color, setColor] = useState(initial.color ?? "#111827");
 
   // features
   const [bluetooth, setBluetooth] = useState(!!initial.bluetooth);
-  const [smokingAllowed, setSmokingAllowed] = useState(
-    !!initial.smoking_allowed
-  );
+  const [smokingAllowed, setSmokingAllowed] = useState(!!initial.smoking_allowed);
   const [fuelType, setFuelType] = useState<(typeof FUEL_TYPES)[number]>(
     initial.fuel_type ?? "95"
   );
@@ -164,9 +157,7 @@ export function CarForm({
   });
 
   const [uploadingPrimary, setUploadingPrimary] = useState(false);
-  const [uploadingGalleryIdx, setUploadingGalleryIdx] = useState<number | null>(
-    null
-  );
+  const [uploadingGalleryIdx, setUploadingGalleryIdx] = useState<number | null>(null);
 
   const makes = useMemo(
     () => uniq(catalog.map((r) => (r.make ?? "").trim()).filter(Boolean)),
@@ -183,7 +174,17 @@ export function CarForm({
     );
   }, [catalog, make]);
 
-  // ✅ Derive make/model from catalog_id on initial edit load (DO NOT LET make-effect wipe it)
+  // ✅ catalog default primary (fallback)
+  const catalogDefaultPrimary = useMemo(() => {
+    if (!catalogId) return "";
+    const row = catalog.find((c) => c.id === catalogId);
+    return String(row?.default_images ?? "").trim();
+  }, [catalog, catalogId]);
+
+  // ✅ what we display as "primary preview"
+  const primaryPreviewUrl = (primaryImageUrl || catalogDefaultPrimary || "").trim();
+
+  // ✅ Derive make/model from catalog_id on initial edit load
   useEffect(() => {
     if (!catalogId) return;
     if (!catalog?.length) return;
@@ -194,26 +195,23 @@ export function CarForm({
     const nextMake = (row.make ?? "").trim();
     const nextModel = (row.model ?? "").trim();
 
-    // Only set if empty (avoid fights with user changes)
     setMake((prev) => (prev ? prev : nextMake));
     setModel((prev) => (prev ? prev : nextModel));
 
     setHydratedFromCatalog(true);
   }, [catalog, catalogId]);
 
-  // ✅ when make changes - DO NOT wipe during initial hydrate
+  // when make changes - DO NOT wipe during initial hydrate
   useEffect(() => {
     if (!hydratedFromCatalog && mode === "edit") return;
 
-    // if current model still valid for this make, keep it
     if (model && modelsForMake.includes(model)) return;
 
-    // otherwise reset dependent fields
     setModel("");
     setCatalogId("");
   }, [make, hydratedFromCatalog, mode, model, modelsForMake]);
 
-  // resolve catalogId on make+model (user selection)
+  // resolve catalogId on make+model
   useEffect(() => {
     if (!make || !model) return;
 
@@ -229,7 +227,7 @@ export function CarForm({
     setUploadingPrimary(true);
     try {
       const url = await uploadImage(file);
-      setPrimaryImageUrl(url);
+      setPrimaryImageUrl(url); // ✅ custom primary overrides catalog default
     } catch (e: any) {
       setErr(e?.message || "Primary upload failed");
     } finally {
@@ -244,7 +242,7 @@ export function CarForm({
       const url = await uploadImage(file);
       setGallery((prev) => {
         const next = [...prev];
-        next[idx] = url; // ✅ only updates that index
+        next[idx] = url;
         return next;
       });
     } catch (e: any) {
@@ -258,7 +256,10 @@ export function CarForm({
     if (mode === "edit" && !id) return "Missing car id";
     if (!catalogId) return "Select Make + Model";
     if (!plate.trim()) return "Plate number required";
-    if (!primaryImageUrl) return "Primary image required";
+
+    // ✅ primary is valid if either custom OR catalog default exists
+    if (!primaryPreviewUrl) return "Primary image required (upload or set catalog default)";
+
     if (gallery.some((x) => !x)) return "Please upload all 4 gallery images";
     return null;
   };
@@ -270,6 +271,10 @@ export function CarForm({
 
     setSaving(true);
     try {
+      // ✅ Store primary_image_url with fallback logic
+      const primaryToSave =
+        (primaryImageUrl || catalogDefaultPrimary || "").trim() || null;
+
       const res = await fetch("/admin/cars/api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -294,7 +299,7 @@ export function CarForm({
             transmission,
             color,
 
-            primary_image_url: primaryImageUrl,
+            primary_image_url: primaryToSave,
             images: gallery,
 
             bluetooth,
@@ -310,7 +315,6 @@ export function CarForm({
 
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Save failed");
-
       window.location.href = "/admin/cars";
     } catch (e: any) {
       setErr(e?.message || "Save failed");
@@ -319,7 +323,6 @@ export function CarForm({
     }
   };
 
-  // ✅ DELETE (expects your /admin/cars/api to support action=delete + use supabaseAdmin)
   const del = async () => {
     if (gateRole !== "superadmin") return;
     if (!id) return setErr("Missing car id");
@@ -335,7 +338,6 @@ export function CarForm({
 
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Delete failed");
-
       window.location.href = "/admin/cars";
     } catch (e: any) {
       setErr(e?.message || "Delete failed");
@@ -354,6 +356,11 @@ export function CarForm({
             </div>
             <div className="text-sm opacity-70">
               Primary thumbnail + 4 gallery images. Make → Model.
+              {catalogDefaultPrimary ? (
+                <span className="block text-xs opacity-60 mt-1">
+                  Catalog default primary detected ✅ (will be used if no custom primary)
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -582,11 +589,7 @@ export function CarForm({
         <div className="space-y-2">
           <div className="text-sm font-medium">Features</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Toggle
-              label="Bluetooth"
-              value={bluetooth}
-              onChange={setBluetooth}
-            />
+            <Toggle label="Bluetooth" value={bluetooth} onChange={setBluetooth} />
             <Toggle
               label="Smoking Allowed"
               value={smokingAllowed}
@@ -594,16 +597,8 @@ export function CarForm({
             />
             <Toggle label="AUX" value={aux} onChange={setAux} />
             <Toggle label="USB" value={usb} onChange={setUsb} />
-            <Toggle
-              label="Android Auto"
-              value={androidAuto}
-              onChange={setAndroidAuto}
-            />
-            <Toggle
-              label="Apple CarPlay"
-              value={appleCarplay}
-              onChange={setAppleCarplay}
-            />
+            <Toggle label="Android Auto" value={androidAuto} onChange={setAndroidAuto} />
+            <Toggle label="Apple CarPlay" value={appleCarplay} onChange={setAppleCarplay} />
           </div>
         </div>
 
@@ -612,7 +607,29 @@ export function CarForm({
           <div className="text-sm font-medium">Images</div>
 
           <div className="rounded-xl border p-3 space-y-2 bg-white">
-            <div className="text-xs opacity-60">Primary Thumbnail</div>
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs opacity-60">
+                Primary Thumbnail{" "}
+                {primaryImageUrl ? (
+                  <span className="ml-2 text-[11px] opacity-70">(custom)</span>
+                ) : catalogDefaultPrimary ? (
+                  <span className="ml-2 text-[11px] opacity-70">(catalog default)</span>
+                ) : null}
+              </div>
+
+              {primaryImageUrl ? (
+                <button
+                  type="button"
+                  className="text-xs underline text-red-600"
+                  onClick={() => setPrimaryImageUrl("")}
+                  disabled={saving || uploadingPrimary}
+                  title="Removes custom primary and falls back to catalog default"
+                >
+                  Remove Primary
+                </button>
+              ) : null}
+            </div>
+
             <input
               type="file"
               accept="image/*"
@@ -622,13 +639,18 @@ export function CarForm({
                 if (f) handlePrimaryUpload(f);
               }}
             />
-            {primaryImageUrl ? (
+
+            {primaryPreviewUrl ? (
               <img
-                src={primaryImageUrl}
+                src={primaryPreviewUrl}
                 className="h-28 rounded-lg border object-cover"
                 alt="Primary"
               />
-            ) : null}
+            ) : (
+              <div className="text-xs text-red-600">
+                No primary image available (upload one or set catalog default).
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border p-3 space-y-2 bg-white">
@@ -639,21 +661,14 @@ export function CarForm({
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-medium">Image {idx + 1}</div>
                     <div className="text-xs opacity-60">
-                      {uploadingGalleryIdx === idx
-                        ? "Uploading…"
-                        : url
-                        ? "✅"
-                        : "Required"}
+                      {uploadingGalleryIdx === idx ? "Uploading…" : url ? "✅" : "Required"}
                     </div>
                   </div>
 
                   <input
                     type="file"
                     accept="image/*"
-                    disabled={
-                      uploadingGalleryIdx !== null &&
-                      uploadingGalleryIdx !== idx
-                    }
+                    disabled={uploadingGalleryIdx !== null && uploadingGalleryIdx !== idx}
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) handleGalleryUpload(idx, f);

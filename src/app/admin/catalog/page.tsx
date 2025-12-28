@@ -8,7 +8,7 @@ type CatalogRow = {
   year: number | null;
   category: string | null;
   transmission: string | null;
-  default_images: any;
+  default_images: string | null;
   is_active: boolean | null;
   updated_at: string | null;
   created_at: string | null;
@@ -20,8 +20,8 @@ export default async function CatalogPage() {
   const { data, error } = await supabase
     .from("car_catalog")
     .select("id, make, model, year, category, transmission, default_images, is_active, updated_at, created_at")
-    .order("updated_at", { ascending: false })
-    .order("created_at", { ascending: false })
+    .order("make", { ascending: true })
+    .order("model", { ascending: true })
     .limit(1000);
 
   return (
@@ -45,10 +45,11 @@ export default async function CatalogPage() {
               <tr className="text-left">
                 <th className="p-3">Make</th>
                 <th className="p-3">Model</th>
-                <th className="p-3">Category</th>
-                <th className="p-3">Year</th>
-                <th className="p-3">Transmission</th>
-                <th className="p-3">Active</th>
+                {/* <th className="p-3">Category</th> */}
+                {/* <th className="p-3">Year</th> */}
+                {/* <th className="p-3">Transmission</th> */}
+                <th className="p-3">Default Image Added ?</th>
+                {/* <th className="p-3">Active</th> */}
                 <th className="p-3">Action</th>
               </tr>
             </thead>
@@ -57,10 +58,11 @@ export default async function CatalogPage() {
                 <tr key={r.id} className="border-t">
                   <td className="p-3 font-medium">{r.make ?? "—"}</td>
                   <td className="p-3">{r.model ?? "—"}</td>
-                  <td className="p-3">{r.category ?? "—"}</td>
-                  <td className="p-3">{r.year ?? "—"}</td>
-                  <td className="p-3">{r.transmission ?? "—"}</td>
-                  <td className="p-3">{r.is_active ? "Yes" : "No"}</td>
+                  {/* <td className="p-3">{r.category ?? "—"}</td> */}
+                  {/* <td className="p-3">{r.year ?? "—"}</td>
+                  <td className="p-3">{r.transmission ?? "—"}</td> */}
+                  <td className="p-3">{r.default_images ? "Yes" : "No"}</td>
+                  {/* <td className="p-3">{r.is_active ? "Yes" : "No"}</td> */}
                   <td className="p-3">
                     <Link className="underline" href={`/admin/catalog/${r.id}`}>Edit</Link>
                   </td>
