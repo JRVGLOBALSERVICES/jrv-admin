@@ -2,6 +2,56 @@ import { notFound } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { CarForm } from "../_components/CarForm";
+import { pageMetadata } from "@/lib/seo";
+import { Metadata } from "next";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: { id: string };
+}): Promise<Metadata> {
+  const { id } = await params;
+  if (!id) {
+    return pageMetadata({
+      title: "Edit Car",
+      description: "Edit car details in JRV Admin.",
+      path: "/admin/cars",
+      index: false,
+    });
+  }
+
+  const supabase = await createSupabaseServer();
+
+  // ✅ Grab plate + make/model in one query using FK join
+  const { data } = await supabase
+    .from("cars")
+    .select(
+      `
+      id,
+      plate_number,
+      car_catalog (
+        make,
+        model
+      )
+    `
+    )
+    .eq("id", id)
+    .maybeSingle();
+  const plate = (data?.plate_number ?? "").trim();
+  const make = (data as any)?.car_catalog?.make ?? "";
+  const model = (data as any)?.car_catalog?.model ?? "";
+
+  const namePart = [plate, [make, model].filter(Boolean).join(" ")]
+    .filter(Boolean)
+    .join(" - ");
+
+  return pageMetadata({
+    title: namePart ? `${namePart}` : "Edit Car",
+    description: "Edit car details in JRV Admin.",
+    path: `/admin/cars/${id}`,
+    index: false,
+  });
+}
 
 export default async function EditCarPage({
   params,

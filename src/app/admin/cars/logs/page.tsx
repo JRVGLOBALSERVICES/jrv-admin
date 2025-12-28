@@ -3,6 +3,15 @@ import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import CarLogsClient from "./_components/CarLogsClient";
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Car Audit Logs",
+  description: "View edit/delete actions for cars.",
+  path: "/admin/cars/logs",
+  index: false,
+});
 
 type SearchParams = Record<string, string | string[] | undefined>;
 

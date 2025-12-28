@@ -1,5 +1,14 @@
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Agreements",
+  description: "Manage agreements, including booking details and car information.",
+  path: "/admin/agreements",
+  index: false, // ✅ admin pages should not be indexed
+});
 
 type Row = {
   id: string;

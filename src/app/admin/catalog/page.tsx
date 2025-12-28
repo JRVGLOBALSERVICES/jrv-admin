@@ -1,6 +1,14 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import Link from "next/link";
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 
+export const metadata: Metadata = pageMetadata({
+  title: "Catalog",
+  description: "Manage cars catalog, including makes, models, and specifications.",
+  path: "/admin/catalog",
+  index: false, // ✅ admin pages should not be indexed
+});
 type CatalogRow = {
   id: string;
   make: string | null;

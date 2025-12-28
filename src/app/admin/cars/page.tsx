@@ -1,6 +1,15 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import CarsTable from "./_components/CarsTable";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Cars",
+  description: "Manage cars, pricing, images, and availability.",
+  path: "/admin/cars",
+  index: false,
+});
 
 export type CarListRow = {
   id: string;

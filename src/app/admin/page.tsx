@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Dashboard",
+  description: "Manage cars, pricing, images, and availability.",
+  path: "/admin",
+  index: false, // ✅ admin pages should not be indexed
+});
 
 type Period = "daily" | "weekly" | "monthly" | "quarterly";
 

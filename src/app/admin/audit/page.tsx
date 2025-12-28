@@ -1,5 +1,14 @@
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
+import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "User Audit Logs",
+  description: "View edit/delete actions for users.",
+  path: "/admin/audit",
+  index: false,
+});
 
 export default async function AuditPage() {
   await requireSuperadmin();
