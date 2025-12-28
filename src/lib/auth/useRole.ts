@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export type Role = "superadmin" | "admin" | null;
 
 export function useRole() {
+  const [email, setEmail] = useState<string | null>(null);
   const [role, setRole] = useState<Role>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,9 +21,9 @@ export function useRole() {
       });
 
       const json = await res.json();
-
       setRole((json?.role as Role) ?? null);
       setStatus((json?.status as string | null) ?? null);
+      setEmail((json?.user?.email as string | null) ?? null);
     } catch {
       setRole(null);
       setStatus(null);
@@ -52,5 +53,5 @@ export function useRole() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return { role, status, loading, refresh: load };
+  return { role, status, email, loading, refresh: load };
 }

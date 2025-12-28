@@ -88,12 +88,12 @@ const base =
   "active:scale-[0.98]";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm",
+  primary: "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer",
   secondary:
-    "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10",
-  ghost: "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-white",
+    "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10 cursor-pointer",
+  ghost: "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
   danger:
-    "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm",
+    "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm cursor-pointer",
 };
 
 const sizes: Record<ButtonSize, string> = {

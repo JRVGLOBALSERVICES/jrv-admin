@@ -116,7 +116,7 @@ function Group({
 }
 
 export function Sidebar() {
-  const { role, loading } = useRole();
+  const { role, loading, email } = useRole();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -176,6 +176,13 @@ export function Sidebar() {
       {
         href: "/admin/cars/logs",
         label: "Car Logs",
+        icon: (
+          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+        ),
+      },
+      {
+        href: "/admin/agreements/logs",
+        label: "Agreement Logs",
         icon: (
           <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
         ),
@@ -241,6 +248,9 @@ export function Sidebar() {
               {!collapsed && (
                 <div className="min-w-0">
                   <div className="font-semibold leading-tight">JRV Admin</div>
+                  <div className="text-[11px] opacity-60">
+                    {loading ? "…" : email ?? "no email"}
+                  </div>
                   <div className="text-[11px] opacity-60 capitalize">
                     {loading ? "…" : role ?? "no role"}
                   </div>

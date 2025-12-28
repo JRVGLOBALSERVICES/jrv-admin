@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 const SITE_NAME = "JRV Admin";
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "http://localhost:3000";
+  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") || "http://localhost:3000";
 
 export function absoluteUrl(path = "/") {
   if (!path.startsWith("/")) path = `/${path}`;
@@ -55,7 +55,7 @@ export function baseMetadata(): Metadata {
     },
     icons: {
       icon: "/favicon.ico",
-      apple: "/apple-touch-icon.png",
+      apple: "/favicon.ico",
     },
   };
 }

@@ -1,7 +1,5 @@
-// src/app/admin/cars/api/route.ts
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
-import { createSupabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carAuditLog } from "@/lib/audit/carAudit";
 
@@ -30,11 +28,11 @@ type CarPayload = {
   color: string | null;
 
   primary_image_url: string | null;
-  images: string[]; // jsonb array (4)
+  images: string[];
 
   bluetooth: boolean;
   smoking_allowed: boolean;
-  fuel_type: string | null; // "95" | "97" | null
+  fuel_type: string | null;
   aux: boolean;
   usb: boolean;
   android_auto: boolean;
@@ -49,15 +47,62 @@ const toNumOrNull = (v: any) => {
   return Number.isFinite(n) ? n : null;
 };
 
+const buildCarLabel = (make?: any, model?: any) => {
+  const a = String(make ?? "").trim();
+  const b = String(model ?? "").trim();
+  return [a, b].filter(Boolean).join(" ").trim();
+};
+
+export async function GET(req: Request) {
+  const gate = await requireAdmin();
+  if (!gate.ok) return jsonError(gate.message, gate.status);
+
+  const url = new URL(req.url);
+  const mode = String(url.searchParams.get("mode") ?? "").trim();
+
+  if (mode !== "dropdown") return jsonError("Unknown mode", 400);
+
+  const { data, error } = await supabaseAdmin
+    .from("cars")
+    .select(
+      `
+      id,
+      plate_number,
+      catalog_id,
+      catalog:catalog_id ( make, model )
+    `
+    )
+    .order("plate_number", { ascending: true })
+    .limit(5000);
+
+  if (error) return jsonError(error.message, 500);
+
+  const rows = (data ?? [])
+    .map((c: any) => {
+      const plate = String(c?.plate_number ?? "").trim();
+      if (!plate) return null;
+
+      const car_label = buildCarLabel(c?.catalog?.make, c?.catalog?.model);
+
+      return {
+        id: c.id,
+        plate_number: plate,
+        catalog_id: c?.catalog_id ?? null,
+        car_label,
+      };
+    })
+    .filter(Boolean);
+
+  return NextResponse.json({ ok: true, rows });
+}
+
 export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
 
-  // ✅ actor info
   const actorId = gate.id;
   const actorRole = gate.role;
 
-  // If you ever see audit not writing, this usually is missing:
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return jsonError("Missing SUPABASE_SERVICE_ROLE_KEY on server", 500);
   }
@@ -65,14 +110,12 @@ export async function POST(req: Request) {
   const body = (await req.json()) as any;
   const action = String(body?.action ?? "");
 
-  // DELETE uses { action: "delete", id }
   if (action === "delete") {
     if (actorRole !== "superadmin") return jsonError("Forbidden", 403);
 
     const id = String(body?.id ?? "").trim();
     if (!id) return jsonError("Missing car id");
 
-    // Fetch before snapshot
     const { data: before, error: beforeErr } = await supabaseAdmin
       .from("cars")
       .select("*")
@@ -82,26 +125,19 @@ export async function POST(req: Request) {
     if (beforeErr) return jsonError(beforeErr.message, 400);
     if (!before) return jsonError("Car not found", 404);
 
-    const { error: delErr } = await supabaseAdmin
-      .from("cars")
-      .delete()
-      .eq("id", id);
+    const { error: delErr } = await supabaseAdmin.from("cars").delete().eq("id", id);
     if (delErr) return jsonError(delErr.message, 400);
 
-    // ✅ AUDIT
     await carAuditLog({
       actor_user_id: actorId,
       action: "DELETE_CAR",
       car_id: id,
-      meta: {
-        before,
-      },
+      meta: { before },
     });
 
     return NextResponse.json({ ok: true });
   }
 
-  // CREATE/UPDATE uses { action, payload }
   const payload = body?.payload as CarPayload | undefined;
   if (!payload) return jsonError("Missing payload");
 
@@ -142,9 +178,7 @@ export async function POST(req: Request) {
   if (!clean.plate_number) return jsonError("Plate number required");
   if (!clean.catalog_id) return jsonError("Catalog (make/model) required");
 
-  // Use service role for writes (consistent + RLS safe)
   try {
-    // ========== CREATE ==========
     if (action === "create") {
       const now = new Date().toISOString();
 
@@ -159,7 +193,6 @@ export async function POST(req: Request) {
 
       if (insErr) return jsonError(insErr.message, 400);
 
-      // ✅ AUDIT
       await carAuditLog({
         actor_user_id: actorId,
         action: "CREATE_CAR",
@@ -175,11 +208,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, id: created?.id ?? null });
     }
 
-    // ========== UPDATE ==========
     if (action === "update") {
       if (!clean.id) return jsonError("Missing car id");
 
-      // before snapshot
       const { data: before, error: beforeErr } = await supabaseAdmin
         .from("cars")
         .select("*")
@@ -203,15 +234,11 @@ export async function POST(req: Request) {
 
       if (updErr) return jsonError(updErr.message, 400);
 
-      // ✅ AUDIT
       await carAuditLog({
         actor_user_id: actorId,
         action: "UPDATE_CAR",
         car_id: clean.id,
-        meta: {
-          before,
-          after,
-        },
+        meta: { before, after },
       });
 
       return NextResponse.json({ ok: true });

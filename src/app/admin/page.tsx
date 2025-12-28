@@ -83,7 +83,7 @@ export default async function AdminDashboard({
   searchParams: Promise<{ period?: string }>;
 }) {
   const sp = await searchParams;
-  const period = (sp.period as Period) || "monthly";
+  const period = (sp.period as Period) || "daily";
 
   const { start, end } = getRange(period, new Date());
 
