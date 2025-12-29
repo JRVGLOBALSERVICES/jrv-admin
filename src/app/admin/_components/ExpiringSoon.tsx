@@ -12,6 +12,7 @@ type Row = {
   date_start: string | null;
   date_end: string | null;
   total_price: number | null;
+  customer_name: string | null;
 };
 
 // Icons
@@ -25,12 +26,7 @@ function WhatsAppIcon() {
 
 function PhoneIcon() {
   return (
-    <svg
-      className="w-4 h-4"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-    >
+    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -41,14 +37,9 @@ function PhoneIcon() {
   );
 }
 
-function remainingMs(endIso?: string | null) {
-  if (!endIso) return 0;
-  const end = new Date(endIso).getTime();
-  const now = Date.now();
-  return Math.max(0, end - now);
-}
-
 function formatCountdown(ms: number) {
+  if (ms <= 0) return "EXPIRED";
+
   const totalSec = Math.floor(ms / 1000);
   const s = totalSec % 60;
   const m = Math.floor(totalSec / 60) % 60;
@@ -71,18 +62,23 @@ export default function ExpiringSoon({
   rows: Row[];
   error?: string | null;
 }) {
-  const [, tick] = useState(0);
+  // ✅ This guarantees re-render ticks on the client
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => tick((x) => x + 1), 1000);
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
   const sorted = useMemo(() => {
-    return [...rows].sort(
-      (a, b) => remainingMs(a.date_end) - remainingMs(b.date_end)
-    );
-  }, [rows]);
+    const remaining = (endIso?: string | null) => {
+      if (!endIso) return Number.POSITIVE_INFINITY;
+      const end = new Date(endIso).getTime();
+      return end - nowMs;
+    };
+
+    return [...rows].sort((a, b) => remaining(a.date_end) - remaining(b.date_end));
+  }, [rows, nowMs]);
 
   return (
     <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
@@ -93,10 +89,7 @@ export default function ExpiringSoon({
             <div className="text-xs text-red-700 opacity-80">{subtitle}</div>
           ) : null}
         </div>
-        <Link
-          className="text-xs font-semibold text-red-800 hover:underline"
-          href="/admin/agreements"
-        >
+        <Link className="text-xs font-semibold text-red-800 hover:underline" href="/admin/agreements">
           View All
         </Link>
       </div>
@@ -104,21 +97,20 @@ export default function ExpiringSoon({
       {error && <div className="p-4 text-sm text-red-600">{error}</div>}
 
       {!sorted.length ? (
-        <div className="p-6 text-sm opacity-60 text-center">
-          No agreements expiring soon.
-        </div>
+        <div className="p-6 text-sm opacity-60 text-center">No agreements expiring soon.</div>
       ) : (
         <div className="divide-y divide-gray-100">
-          {sorted.slice(0, 10).map((r) => {
-            const ms = remainingMs(r.date_end);
+          {sorted.map((r) => {
+            console.log(r)
+            const endMs = r.date_end ? new Date(r.date_end).getTime() : 0;
+            const ms = Math.max(0, endMs - nowMs);
             const hoursLeft = ms / (1000 * 60 * 60);
             const isExpired = ms <= 0;
             const isUrgent = hoursLeft <= 1 && !isExpired;
 
-            // Clean mobile for links
             const mobileRaw = (r.mobile || "").replace(/\D/g, "");
-            const whatsappLink = `https://wa.me/${mobileRaw}`;
-            const callLink = `tel:${mobileRaw}`;
+            const whatsappLink = mobileRaw ? `https://wa.me/${mobileRaw}` : "#";
+            const callLink = mobileRaw ? `tel:${mobileRaw}` : "#";
 
             return (
               <div
@@ -129,23 +121,17 @@ export default function ExpiringSoon({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="font-bold text-gray-900">
-                      {r.plate_number || "—"}
-                    </div>
+                    <div className="font-bold text-gray-900">{r.plate_number || "—"}</div>
                     <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
-                      {r.car_type}
+                      {r.car_type || "—"}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500">
-                    Client:{" "}
-                    <span className="font-medium text-gray-800">
-                      {r.mobile}
-                    </span>
+                    Client: <span className="font-medium text-gray-800">{r.customer_name || "—"}</span>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  {/* Status / Timer */}
                   <div
                     className={[
                       "px-3 py-1.5 rounded-md text-xs font-bold tabular-nums border",
@@ -156,10 +142,9 @@ export default function ExpiringSoon({
                         : "bg-amber-100 text-amber-800 border-amber-200",
                     ].join(" ")}
                   >
-                    {isExpired ? "EXPIRED" : formatCountdown(ms)}
+                    {formatCountdown(endMs - nowMs)}
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-1">
                     <a
                       href={whatsappLink}
@@ -167,6 +152,9 @@ export default function ExpiringSoon({
                       rel="noopener noreferrer"
                       className="p-2 rounded-full bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 transition"
                       title="WhatsApp Now"
+                      onClick={(e) => {
+                        if (!mobileRaw) e.preventDefault();
+                      }}
                     >
                       <WhatsAppIcon />
                     </a>
@@ -174,6 +162,9 @@ export default function ExpiringSoon({
                       href={callLink}
                       className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition"
                       title="Call Now"
+                      onClick={(e) => {
+                        if (!mobileRaw) e.preventDefault();
+                      }}
                     >
                       <PhoneIcon />
                     </a>

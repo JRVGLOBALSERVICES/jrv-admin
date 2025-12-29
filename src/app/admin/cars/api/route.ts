@@ -53,6 +53,8 @@ export async function GET(req: Request) {
     return jsonError("Invalid mode", 400);
   }
 
+  // ✅ Only return cars that can be selected for NEW agreements:
+  //    status=available AND has catalog_id
   const { data, error } = await supabase
     .from("cars")
     .select(
@@ -60,6 +62,7 @@ export async function GET(req: Request) {
       id,
       plate_number,
       catalog_id,
+      status,
       deposit,
       daily_price,
       price_3_days,
@@ -68,6 +71,8 @@ export async function GET(req: Request) {
       catalog:catalog_id ( make, model )
     `
     )
+    .eq("status", "available")
+    .not("catalog_id", "is", null)
     .order("plate_number", { ascending: true })
     .limit(5000);
 

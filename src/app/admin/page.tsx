@@ -1,6 +1,8 @@
-import { Suspense } from "react"; // ✅ Import Suspense
+import { Suspense } from "react";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
+import AvailableNow from "../admin/_components/AvailableNow";
+import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
 import DashboardFilters from "../admin/_components/DashboardFilters";
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
@@ -30,9 +32,9 @@ type AgreementLite = {
   date_start: string | null;
   date_end: string | null;
   total_price: number | null;
+  customer_name: string | null;
 };
 
-// --- Date Helpers (Unchanged) ---
 function isValidDate(d: any): d is Date {
   return d instanceof Date && !isNaN(d.getTime());
 }
@@ -41,6 +43,9 @@ function safeISO(d: Date) {
 }
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+function endOfDay(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
 function startOfWeekMonday(d: Date) {
   const day = d.getDay();
@@ -73,7 +78,6 @@ function diffDays(start: string | null, end: string | null) {
   return Math.max(1, Math.ceil((b - a) / (1000 * 60 * 60 * 24)));
 }
 
-// --- MERGING LOGIC ---
 function normalizeModel(rawName: string | null) {
   if (!rawName) return "Unknown";
   const lower = rawName.toLowerCase().trim();
@@ -102,11 +106,11 @@ function normalizeModel(rawName: string | null) {
   if (lower.includes("triton")) return "Mitsubishi Triton";
   return rawName.replace(/\b\w/g, (l) => l.toUpperCase());
 }
-
 function getBrand(model: string) {
   return model.split(" ")[0] || "Other";
 }
 
+// ✅ Daily = last 24 hours (yesterday this time -> today this time)
 function getRange(
   period: Period,
   fromParam: string,
@@ -121,14 +125,17 @@ function getRange(
       return { start: s, end: e };
     }
   }
+
   let start: Date;
   if (period === "all") return { start: new Date(0), end: now };
-  if (period === "daily") start = startOfDay(now);
+
+  if (period === "daily") start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   else if (period === "weekly") start = startOfWeekMonday(now);
   else if (period === "monthly") start = startOfMonth(now);
   else if (period === "quarterly") start = startOfQuarter(now);
   else if (period === "yearly") start = startOfYear(now);
-  else start = startOfDay(now);
+  else start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
   return { start, end: now };
 }
 
@@ -153,6 +160,7 @@ export default async function AdminDashboard({
   const { start, end } = getRange(period, fromParam, toParam, new Date());
   const supabase = await createSupabaseServer();
 
+  // Filters lists
   const { data: allAgreements } = await supabase
     .from("agreements")
     .select("car_type, plate_number")
@@ -168,9 +176,11 @@ export default async function AdminDashboard({
   const uniquePlates = Array.from(
     new Set((allAgreements ?? []).map((a) => a.plate_number).filter(Boolean))
   ) as string[];
+
   uniqueModels.sort();
   uniquePlates.sort();
 
+  // Revenue query
   let query = supabase
     .from("agreements")
     .select(
@@ -192,13 +202,13 @@ export default async function AdminDashboard({
     return <div className="p-6 text-red-600">Error: {error.message}</div>;
 
   let rows = (revenueData ?? []) as AgreementLite[];
-  if (filterModel) {
+  if (filterModel)
     rows = rows.filter((r) => normalizeModel(r.car_type) === filterModel);
-  }
 
-  // --- ANALYTICS ---
+  // Analytics
   let totalRevenue = 0;
   let totalDaysRented = 0;
+
   const byModel = new Map<
     string,
     { count: number; revenue: number; days: number }
@@ -253,18 +263,92 @@ export default async function AdminDashboard({
   const avgLength = bookingCount > 0 ? totalDaysRented / bookingCount : 0;
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
-  // Expiring
+  // ✅ Expiring Today: show ALL that end today (not limited)
   const now = new Date();
-  const soonUntil = new Date(now.getTime() + 48 * 60 * 60 * 1000);
-  const { data: expiring } = await supabase
+  const todayStart = startOfDay(now);
+  const todayEnd = endOfDay(now);
+
+  const { data: expiringToday } = await supabase
     .from("agreements")
     .select("*")
     .neq("status", "Cancelled")
     .neq("status", "Deleted")
-    .gte("date_end", safeISO(now))
-    .lte("date_end", safeISO(soonUntil))
+    .gte("date_end", safeISO(todayStart))
+    .lte("date_end", safeISO(todayEnd))
     .order("date_end", { ascending: true })
-    .limit(5);
+    .limit(5000);
+
+  // ✅ Available Now + Available Tomorrow
+  const nowIso = now.toISOString();
+
+  const { data: carsBase } = await supabase
+    .from("cars")
+    .select(
+      "id, plate_number, status, location, car_catalog:catalog_id ( make, model )"
+    )
+    .order("plate_number", { ascending: true })
+    .limit(5000);
+
+  const { data: activeNow } = await supabase
+    .from("agreements")
+    .select("car_id")
+    .not("status", "in", `("Deleted","Cancelled","Completed")`)
+    .lte("date_start", nowIso)
+    .gt("date_end", nowIso)
+    .not("car_id", "is", null)
+    .limit(5000);
+
+  const busyCarIds = new Set(
+    (activeNow ?? []).map((a: any) => a?.car_id).filter(Boolean)
+  );
+
+  const availableNowRows =
+    (carsBase ?? [])
+      .filter(
+        (c: any) => c?.status === "available" && c?.id && !busyCarIds.has(c.id)
+      )
+      .map((c: any) => ({
+        id: c.id,
+        plate_number: c.plate_number,
+        location: c.location,
+        make: c?.car_catalog?.make ?? null,
+        model: c?.car_catalog?.model ?? null,
+      })) ?? [];
+
+  const startTomorrow = new Date(now);
+  startTomorrow.setDate(startTomorrow.getDate() + 1);
+  startTomorrow.setHours(0, 0, 0, 0);
+
+  const endTomorrow = new Date(startTomorrow);
+  endTomorrow.setHours(23, 59, 59, 999);
+
+  const { data: endsTomorrow } = await supabase
+    .from("agreements")
+    .select("car_id, date_end")
+    .not("status", "in", `("Deleted","Cancelled","Completed")`)
+    .gte("date_end", startTomorrow.toISOString())
+    .lte("date_end", endTomorrow.toISOString())
+    .not("car_id", "is", null)
+    .limit(5000);
+
+  const endsTomorrowIds = new Set(
+    (endsTomorrow ?? []).map((a: any) => a?.car_id).filter(Boolean)
+  );
+
+  const availableTomorrowRows =
+    (carsBase ?? [])
+      .filter((c: any) => c?.id && endsTomorrowIds.has(c.id))
+      .map((c: any) => {
+        const ag = (endsTomorrow ?? []).find((a: any) => a?.car_id === c.id);
+        return {
+          id: c.id,
+          plate_number: c.plate_number,
+          location: c.location,
+          make: c?.car_catalog?.make ?? null,
+          model: c?.car_catalog?.model ?? null,
+          frees_at: ag?.date_end ?? null,
+        };
+      }) ?? [];
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -280,7 +364,6 @@ export default async function AdminDashboard({
           </div>
         </div>
 
-        {/* ✅ WRAP IN SUSPENSE to fix useSearchParams usage */}
         <Suspense
           fallback={
             <div className="h-20 bg-white rounded-xl border animate-pulse" />
@@ -336,54 +419,60 @@ export default async function AdminDashboard({
         </div>
       </div>
 
+      {/* ✅ 3 CARDS SIDE BY SIDE */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* LEFT COL */}
-        <div className="space-y-6">
-          <ExpiringSoon
-            title="Expiring Soon ⏳"
-            subtitle="Next 48 Hours"
-            rows={(expiring ?? []) as AgreementLite[]}
-          />
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-              <h3 className="font-semibold text-gray-800">
-                Top Performing Cars
-              </h3>
-              <span className="text-xs bg-black text-white px-2 py-1 rounded">
-                By Plate
-              </span>
-            </div>
-            <div className="divide-y">
-              {breakdownPlate.map((p, i) => (
-                <div
-                  key={p.key}
-                  className="p-3 flex items-center justify-between hover:bg-gray-50 text-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-5 h-5 flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-bold rounded-full">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <div className="font-semibold text-gray-900">{p.key}</div>
-                      <div className="text-xs text-gray-500">{p.model}</div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-bold text-gray-800">
-                      {fmtMoney(p.revenue)}
-                    </div>
-                    <div className="text-xs text-gray-500">{p.count} trips</div>
+        <ExpiringSoon
+          title="Expiring Today ⏳"
+          subtitle="All agreements ending today"
+          rows={(expiringToday ?? []) as AgreementLite[]}
+        />
+        <AvailableNow title="Available Now ✅" rows={availableNowRows as any} />
+        <AvailableTomorrow
+          title="Available Tomorrow 📅"
+          rows={availableTomorrowRows as any}
+        />
+      </div>
+
+      {/* ✅ BOTTOM: Revenue + Top Model */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Top Plates */}
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+          <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
+            <h3 className="font-semibold text-gray-800">Top Performing Cars</h3>
+            <span className="text-xs bg-black text-white px-2 py-1 rounded">
+              By Plate
+            </span>
+          </div>
+          <div className="divide-y">
+            {breakdownPlate.map((p, i) => (
+              <div
+                key={p.key}
+                className="p-3 flex items-center justify-between hover:bg-gray-50 text-sm"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-5 h-5 flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-bold rounded-full">
+                    {i + 1}
+                  </span>
+                  <div>
+                    <div className="font-semibold text-gray-900">{p.key}</div>
+                    <div className="text-xs text-gray-500">{p.model}</div>
                   </div>
                 </div>
-              ))}
-              {breakdownPlate.length === 0 && (
-                <div className="p-6 text-center text-gray-400">No data</div>
-              )}
-            </div>
+                <div className="text-right">
+                  <div className="font-bold text-gray-800">
+                    {fmtMoney(p.revenue)}
+                  </div>
+                  <div className="text-xs text-gray-500">{p.count} trips</div>
+                </div>
+              </div>
+            ))}
+            {breakdownPlate.length === 0 && (
+              <div className="p-6 text-center text-gray-400">No data</div>
+            )}
           </div>
         </div>
 
-        {/* MIDDLE COL */}
+        {/* Revenue by Model */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex flex-wrap gap-3">
             {breakdownBrand.map((b) => (
@@ -403,9 +492,7 @@ export default async function AdminDashboard({
           <div className="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col">
             <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
               <h3 className="font-semibold text-gray-800">Revenue by Model</h3>
-              <div className="text-xs text-gray-500">
-                Includes ADR (Avg Daily Rate)
-              </div>
+              <div className="text-xs text-gray-500">Includes ADR</div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
@@ -431,7 +518,7 @@ export default async function AdminDashboard({
                             <div
                               className="bg-emerald-500 h-2 rounded-full"
                               style={{ width: `${percent}%` }}
-                            ></div>
+                            />
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right font-bold text-emerald-700">

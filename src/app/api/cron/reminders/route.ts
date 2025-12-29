@@ -24,10 +24,14 @@ const DEDUPE_COOLDOWN_MINUTES = Number(
 
 const EXCLUDED_STATUSES = ["Deleted", "Cancelled", "Completed"];
 
+function excludedStatusFilter() {
+  return `(${EXCLUDED_STATUSES.map((s) => `"${s}"`).join(",")})`;
+}
+
 async function alreadySentRecently(agreementId: string, reminderType: string) {
   const since = new Date(Date.now() - DEDUPE_COOLDOWN_MINUTES * 60 * 1000);
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("notification_logs")
     .select("id")
     .eq("agreement_id", agreementId)
@@ -35,7 +39,54 @@ async function alreadySentRecently(agreementId: string, reminderType: string) {
     .gte("sent_at", since.toISOString())
     .limit(1);
 
+  if (error) return false;
   return !!(data && data.length > 0);
+}
+
+// ✅ Recalculate car status based on agreements active now
+async function syncCarsFromAgreementsNow(nowIso: string) {
+  // 1) Get currently active agreements now (for cars)
+  const { data: activeNow, error: activeErr } = await supabase
+    .from("agreements")
+    .select("car_id")
+    .not("status", "in", excludedStatusFilter())
+    .lte("date_start", nowIso)
+    .gt("date_end", nowIso)
+    .not("car_id", "is", null)
+    .limit(5000);
+
+  if (activeErr) {
+    console.error("syncCarsFromAgreementsNow activeErr:", activeErr);
+    return;
+  }
+
+  const rentedCarIds = Array.from(
+    new Set((activeNow ?? []).map((a: any) => a.car_id).filter(Boolean))
+  );
+
+  // 2) Set rented for those cars (but never override maintenance/inactive)
+  if (rentedCarIds.length > 0) {
+    const { error: setRentedErr } = await supabase
+      .from("cars")
+      .update({ status: "rented", updated_at: nowIso })
+      .in("id", rentedCarIds)
+      .not("status", "in", `("maintenance","inactive")`);
+
+    if (setRentedErr) console.error("setRentedErr:", setRentedErr);
+  }
+
+  // 3) Any car that is currently "rented" but NOT in rentedCarIds -> flip to available
+  // (again do not override maintenance/inactive)
+  // If rentedCarIds is empty, this will flip all rented cars back to available.
+  let q = supabase
+    .from("cars")
+    .update({ status: "available", updated_at: nowIso })
+    .eq("status", "rented");
+
+  if (rentedCarIds.length > 0) q = q.not("id", "in", `(${rentedCarIds.join(",")})`);
+
+  const { error: setAvailErr } = await q;
+  if (setAvailErr) console.error("setAvailErr:", setAvailErr);
 }
 
 export async function GET() {
@@ -51,8 +102,10 @@ export async function GET() {
   }
 
   const now = new Date();
+  const nowIso = now.toISOString();
   let sentCount = 0;
 
+  // --- REMINDERS ---
   for (const check of CHECKS) {
     const targetTime = new Date(now.getTime() + check.minutes * 60 * 1000);
 
@@ -63,16 +116,17 @@ export async function GET() {
       targetTime.getTime() + WINDOW_MINUTES * 60 * 1000
     );
 
-    const { data: agreements } = await supabase
+    const { data: agreements, error: agErr } = await supabase
       .from("agreements")
       .select("id, mobile, plate_number, car_type, date_end")
-      .not(
-        "status",
-        "in",
-        `(${EXCLUDED_STATUSES.map((s) => `"${s}"`).join(",")})`
-      )
+      .not("status", "in", excludedStatusFilter())
       .gt("date_end", startWindow.toISOString())
       .lte("date_end", endWindow.toISOString());
+
+    if (agErr) {
+      console.error("agreements fetch error:", agErr);
+      continue;
+    }
 
     if (!agreements || agreements.length === 0) continue;
 
@@ -89,38 +143,44 @@ export async function GET() {
 
       await sendSlackMessage(REMINDER_WEBHOOK, text);
 
-      await supabase.from("notification_logs").insert({
+      const { error: insErr } = await supabase.from("notification_logs").insert({
         agreement_id: ag.id,
         plate_number: ag.plate_number,
         car_model: ag.car_type,
         reminder_type: check.label,
       });
 
+      if (insErr) console.error("notification_logs insert error:", insErr);
+
       sentCount++;
     }
   }
 
-  // Cleanup logs older than 48h
+  // --- CLEANUP LOGS older than 48h ---
   const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
   await supabase
     .from("notification_logs")
     .delete()
     .lt("sent_at", twoDaysAgo.toISOString());
 
-  // Auto-complete expired agreements (5 min buffer)
+  // --- AUTO COMPLETE expired agreements (5 min buffer) ---
   const bufferTime = new Date(now.getTime() - 5 * 60 * 1000);
-  await supabase
+
+  const { data: completedRows, error: completeErr } = await supabase
     .from("agreements")
     .update({ status: "Completed" })
-    .not(
-      "status",
-      "in",
-      `(${EXCLUDED_STATUSES.map((s) => `"${s}"`).join(",")})`
-    )
-    .lt("date_end", bufferTime.toISOString());
+    .not("status", "in", excludedStatusFilter())
+    .lt("date_end", bufferTime.toISOString())
+    .select("id, car_id");
+
+  if (completeErr) console.error("completeErr:", completeErr);
+
+  // ✅ SYNC CARS STATUS (after completing)
+  await syncCarsFromAgreementsNow(nowIso);
 
   return NextResponse.json({
     ok: true,
     notifications_sent: sentCount,
+    auto_completed: completedRows?.length ?? 0,
   });
 }
