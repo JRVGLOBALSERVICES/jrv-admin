@@ -14,18 +14,29 @@ const CHECKS = [
   { minutes: 60, label: "1 Hour" },
   { minutes: 30, label: "30 Minutes" },
   { minutes: 10, label: "10 Minutes" },
-  // We keep the "0 minute" check for the "Just Expired" notification
   { minutes: 0, label: "EXPIRED" },
 ];
 
 export async function GET(req: Request) {
+  // 1. Check for Test Mode
+  const { searchParams } = new URL(req.url);
+  const isTest = searchParams.get("test") === "true";
+
+  if (isTest) {
+    if (!REMINDER_WEBHOOK) return NextResponse.json({ error: "No Webhook URL" }, { status: 500 });
+    
+    await sendSlackMessage(REMINDER_WEBHOOK, "🔔 *Test Notification*: Connection is working!");
+    return NextResponse.json({ ok: true, message: "Test message sent" });
+  }
+
+  // 2. Standard Logic
   if (process.env.ENABLE_SLACK !== "true")
     return NextResponse.json({ message: "Disabled" });
 
   const now = new Date();
   let sentCount = 0;
 
-  // --- 1. SLACK NOTIFICATIONS (Keep existing logic) ---
+  // --- SLACK NOTIFICATIONS ---
   for (const check of CHECKS) {
     const targetTime = new Date(now.getTime() + check.minutes * 60 * 1000);
     const startWindow = new Date(targetTime.getTime() - 5 * 60 * 1000);
@@ -33,10 +44,8 @@ export async function GET(req: Request) {
 
     const { data: agreements } = await supabase
       .from("agreements")
-      .select(
-        `id, customer_name, mobile, plate_number, car_type, date_end, status`
-      )
-      .eq("status", "Active") // Only notify for Active cars
+      .select(`id, customer_name, mobile, plate_number, car_type, date_end, status`)
+      .eq("status", "Active")
       .gt("date_end", startWindow.toISOString())
       .lte("date_end", endWindow.toISOString());
 
@@ -67,35 +76,22 @@ export async function GET(req: Request) {
     }
   }
 
-  // --- 2. CLEANUP LOGS ---
+  // --- CLEANUP & AUTO-EXPIRE ---
   const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
-  await supabase
-    .from("notification_logs")
-    .delete()
-    .lt("sent_at", twoDaysAgo.toISOString());
+  await supabase.from("notification_logs").delete().lt("sent_at", twoDaysAgo.toISOString());
 
-  // --- 3. AUTO-EXPIRE LOGIC (NEW) ---
-  // Find all 'Active' agreements where date_end < NOW and mark them 'Completed'
-  // Note: We give a 5-minute buffer so the Slack "EXPIRED" notification above has a chance to send first.
-  const bufferTime = new Date(now.getTime() - 5 * 60 * 1000); // 5 mins ago
-
-  const { data: expiredList, error: expireError } = await supabase
+  const bufferTime = new Date(now.getTime() - 5 * 60 * 1000);
+  const { data: expiredList } = await supabase
     .from("agreements")
-    .update({ status: "Completed" }) // Change status to Completed
-    .eq("status", "Active") // Only if currently Active
-    .lt("date_end", bufferTime.toISOString()) // And time has passed
+    .update({ status: "Completed" })
+    .eq("status", "Active")
+    .lt("date_end", bufferTime.toISOString())
     .select("id, plate_number");
-
-  if (expireError) {
-    console.error("Auto-expire failed:", expireError);
-  }
-
-  const expiredCount = expiredList?.length || 0;
 
   return NextResponse.json({
     ok: true,
     notifications_sent: sentCount,
-    auto_completed: expiredCount,
+    auto_completed: expiredList?.length || 0,
     expired_ids: expiredList?.map((e) => e.id),
   });
 }
