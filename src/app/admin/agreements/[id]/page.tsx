@@ -3,21 +3,36 @@ import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { AgreementForm } from "../_components/AgreementForm";
 
-// ✅ Helper to extract date/time parts from DB Timestamp
+const APP_TZ = "Asia/Kuala_Lumpur";
+
+// ✅ Timezone-safe helper to extract date/time parts from DB Timestamp
 function splitIso(iso: string | null) {
   if (!iso) return { date: "", time: "" };
   const d = new Date(iso);
   if (isNaN(d.getTime())) return { date: "", time: "" };
 
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hours = String(d.getHours()).padStart(2, "0");
-  const mins = String(d.getMinutes()).padStart(2, "0");
+  // Use Intl parts in Malaysia timezone (works on Vercel + localhost)
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(d);
+
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const hour = get("hour");
+  const minute = get("minute");
 
   return {
     date: `${year}-${month}-${day}`,
-    time: `${hours}:${mins}`,
+    time: `${hour}:${minute}`,
   };
 }
 
@@ -58,7 +73,7 @@ export default async function EditAgreementPage({
 
   if (error || !row) return notFound();
 
-  // ✅ Use helper to split timestamps
+  // ✅ Split timestamps in MYT (not server timezone)
   const startParts = splitIso(row.date_start);
   const endParts = splitIso(row.date_end);
 
@@ -72,8 +87,7 @@ export default async function EditAgreementPage({
         mobile: row.mobile ?? "",
         status: row.status ?? "New",
         car_id: row.car_id ?? "",
-        
-        // Pass split parts
+
         date_start: startParts.date,
         start_time: startParts.time,
         date_end: endParts.date,
