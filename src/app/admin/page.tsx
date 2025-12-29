@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
 import AvailableNow from "../admin/_components/AvailableNow";
 import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
+import CurrentlyRented from "../admin/_components/CurrentlyRented";
 import DashboardFilters from "../admin/_components/DashboardFilters";
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
@@ -25,6 +26,7 @@ type Period =
 
 type AgreementLite = {
   id: string;
+  customer_name?: string | null;
   car_type: string | null;
   plate_number: string | null;
   mobile: string | null;
@@ -32,9 +34,9 @@ type AgreementLite = {
   date_start: string | null;
   date_end: string | null;
   total_price: number | null;
-  customer_name: string | null;
 };
 
+// --- Date Helpers ---
 function isValidDate(d: any): d is Date {
   return d instanceof Date && !isNaN(d.getTime());
 }
@@ -78,6 +80,7 @@ function diffDays(start: string | null, end: string | null) {
   return Math.max(1, Math.ceil((b - a) / (1000 * 60 * 60 * 24)));
 }
 
+// --- Model normalization ---
 function normalizeModel(rawName: string | null) {
   if (!rawName) return "Unknown";
   const lower = rawName.toLowerCase().trim();
@@ -110,7 +113,7 @@ function getBrand(model: string) {
   return model.split(" ")[0] || "Other";
 }
 
-// ✅ Daily = last 24 hours (yesterday this time -> today this time)
+// ✅ daily = last 24 hours (yesterday this time → today this time)
 function getRange(
   period: Period,
   fromParam: string,
@@ -139,6 +142,13 @@ function getRange(
   return { start, end: now };
 }
 
+// ✅ Supabase relation can be object OR array depending on typing/join shape
+function pickCatalog(rel: any): { make?: any; model?: any } {
+  if (!rel) return {};
+  if (Array.isArray(rel)) return rel[0] ?? {};
+  return rel;
+}
+
 export default async function AdminDashboard({
   searchParams,
 }: {
@@ -160,7 +170,7 @@ export default async function AdminDashboard({
   const { start, end } = getRange(period, fromParam, toParam, new Date());
   const supabase = await createSupabaseServer();
 
-  // Filters lists
+  // Filters dropdown data (based on agreements history)
   const { data: allAgreements } = await supabase
     .from("agreements")
     .select("car_type, plate_number")
@@ -184,7 +194,7 @@ export default async function AdminDashboard({
   let query = supabase
     .from("agreements")
     .select(
-      "id, car_type, plate_number, mobile, status, date_start, date_end, total_price"
+      "id, customer_name, car_type, plate_number, mobile, status, date_start, date_end, total_price"
     )
     .neq("status", "Cancelled")
     .neq("status", "Deleted")
@@ -263,92 +273,108 @@ export default async function AdminDashboard({
   const avgLength = bookingCount > 0 ? totalDaysRented / bookingCount : 0;
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
-  // ✅ Expiring Today: show ALL that end today (not limited)
+  // ---- Cards data ----
   const now = new Date();
   const todayStart = startOfDay(now);
   const todayEnd = endOfDay(now);
 
+  // Expiring today (ALL)
   const { data: expiringToday } = await supabase
     .from("agreements")
-    .select("*")
-    .neq("status", "Cancelled")
-    .neq("status", "Deleted")
+    .select(
+      "id, customer_name, car_type, plate_number, mobile, status, date_start, date_end, total_price"
+    )
+    .not("status", "in", `("Deleted","Cancelled","Completed")`)
     .gte("date_end", safeISO(todayStart))
     .lte("date_end", safeISO(todayEnd))
     .order("date_end", { ascending: true })
     .limit(5000);
 
-  // ✅ Available Now + Available Tomorrow
-  const nowIso = now.toISOString();
-
+  // Cars base (IMPORTANT: alias catalog_rel)
   const { data: carsBase } = await supabase
     .from("cars")
     .select(
-      "id, plate_number, status, location, car_catalog:catalog_id ( make, model )"
+      "id, plate_number, status, location, catalog_rel:catalog_id ( make, model )"
     )
     .order("plate_number", { ascending: true })
     .limit(5000);
 
+  // Active agreements right now => currently rented
+  const nowIso = now.toISOString();
   const { data: activeNow } = await supabase
     .from("agreements")
-    .select("car_id")
+    .select(
+      "id, customer_name, mobile, car_id, plate_number, car_type, date_start, date_end, status"
+    )
     .not("status", "in", `("Deleted","Cancelled","Completed")`)
     .lte("date_start", nowIso)
     .gt("date_end", nowIso)
     .not("car_id", "is", null)
+    .order("date_end", { ascending: true })
     .limit(5000);
 
   const busyCarIds = new Set(
     (activeNow ?? []).map((a: any) => a?.car_id).filter(Boolean)
   );
 
+  // Available now = car.status available AND not currently busy
   const availableNowRows =
     (carsBase ?? [])
       .filter(
         (c: any) => c?.status === "available" && c?.id && !busyCarIds.has(c.id)
       )
-      .map((c: any) => ({
-        id: c.id,
-        plate_number: c.plate_number,
-        location: c.location,
-        make: c?.car_catalog?.make ?? null,
-        model: c?.car_catalog?.model ?? null,
-      })) ?? [];
-
-  const startTomorrow = new Date(now);
-  startTomorrow.setDate(startTomorrow.getDate() + 1);
-  startTomorrow.setHours(0, 0, 0, 0);
-
-  const endTomorrow = new Date(startTomorrow);
-  endTomorrow.setHours(23, 59, 59, 999);
-
-  const { data: endsTomorrow } = await supabase
-    .from("agreements")
-    .select("car_id, date_end")
-    .not("status", "in", `("Deleted","Cancelled","Completed")`)
-    .gte("date_end", startTomorrow.toISOString())
-    .lte("date_end", endTomorrow.toISOString())
-    .not("car_id", "is", null)
-    .limit(5000);
-
-  const endsTomorrowIds = new Set(
-    (endsTomorrow ?? []).map((a: any) => a?.car_id).filter(Boolean)
-  );
-
-  const availableTomorrowRows =
-    (carsBase ?? [])
-      .filter((c: any) => c?.id && endsTomorrowIds.has(c.id))
       .map((c: any) => {
-        const ag = (endsTomorrow ?? []).find((a: any) => a?.car_id === c.id);
+        const cat = pickCatalog(c?.catalog_rel);
+        const make = String(cat?.make ?? "").trim();
+        const model = String(cat?.model ?? "").trim();
         return {
           id: c.id,
           plate_number: c.plate_number,
           location: c.location,
-          make: c?.car_catalog?.make ?? null,
-          model: c?.car_catalog?.model ?? null,
-          frees_at: ag?.date_end ?? null,
+          car_label: [make, model].filter(Boolean).join(" ").trim(),
         };
       }) ?? [];
+
+  // Currently rented rows (join car label)
+  const currentlyRentedRows =
+    (activeNow ?? []).map((ag: any) => {
+      const car = (carsBase ?? []).find((c: any) => c?.id === ag.car_id);
+      const cat = pickCatalog(car?.catalog_rel);
+      const make = String(cat?.make ?? "").trim();
+      const model = String(cat?.model ?? "").trim();
+
+      return {
+        agreement_id: ag.id,
+        car_id: ag.car_id,
+        plate_number: ag.plate_number || car?.plate_number || "—",
+        car_label:
+          ag.car_type || [make, model].filter(Boolean).join(" ").trim() || "—",
+        customer_name: ag.customer_name ?? null,
+        mobile: ag.mobile ?? null,
+        date_end: ag.date_end ?? null,
+        status: ag.status ?? null,
+      };
+    }) ?? [];
+
+  // Available tomorrow = ONLY currently rented now AND end tomorrow
+  const tomorrowStart = new Date(now);
+  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+  tomorrowStart.setHours(0, 0, 0, 0);
+
+  const tomorrowEnd = new Date(tomorrowStart);
+  tomorrowEnd.setHours(23, 59, 59, 999);
+
+  const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
+    const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;
+    return (
+      Number.isFinite(endT) &&
+      endT >= tomorrowStart.getTime() &&
+      endT <= tomorrowEnd.getTime()
+    );
+  });
+
+  const availableCount = availableNowRows.length;
+  const rentedCount = currentlyRentedRows.length;
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 min-h-screen">
@@ -419,23 +445,39 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      {/* ✅ 3 CARDS SIDE BY SIDE */}
+      {/* ✅ ROW 1: 3 cards side-by-side */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ExpiringSoon
           title="Expiring Today ⏳"
           subtitle="All agreements ending today"
-          rows={(expiringToday ?? []) as AgreementLite[]}
+          rows={(expiringToday ?? []) as any}
         />
-        <AvailableNow title="Available Now ✅" rows={availableNowRows as any} />
+
+        <AvailableNow
+          title="Available Now ✅"
+          rows={availableNowRows as any}
+          availableCount={availableCount}
+          rentedCount={rentedCount}
+        />
+
         <AvailableTomorrow
           title="Available Tomorrow 📅"
           rows={availableTomorrowRows as any}
         />
       </div>
 
-      {/* ✅ BOTTOM: Revenue + Top Model */}
+      {/* ✅ ROW 2: Currently rented full width */}
+      <div className="grid grid-cols-1">
+        <CurrentlyRented
+          title="Currently Rented 🚗"
+          rows={currentlyRentedRows as any}
+          availableCount={availableCount}
+          rentedCount={rentedCount}
+        />
+      </div>
+
+      {/* ✅ Bottom: top plate + revenue by model */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Top Plates */}
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
             <h3 className="font-semibold text-gray-800">Top Performing Cars</h3>
@@ -472,7 +514,6 @@ export default async function AdminDashboard({
           </div>
         </div>
 
-        {/* Revenue by Model */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex flex-wrap gap-3">
             {breakdownBrand.map((b) => (
@@ -494,6 +535,7 @@ export default async function AdminDashboard({
               <h3 className="font-semibold text-gray-800">Revenue by Model</h3>
               <div className="text-xs text-gray-500">Includes ADR</div>
             </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 font-medium border-b">
@@ -533,6 +575,7 @@ export default async function AdminDashboard({
                       </tr>
                     );
                   })}
+
                   {breakdownModel.length === 0 && (
                     <tr>
                       <td colSpan={5} className="p-8 text-center text-gray-400">
