@@ -153,6 +153,14 @@ export function Sidebar() {
         label: "Catalog",
         icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
       },
+      // ✅ NEW: FB Posts & Videos (Clapperboard/Video Icon)
+      {
+        href: "/admin/posts",
+        label: "FB Posts & Videos",
+        icon: (
+          <Icon d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        ),
+      },
     ],
     []
   );
@@ -166,6 +174,14 @@ export function Sidebar() {
           <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" />
         ),
       },
+      // ✅ NEW: Marketing Tracker (Megaphone Icon)
+      {
+        href: "/admin/marketing-tracker",
+        label: "Marketing Tracker",
+        icon: (
+          <Icon d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
+        ),
+      },
       {
         href: "/admin/audit",
         label: "Audit Logs",
@@ -177,14 +193,14 @@ export function Sidebar() {
         href: "/admin/cars/logs",
         label: "Car Logs",
         icon: (
-          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+          <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         ),
       },
       {
         href: "/admin/agreements/logs",
         label: "Agreement Logs",
         icon: (
-          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+          <Icon d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         ),
       },
     ],
