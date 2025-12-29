@@ -149,6 +149,41 @@ function pickCatalog(rel: any): { make?: any; model?: any } {
   return rel;
 }
 
+/* ===========================
+   ✅ KL TIMEZONE HELPERS
+   Fixes Vercel UTC "today/tomorrow" shifting
+   =========================== */
+
+const KL_TZ = "Asia/Kuala_Lumpur";
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000; // Malaysia is UTC+8, no DST
+
+function startOfDayInKLToUTC(baseUtc: Date) {
+  // Convert "now UTC" into KL local clock, then clamp to 00:00 KL, then convert back to UTC instant.
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const klMidnight = new Date(
+    kl.getFullYear(),
+    kl.getMonth(),
+    kl.getDate(),
+    0,
+    0,
+    0,
+    0
+  );
+  return new Date(klMidnight.getTime() - KL_OFFSET_MS);
+}
+
+function endOfDayInKLToUTC(baseUtc: Date) {
+  const start = startOfDayInKLToUTC(baseUtc);
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+}
+
+function addDaysKL(baseUtc: Date, days: number) {
+  // Move KL day forward, then return the UTC instant corresponding to the same KL clock time.
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  kl.setDate(kl.getDate() + days);
+  return new Date(kl.getTime() - KL_OFFSET_MS);
+}
+
 export default async function AdminDashboard({
   searchParams,
 }: {
@@ -275,18 +310,20 @@ export default async function AdminDashboard({
 
   // ---- Cards data ----
   const now = new Date();
-  const todayStart = startOfDay(now);
-  const todayEnd = endOfDay(now);
 
-  // Expiring today (ALL)
+  // ✅ FIXED: KL "today" boundaries in UTC instants
+  const todayStartUTC = startOfDayInKLToUTC(now);
+  const todayEndUTC = endOfDayInKLToUTC(now);
+
+  // Expiring today (ALL) — based on KL day
   const { data: expiringToday } = await supabase
     .from("agreements")
     .select(
       "id, customer_name, car_type, plate_number, mobile, status, date_start, date_end, total_price"
     )
     .not("status", "in", `("Deleted","Cancelled","Completed")`)
-    .gte("date_end", safeISO(todayStart))
-    .lte("date_end", safeISO(todayEnd))
+    .gte("date_end", todayStartUTC.toISOString())
+    .lte("date_end", todayEndUTC.toISOString())
     .order("date_end", { ascending: true })
     .limit(5000);
 
@@ -356,20 +393,18 @@ export default async function AdminDashboard({
       };
     }) ?? [];
 
-  // Available tomorrow = ONLY currently rented now AND end tomorrow
-  const tomorrowStart = new Date(now);
-  tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-  tomorrowStart.setHours(0, 0, 0, 0);
+  // ✅ FIXED: Tomorrow KL boundaries
+  const tomorrowBase = addDaysKL(now, 1);
+  const tomorrowStartUTC = startOfDayInKLToUTC(tomorrowBase);
+  const tomorrowEndUTC = endOfDayInKLToUTC(tomorrowBase);
 
-  const tomorrowEnd = new Date(tomorrowStart);
-  tomorrowEnd.setHours(23, 59, 59, 999);
-
+  // Available tomorrow = ONLY currently rented now AND end tomorrow (KL day)
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;
     return (
       Number.isFinite(endT) &&
-      endT >= tomorrowStart.getTime() &&
-      endT <= tomorrowEnd.getTime()
+      endT >= tomorrowStartUTC.getTime() &&
+      endT <= tomorrowEndUTC.getTime()
     );
   });
 
