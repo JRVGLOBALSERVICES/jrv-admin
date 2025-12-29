@@ -145,7 +145,7 @@ export default function PostsClient() {
             
             <div className="font-semibold line-clamp-2">{p.title || "(No Title)"}</div>
             
-            <div className="text-sm text-gray-600 line-clamp-3 whitespace-pre-wrap bg-gray-50 p-2 rounded min-h-[4rem]">
+            <div className="text-sm text-gray-600 line-clamp-3 whitespace-pre-wrap bg-gray-50 p-2 rounded min-h-16">
               {p.description}
             </div>
             

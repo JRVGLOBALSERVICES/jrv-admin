@@ -27,7 +27,7 @@ export function PdfViewer({ url }: { url: string }) {
   }, []);
 
   return (
-    <div className="flex flex-col items-center gap-4 bg-gray-100 p-4 rounded-lg min-h-[500px]">
+    <div className="flex flex-col items-center gap-4 bg-gray-100 p-4 rounded-lg min-h-125">
       <Document
         file={url}
         onLoadSuccess={onDocumentLoadSuccess}
