@@ -54,7 +54,8 @@ async function logAgreement(opts: {
   before?: any;
   after?: any;
 }) {
-  await opts.supabase.from("agreement_logs").insert({
+  // Use supabaseAdmin to ensure logs are always written (bypassing RLS if necessary)
+  const { error } = await supabaseAdmin.from("agreement_logs").insert({
     agreement_id: opts.agreement_id,
     actor_id: opts.actor_id ?? null,
     actor_email: opts.actor_email,
@@ -62,6 +63,8 @@ async function logAgreement(opts: {
     before: opts.before ?? null,
     after: opts.after ?? null,
   });
+
+  if (error) console.error("Log insert failed:", error);
 }
 
 type FilterOption = { value: string; label: string };
@@ -140,7 +143,7 @@ export async function GET(req: Request) {
   const actor = asStr(url.searchParams.get("actor"));
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
-  // ✅ preload cars so we can filter agreements by car_id (no join logic-tree errors)
+  // ✅ preload cars
   const { data: carsRows, error: carsErr } = await supabase
     .from("cars")
     .select(
@@ -211,7 +214,11 @@ export async function GET(req: Request) {
     .order("updated_at", { ascending: false })
     .range(from, to);
 
-  if (status) query = query.eq("status", status);
+  if (status) {
+    query = query.eq("status", status);
+  } else {
+    query = query.neq("status", "Deleted");
+  }
 
   if (plate) {
     const ids =
@@ -311,11 +318,8 @@ export async function POST(req: Request) {
 
   const supabase = await createSupabaseServer();
 
-  // ✅ resolve real user email if gate didn't include it
   let actorEmail = (gate as any)?.email || (gate as any)?.actor?.email || "";
-
   let actorId = (gate as any)?.id || (gate as any)?.actor?.id || null;
-
   const actorRole =
     (gate as any)?.role || (gate as any)?.actor?.role || "admin";
 
@@ -333,7 +337,7 @@ export async function POST(req: Request) {
   try {
     if (!action) throw new Error("Missing action");
 
-    // ✅ DELETE (superadmin)
+    // ✅ DELETE (superadmin) -> Now acts as SOFT DELETE
     if (action === "delete") {
       if (actorRole !== "superadmin") return jsonError("Forbidden", 403);
 
@@ -349,10 +353,13 @@ export async function POST(req: Request) {
       if (exErr) throw new Error(exErr.message);
       if (!before) throw new Error("Agreement not found");
 
+      // Soft delete: Update status to 'Deleted'
+      // NOTE: Ensure your database column 'status' is text or includes 'Deleted' in its enum
       const { error: delErr } = await supabaseAdmin
         .from("agreements")
-        .delete()
+        .update({ status: "Deleted" })
         .eq("id", id);
+
       if (delErr) throw new Error(delErr.message);
 
       await logAgreement({
@@ -360,9 +367,9 @@ export async function POST(req: Request) {
         agreement_id: id,
         actor_email: actorEmail,
         actor_id: actorId,
-        action: "deleted",
+        action: "soft_deleted",
         before,
-        after: null,
+        after: { status: "Deleted" },
       });
 
       return NextResponse.json({ ok: true });
@@ -380,7 +387,6 @@ export async function POST(req: Request) {
         must(payload.mobile, "Mobile required")
       );
       const agent_email = asStr(payload.agent_email);
-      // ✅ MUST come from selected car in UI
       const plate_number = must(payload.plate_number, "Plate required");
       const car_type = must(payload.car_type, "Car model required");
 
@@ -589,11 +595,9 @@ export async function POST(req: Request) {
         payload.deposit_price ?? existing.deposit_price ?? 0
       );
 
-      // ✅ status rules
       let nextStatus =
         asStr(payload.status) || asStr(existing.status) || "Editted";
 
-      // admin can ONLY set Cancelled; anything else -> Editted
       if (actorRole !== "superadmin") {
         if (nextStatus !== "Cancelled") nextStatus = "Editted";
       }
