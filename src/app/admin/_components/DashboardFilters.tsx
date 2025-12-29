@@ -22,7 +22,6 @@ export default function DashboardFilters({
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Get current params
   const currentPeriod = (searchParams.get("period") as Period) ?? "daily";
   const model = searchParams.get("model") ?? "";
   const plate = searchParams.get("plate") ?? "";
@@ -32,8 +31,13 @@ export default function DashboardFilters({
   const [customStart, setCustomStart] = useState(fromParam);
   const [customEnd, setCustomEnd] = useState(toParam);
 
-  // If we have dates in URL, we are in 'custom' mode visually
   const activePeriod = fromParam && toParam ? "custom" : currentPeriod;
+
+  // ✅ Fix: Sync state with URL params (e.g. when Reset is clicked)
+  useEffect(() => {
+    setCustomStart(fromParam);
+    setCustomEnd(toParam);
+  }, [fromParam, toParam]);
 
   const updateParams = useCallback(
     (newParams: Record<string, string | null>) => {
@@ -48,10 +52,7 @@ export default function DashboardFilters({
   );
 
   const handlePeriodClick = (p: Period) => {
-    // If clicking a preset, clear custom dates
     updateParams({ period: p, from: null, to: null });
-    setCustomStart("");
-    setCustomEnd("");
   };
 
   const handleDateApply = () => {
@@ -61,106 +62,130 @@ export default function DashboardFilters({
   };
 
   const clearAll = () => {
-    setCustomStart("");
-    setCustomEnd("");
     router.push("/admin");
   };
 
   return (
-    <div className="flex flex-col gap-4 bg-white p-3 rounded-xl border shadow-sm">
-      {/* Top Row: Presets + Dropdowns */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Period Presets */}
-        <div className="flex bg-gray-100 rounded-lg p-1 overflow-x-auto">
-          {(
-            [
-              "daily",
-              "weekly",
-              "monthly",
-              "quarterly",
-              "yearly",
-              "all",
-            ] as Period[]
-          ).map((p) => (
+    <div className="bg-white p-3 md:p-4 rounded-xl border shadow-sm w-full">
+      <div className="flex flex-col gap-3">
+        {/* Row 1: Period Presets */}
+        <div className="flex items-center gap-3 overflow-hidden">
+          <div className="flex bg-gray-100 rounded-lg p-1 overflow-x-auto no-scrollbar flex-nowrap w-full md:w-auto">
+            {(
+              [
+                "daily",
+                "weekly",
+                "monthly",
+                "quarterly",
+                "yearly",
+                "all",
+              ] as Period[]
+            ).map((p) => (
+              <button
+                key={p}
+                onClick={() => handlePeriodClick(p)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize transition whitespace-nowrap shrink-0 ${
+                  activePeriod === p
+                    ? "bg-white text-black shadow-sm"
+                    : "text-gray-500 hover:text-black"
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+
+          <div className="hidden md:block h-6 w-px bg-gray-200 shrink-0" />
+
+          {/* Desktop Reset Link */}
+          {(model || plate || activePeriod !== "daily") && (
             <button
-              key={p}
-              onClick={() => handlePeriodClick(p)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md capitalize transition whitespace-nowrap ${
-                activePeriod === p
-                  ? "bg-white text-black shadow-sm"
-                  : "text-gray-500 hover:text-black"
-              }`}
+              onClick={clearAll}
+              className="hidden md:block text-xs text-red-600 hover:underline px-2 whitespace-nowrap ml-auto"
             >
-              {p}
+              Reset Filters
             </button>
-          ))}
+          )}
         </div>
 
-        <div className="h-6 w-px bg-gray-200 hidden md:block" />
-
-        {/* Model Filter */}
-        <select
-          value={model}
-          onChange={(e) => updateParams({ model: e.target.value })}
-          className="text-sm border-none bg-gray-50 rounded-lg px-3 py-2 focus:ring-1 focus:ring-black min-w-35"
-        >
-          <option value="">All Models</option>
-          {models.map((m) => (
-            <option key={m} value={m}>
-              {m}
-            </option>
-          ))}
-        </select>
-
-        {/* Plate Filter */}
-        <select
-          value={plate}
-          onChange={(e) => updateParams({ plate: e.target.value })}
-          className="text-sm border-none bg-gray-50 rounded-lg px-3 py-2 focus:ring-1 focus:ring-black min-w-35"
-        >
-          <option value="">All Plates</option>
-          {plates.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-
-        {(model || plate || activePeriod !== "daily") && (
-          <button
-            onClick={clearAll}
-            className="text-xs text-red-600 hover:underline px-2 whitespace-nowrap"
+        {/* Row 2: Dropdowns */}
+        <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2">
+          <select
+            value={model}
+            onChange={(e) => updateParams({ model: e.target.value })}
+            className="w-full md:w-auto text-sm border-none bg-gray-50 rounded-lg px-3 py-2 focus:ring-1 focus:ring-black md:min-w-35 truncate"
           >
-            Reset Filters
-          </button>
-        )}
+            <option value="">All Models</option>
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={plate}
+            onChange={(e) => updateParams({ plate: e.target.value })}
+            className="w-full md:w-auto text-sm border-none bg-gray-50 rounded-lg px-3 py-2 focus:ring-1 focus:ring-black md:min-w-35 truncate"
+          >
+            <option value="">All Plates</option>
+            {plates.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      {/* Bottom Row: Custom Date Picker */}
-      <div className="flex items-center gap-2 text-sm border-t pt-3">
-        <span className="text-gray-500 text-xs uppercase font-bold tracking-wide">
-          Custom Range:
-        </span>
-        <input
-          type="date"
-          value={customStart}
-          onChange={(e) => setCustomStart(e.target.value)}
-          className="border rounded px-2 py-1 text-sm text-gray-700 focus:ring-black focus:border-black"
-        />
-        <span className="text-gray-400">→</span>
-        <input
-          type="date"
-          value={customEnd}
-          onChange={(e) => setCustomEnd(e.target.value)}
-          className="border rounded px-2 py-1 text-sm text-gray-700 focus:ring-black focus:border-black"
-        />
-        <button
-          onClick={handleDateApply}
-          disabled={!customStart || !customEnd}
-          className="px-3 py-1 bg-black text-white rounded text-xs font-medium hover:bg-gray-800 disabled:opacity-50"
-        >
-          Go
-        </button>
+      {/* --- Bottom Section: Custom Date Range (Stable Mobile Layout) --- */}
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wide md:mr-2">
+            Custom Range
+          </span>
+
+          {/* ✅ STABLE LAYOUT: Vertical on Mobile, Horizontal on Desktop */}
+          <div className="flex flex-col md:flex-row md:items-center gap-2 w-full md:w-auto">
+            <input
+              type="date"
+              value={customStart}
+              onChange={(e) => setCustomStart(e.target.value)}
+              className="w-full md:w-auto border rounded px-3 py-2 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-black outline-none transition"
+            />
+            <span className="text-gray-400 self-center hidden md:inline">
+              →
+            </span>
+            <span className="text-gray-400 text-xs text-center md:hidden">
+              to
+            </span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={(e) => setCustomEnd(e.target.value)}
+              className="w-full md:w-auto border rounded px-3 py-2 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-black outline-none transition"
+            />
+          </div>
+
+          <button
+            onClick={handleDateApply}
+            disabled={!customStart || !customEnd}
+            type="button" // ✅ Prevent form submission
+            className="w-full md:w-auto px-4 py-2 bg-black text-white rounded-lg text-xs font-bold uppercase tracking-wide hover:bg-gray-800 disabled:opacity-50 transition shadow-sm"
+          >
+            Apply
+          </button>
+
+          {(model || plate || activePeriod !== "daily") && (
+            <button
+              onClick={clearAll}
+              className="md:hidden w-full text-center text-xs text-red-600 py-2 mt-1 border border-red-100 rounded-lg bg-red-50"
+              type="button"
+            >
+              Clear All Filters
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
