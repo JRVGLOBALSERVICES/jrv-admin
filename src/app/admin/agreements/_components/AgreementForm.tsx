@@ -61,14 +61,42 @@ function diffDays(startIso: string, endIso: string) {
 
 function suggestPrice(car: CarRow | null, days: number) {
   if (!car || days <= 0) return 0;
-  if (days >= 30 && car.monthly_price != null) return Number(car.monthly_price);
-  if (days >= 7 && car.weekly_price != null) return Number(car.weekly_price);
-  if (days >= 3 && car.price_3_days != null) return Number(car.price_3_days);
-  if (car.daily_price != null) return Number(car.daily_price) * days;
-  return 0;
+
+  let remaining = days;
+  let total = 0;
+
+  const monthly = car.monthly_price ? Number(car.monthly_price) : Infinity;
+  const weekly = car.weekly_price ? Number(car.weekly_price) : Infinity;
+  const promo3 = car.price_3_days ? Number(car.price_3_days) : Infinity;
+  const daily = car.daily_price ? Number(car.daily_price) : Infinity;
+
+  if (remaining >= 30 && monthly !== Infinity) {
+    const count = Math.floor(remaining / 30);
+    total += count * monthly;
+    remaining %= 30;
+  }
+
+  if (remaining >= 7 && weekly !== Infinity) {
+    const count = Math.floor(remaining / 7);
+    total += count * weekly;
+    remaining %= 7;
+  }
+
+  if (remaining >= 3 && promo3 !== Infinity) {
+    const count = Math.floor(remaining / 3);
+    total += count * promo3;
+    remaining %= 3;
+  }
+
+  if (remaining > 0) {
+    if (daily !== Infinity) {
+      total += remaining * daily;
+    }
+  }
+
+  return total;
 }
 
-// ✅ simple sound player
 function useSfx() {
   const clickRef = useRef<HTMLAudioElement | null>(null);
   const okRef = useRef<HTMLAudioElement | null>(null);
@@ -106,7 +134,7 @@ export function AgreementForm({
   initial?: InitialAgreement;
   onDoneHref?: string;
 }) {
-  const roleState = useRole(); // expect { role, email }
+  const roleState = useRole();
   const agentEmail = roleState?.email ?? "";
   const agentRole = roleState?.role ?? "admin";
   const isSuperadmin = agentRole === "superadmin";
@@ -146,7 +174,6 @@ export function AgreementForm({
   const [deposit, setDeposit] = useState(String(initial?.deposit_price ?? "0"));
   const [status, setStatus] = useState(initial?.status ?? "New");
 
-  // ✅ Track if user manually typed price/deposit
   const [totalTouched, setTotalTouched] = useState(false);
   const [depositTouched, setDepositTouched] = useState(false);
 
@@ -155,7 +182,6 @@ export function AgreementForm({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // ✅ Dirty detection (for auto "Editted")
   const initialSnapshot = useMemo(() => {
     return {
       carId: initial?.car_id ?? "",
@@ -170,7 +196,6 @@ export function AgreementForm({
       deposit: String(initial?.deposit_price ?? "0"),
       status: initial?.status ?? "New",
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initial?.id]);
 
   useEffect(() => {
@@ -197,7 +222,6 @@ export function AgreementForm({
   const endIso = endDate ? `${endDate}T${endTime}:00` : "";
   const durationDays = startIso && endIso ? diffDays(startIso, endIso) : 0;
 
-  // ✅ auto-fill deposit from car (only if user didn't touch deposit)
   useEffect(() => {
     if (!selectedCar) return;
     if (depositTouched) return;
@@ -206,9 +230,8 @@ export function AgreementForm({
     if (carDep == null) return;
     const current = toMoney(deposit);
     if (current <= 0) setDeposit(String(carDep));
-  }, [selectedCar, depositTouched]); // keep deps
+  }, [selectedCar, depositTouched]);
 
-  // ✅ ALWAYS recalc when car/dates change unless user manually edited total
   useEffect(() => {
     if (!selectedCar) return;
     if (!durationDays) return;
@@ -218,7 +241,6 @@ export function AgreementForm({
     if (suggested > 0) setTotal(String(suggested.toFixed(2)));
   }, [selectedCar, durationDays, totalTouched]);
 
-  // ✅ Auto-status Editted on any edit (unless already Cancelled)
   useEffect(() => {
     if (!isEdit) return;
     if (!initial?.id) return;
@@ -240,7 +262,6 @@ export function AgreementForm({
 
     if (!dirty) return;
 
-    // if user set Cancelled, keep it
     setStatus((s) => (s === "Cancelled" ? "Cancelled" : "Editted"));
   }, [
     isEdit,
@@ -414,9 +435,6 @@ export function AgreementForm({
     }
   };
 
-  // ✅ status control rules:
-  // - superadmin: can select any
-  // - admin: can only set Cancelled; otherwise status is locked (and auto becomes Editted on changes)
   const statusDisabled = !isSuperadmin && status !== "Cancelled";
   const statusOptions = isSuperadmin
     ? ["New", "Confirmed", "Editted", "Cancelled"]
