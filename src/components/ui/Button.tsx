@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils/cn";
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
+// Updated: "auto" now effectively behaves like "on"
 type HapticsMode = "auto" | "on" | "off";
 type SoundMode = "auto" | "on" | "off";
 
@@ -17,14 +18,6 @@ export type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
   sound?: SoundMode;
   fullWidth?: boolean;
 };
-
-function isTouchLike(): boolean {
-  if (typeof window === "undefined") return false;
-  return (
-    "ontouchstart" in window ||
-    (typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0)
-  );
-}
 
 /** ===== Reliable WebAudio click tick (shared AudioContext) ===== */
 let sharedCtx: AudioContext | null = null;
@@ -88,10 +81,12 @@ const base =
   "active:scale-[0.98]";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer",
+  primary:
+    "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer",
   secondary:
     "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10 cursor-pointer",
-  ghost: "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
+  ghost:
+    "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
   danger:
     "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm cursor-pointer",
 };
@@ -118,8 +113,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       variant = "primary",
       size = "md",
       loading = false,
-      haptics = "auto",
-      sound = "auto",
+      haptics = "on", // ✅ Default Changed to "on"
+      sound = "on", // ✅ Default Changed to "on"
       fullWidth = false,
       disabled,
       onClick,
@@ -131,11 +126,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ) => {
     const isDisabled = disabled || loading;
 
-    const shouldHaptic =
-      haptics === "on" || (haptics === "auto" && isTouchLike());
-
-    // ✅ "auto" = mobile/touch only (more sensible)
-    const shouldSound = sound === "on" || (sound === "auto" && isTouchLike());
+    // ✅ FORCE ALWAYS ON (unless explicitly 'off')
+    // This removes the check for touch devices, so it works on Desktop too.
+    const shouldHaptic = haptics !== "off";
+    const shouldSound = sound !== "off";
 
     const handleClick: React.MouseEventHandler<HTMLButtonElement> = (e) => {
       if (isDisabled) {

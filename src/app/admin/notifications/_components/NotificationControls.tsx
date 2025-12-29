@@ -47,7 +47,7 @@ export default function NotificationControls() {
         Send Test Alert
       </Button>
 
-      <Button sound="on" haptics="on"onClick={runChecks} loading={loading} size="sm">
+      <Button onClick={runChecks} loading={loading} size="sm">
         {!loading && "▶"} Run Checks Now
       </Button>
     </div>

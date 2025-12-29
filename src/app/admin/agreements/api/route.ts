@@ -30,6 +30,7 @@ function toMoneyString(v: any) {
 function fmtHuman(dtIso: string) {
   const d = new Date(dtIso);
   if (Number.isNaN(d.getTime())) return dtIso;
+  // Format for PDF: "29 Dec 2025, 10:30 PM"
   return d.toLocaleString("en-MY", {
     year: "numeric",
     month: "short",
@@ -54,7 +55,6 @@ async function logAgreement(opts: {
   before?: any;
   after?: any;
 }) {
-  // Use supabaseAdmin to ensure logs are always written (bypassing RLS if necessary)
   const { error } = await supabaseAdmin.from("agreement_logs").insert({
     agreement_id: opts.agreement_id,
     actor_id: opts.actor_id ?? null,
@@ -69,6 +69,9 @@ async function logAgreement(opts: {
 
 type FilterOption = { value: string; label: string };
 
+// ==============================================================================
+// GET HANDLER (List, Single, Filters)
+// ==============================================================================
 export async function GET(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
@@ -76,7 +79,7 @@ export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);
 
-  // ✅ SINGLE row mode
+  // --- 1. SINGLE AGREEMENT FETCH ---
   const id = asStr(url.searchParams.get("id"));
   if (id) {
     const { data: row, error } = await supabase
@@ -127,7 +130,7 @@ export async function GET(req: Request) {
     });
   }
 
-  // ✅ LIST + FILTERS mode
+  // --- 2. LIST FETCH ---
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
   const limit = Math.min(
     50,
@@ -141,9 +144,14 @@ export async function GET(req: Request) {
   const plate = asStr(url.searchParams.get("plate"));
   const model = asStr(url.searchParams.get("model"));
   const actor = asStr(url.searchParams.get("actor"));
+
+  // ✅ DATE FILTERS
+  const dateParam = asStr(url.searchParams.get("date")); // Start Date
+  const endDateParam = asStr(url.searchParams.get("endDate")); // End Date (>=)
+
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
-  // ✅ preload cars
+  // Preload cars for filters
   const { data: carsRows, error: carsErr } = await supabase
     .from("cars")
     .select(
@@ -181,6 +189,7 @@ export async function GET(req: Request) {
   const filters = { plates, models };
   if (filtersOnly) return NextResponse.json({ ok: true, filters });
 
+  // Base Query
   let query = supabase
     .from("agreements")
     .select(
@@ -214,12 +223,26 @@ export async function GET(req: Request) {
     .order("updated_at", { ascending: false })
     .range(from, to);
 
+  // Apply Status Filter
   if (status) {
     query = query.eq("status", status);
   } else {
     query = query.neq("status", "Deleted");
   }
 
+  // ✅ Apply Start Date Filter
+  if (dateParam) {
+    query = query
+      .gte("date_start", `${dateParam}T00:00:00`)
+      .lte("date_start", `${dateParam}T23:59:59`);
+  }
+
+  // ✅ Apply End Date Filter (Ending on or after)
+  if (endDateParam) {
+    query = query.gte("date_end", `${endDateParam}T00:00:00`);
+  }
+
+  // Apply Plate Filter
   if (plate) {
     const ids =
       (carsRows ?? [])
@@ -242,6 +265,7 @@ export async function GET(req: Request) {
     query = query.in("car_id", ids);
   }
 
+  // Apply Model Filter
   if (model) {
     const ids =
       (carsRows ?? [])
@@ -265,6 +289,7 @@ export async function GET(req: Request) {
     query = query.in("car_id", ids);
   }
 
+  // Apply Search (Q) Filter
   if (q) {
     const like = `%${q}%`;
     query = query.or(
@@ -280,6 +305,7 @@ export async function GET(req: Request) {
   const { data, error, count } = await query;
   if (error) return jsonError(error.message, 500);
 
+  // Flatten rows for frontend
   let rows =
     (data ?? []).map((a: any) => {
       const car = a.cars ?? null;
@@ -289,6 +315,7 @@ export async function GET(req: Request) {
       return { ...a, plate_number, car_label };
     }) ?? [];
 
+  // Actor Filter (via Logs)
   if (actor) {
     const { data: logRows, error: logErr } = await supabase
       .from("agreement_logs")
@@ -312,6 +339,9 @@ export async function GET(req: Request) {
   });
 }
 
+// ==============================================================================
+// POST HANDLER (Create, Update, Delete, Preview)
+// ==============================================================================
 export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
@@ -337,10 +367,9 @@ export async function POST(req: Request) {
   try {
     if (!action) throw new Error("Missing action");
 
-    // ✅ DELETE (superadmin) -> Now acts as SOFT DELETE
+    // --- DELETE ---
     if (action === "delete") {
       if (actorRole !== "superadmin") return jsonError("Forbidden", 403);
-
       const id = asStr(body?.id);
       if (!id) throw new Error("Missing agreement id");
 
@@ -353,8 +382,6 @@ export async function POST(req: Request) {
       if (exErr) throw new Error(exErr.message);
       if (!before) throw new Error("Agreement not found");
 
-      // Soft delete: Update status to 'Deleted'
-      // NOTE: Ensure your database column 'status' is text or includes 'Deleted' in its enum
       const { error: delErr } = await supabaseAdmin
         .from("agreements")
         .update({ status: "Deleted" })
@@ -377,6 +404,7 @@ export async function POST(req: Request) {
 
     const payload = body?.payload ?? {};
 
+    // --- PREVIEW PDF ---
     if (action === "preview") {
       const customer_name = must(
         payload.customer_name,
@@ -389,13 +417,11 @@ export async function POST(req: Request) {
       const agent_email = asStr(payload.agent_email);
       const plate_number = must(payload.plate_number, "Plate required");
       const car_type = must(payload.car_type, "Car model required");
-
       const date_start_iso = must(
         payload.date_start_iso,
         "Start date/time required"
       );
       const date_end_iso = must(payload.date_end_iso, "End date/time required");
-
       const total_price = toMoneyString(
         must(payload.total_price, "Total price required")
       );
@@ -418,12 +444,10 @@ export async function POST(req: Request) {
       });
 
       const pdfBuffer = await renderToBuffer(element as any);
-
       const publicId = `PREVIEW_${mobileE164.replace(
         "+",
         ""
       )}_${id_number}_${plate_number}`.replace(/\s+/g, "_");
-
       const up = await uploadPdfBufferToCloudinary({
         buffer: Buffer.isBuffer(pdfBuffer)
           ? pdfBuffer
@@ -434,6 +458,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, preview_url: up.secure_url });
     }
 
+    // --- CONFIRM CREATE ---
     if (action === "confirm_create") {
       const customer_name = must(
         payload.customer_name,
@@ -443,19 +468,15 @@ export async function POST(req: Request) {
       const mobileE164 = normalizePhoneInternational(
         must(payload.mobile, "Mobile required")
       );
-
       const car_id = must(payload.car_id, "Car selection required");
       const catalog_id = payload.catalog_id ?? null;
-
       const plate_number = must(payload.plate_number, "Plate required");
       const car_type = must(payload.car_type, "Car model required");
-
       const date_start_iso = must(
         payload.date_start_iso,
         "Start date/time required"
       );
       const date_end_iso = must(payload.date_end_iso, "End date/time required");
-
       const booking_duration_days =
         Number(payload.booking_duration_days ?? 0) || null;
       const total_price = toMoneyString(
@@ -464,6 +485,7 @@ export async function POST(req: Request) {
       const deposit_price = toMoneyString(payload.deposit_price ?? 0);
       const agent_email = asStr(payload.agent_email) || actorEmail;
 
+      // 1. Generate PDF
       const element = createElement(AgreementPdf as any, {
         data: {
           logo_url: "https://jrv-admin.vercel.app/logo.png",
@@ -481,12 +503,10 @@ export async function POST(req: Request) {
       });
 
       const pdfBuffer = await renderToBuffer(element as any);
-
       const publicId = `${mobileE164.replace(
         "+",
         ""
       )}_${id_number}_${plate_number}`.replace(/\s+/g, "_");
-
       const up = await uploadPdfBufferToCloudinary({
         buffer: Buffer.isBuffer(pdfBuffer)
           ? pdfBuffer
@@ -497,6 +517,7 @@ export async function POST(req: Request) {
       const message = `Your rental agreement with JRV Car Rental is available here: ${up.secure_url}`;
       const whatsapp_url = buildWhatsAppUrl(mobileE164, message);
 
+      // 2. Insert to DB (WITH FULL TIME ISO)
       const { data: inserted, error: insErr } = await supabase
         .from("agreements")
         .insert({
@@ -505,8 +526,11 @@ export async function POST(req: Request) {
           customer_name,
           id_number,
           mobile: mobileE164.replace("+", ""),
-          date_start: date_start_iso.split("T")[0],
-          date_end: date_end_iso.split("T")[0],
+
+          // ✅ FIX: Saving full UTC ISO string
+          date_start: date_start_iso,
+          date_end: date_end_iso,
+
           booking_duration_days,
           total_price,
           deposit_price,
@@ -550,15 +574,14 @@ export async function POST(req: Request) {
       });
     }
 
+    // --- CONFIRM UPDATE ---
     if (action === "confirm_update") {
       const agreement_id = must(payload.id, "Missing agreement id");
-
       const { data: existing, error: exErr } = await supabase
         .from("agreements")
         .select("*")
         .eq("id", agreement_id)
         .maybeSingle();
-
       if (exErr) throw new Error(exErr.message);
       if (!existing) throw new Error("Agreement not found");
 
@@ -570,40 +593,33 @@ export async function POST(req: Request) {
       const mobileE164 = normalizePhoneInternational(
         must(payload.mobile, "Mobile required")
       );
-
       const car_id = must(payload.car_id, "Car selection required");
       const catalog_id = payload.catalog_id ?? existing.catalog_id ?? null;
-
       const plate_number = must(payload.plate_number, "Plate required");
       const car_type = must(payload.car_type, "Car model required");
-
       const date_start_iso = must(
         payload.date_start_iso,
         "Start date/time required"
       );
       const date_end_iso = must(payload.date_end_iso, "End date/time required");
-
       const booking_duration_days =
         Number(
           payload.booking_duration_days ?? existing.booking_duration_days ?? 0
         ) || null;
-
       const total_price = toMoneyString(
         must(payload.total_price, "Total price required")
       );
       const deposit_price = toMoneyString(
         payload.deposit_price ?? existing.deposit_price ?? 0
       );
-
       let nextStatus =
         asStr(payload.status) || asStr(existing.status) || "Editted";
-
       if (actorRole !== "superadmin") {
         if (nextStatus !== "Cancelled") nextStatus = "Editted";
       }
-
       const agent_email = asStr(payload.agent_email) || actorEmail;
 
+      // 1. Regenerate PDF
       const element = createElement(AgreementPdf as any, {
         data: {
           logo_url: "https://jrv-admin.vercel.app/logo.png",
@@ -622,19 +638,16 @@ export async function POST(req: Request) {
       });
 
       const pdfBuffer = await renderToBuffer(element as any);
-
       const publicId = `${mobileE164.replace(
         "+",
         ""
       )}_${id_number}_${plate_number}`.replace(/\s+/g, "_");
-
       const up = await uploadPdfBufferToCloudinary({
         buffer: Buffer.isBuffer(pdfBuffer)
           ? pdfBuffer
           : Buffer.from(pdfBuffer as any),
         publicId,
       });
-
       const message = `Your updated rental agreement with JRV Car Rental is available here: ${up.secure_url}`;
       const whatsapp_url = buildWhatsAppUrl(mobileE164, message);
 
@@ -644,8 +657,11 @@ export async function POST(req: Request) {
         customer_name,
         id_number,
         mobile: mobileE164.replace("+", ""),
-        date_start: date_start_iso.split("T")[0],
-        date_end: date_end_iso.split("T")[0],
+
+        // ✅ FIX: Saving full UTC ISO string
+        date_start: date_start_iso,
+        date_end: date_end_iso,
+
         booking_duration_days,
         total_price,
         deposit_price,

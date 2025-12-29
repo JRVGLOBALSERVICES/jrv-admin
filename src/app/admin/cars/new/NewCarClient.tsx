@@ -667,7 +667,7 @@ export default function NewCarPage() {
           </div>
         </div>
 
-        <Button sound="on" haptics="on"loading={saving} onClick={submit} className="w-full">
+        <Button loading={saving} onClick={submit} className="w-full">
           Create Car
         </Button>
 

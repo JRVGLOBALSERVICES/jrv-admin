@@ -271,10 +271,10 @@ export default function PostsClient() {
               />
             </div>
             <div className="flex gap-2 justify-end pt-2">
-              <Button sound="on" haptics="on"variant="secondary" onClick={() => setModalOpen(false)}>
+              <Button variant="secondary" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button sound="on" haptics="on"onClick={save}>Save</Button>
+              <Button onClick={save}>Save</Button>
             </div>
           </Card>
         </div>

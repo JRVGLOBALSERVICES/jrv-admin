@@ -3,6 +3,24 @@ import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { AgreementForm } from "../_components/AgreementForm";
 
+// ✅ Helper to extract date/time parts from DB Timestamp
+function splitIso(iso: string | null) {
+  if (!iso) return { date: "", time: "" };
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return { date: "", time: "" };
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const mins = String(d.getMinutes()).padStart(2, "0");
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${mins}`,
+  };
+}
+
 export default async function EditAgreementPage({
   params,
 }: {
@@ -13,12 +31,7 @@ export default async function EditAgreementPage({
 
   const gate = await requireAdmin();
   if (!gate.ok) {
-    return (
-      <div className="p-6">
-        <div className="text-lg font-semibold">Forbidden</div>
-        <div className="mt-2 rounded-lg border p-3 text-sm text-red-600">{gate.message}</div>
-      </div>
-    );
+    return <div className="p-6 text-red-600">{gate.message}</div>;
   }
 
   const supabase = await createSupabaseServer();
@@ -35,7 +48,6 @@ export default async function EditAgreementPage({
       car_id,
       date_start,
       date_end,
-      booking_duration_days,
       total_price,
       deposit_price,
       agreement_url
@@ -45,6 +57,10 @@ export default async function EditAgreementPage({
     .maybeSingle();
 
   if (error || !row) return notFound();
+
+  // ✅ Use helper to split timestamps
+  const startParts = splitIso(row.date_start);
+  const endParts = splitIso(row.date_end);
 
   return (
     <AgreementForm
@@ -56,8 +72,13 @@ export default async function EditAgreementPage({
         mobile: row.mobile ?? "",
         status: row.status ?? "New",
         car_id: row.car_id ?? "",
-        date_start: row.date_start ?? "",
-        date_end: row.date_end ?? "",
+        
+        // Pass split parts
+        date_start: startParts.date,
+        start_time: startParts.time,
+        date_end: endParts.date,
+        end_time: endParts.time,
+
         total_price: row.total_price ?? "0",
         deposit_price: row.deposit_price ?? "0",
         agreement_url: row.agreement_url ?? null,

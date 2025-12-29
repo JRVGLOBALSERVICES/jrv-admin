@@ -64,8 +64,8 @@ export default function MarketingTrackerClient({
           <div className="text-xs opacity-70">Total: {meta.total} • Page {page} / {totalPages}</div>
         </div>
         <div className="flex items-center gap-2">
-          <Button sound="on" haptics="on"onClick={clear} variant="secondary" size="sm">Clear</Button>
-          <Button sound="on" haptics="on"onClick={apply} size="sm">Apply</Button>
+          <Button onClick={clear} variant="secondary" size="sm">Clear</Button>
+          <Button onClick={apply} size="sm">Apply</Button>
         </div>
       </div>
 
@@ -97,8 +97,8 @@ export default function MarketingTrackerClient({
       </div>
 
       <div className="flex items-center gap-2 justify-end">
-        <Button sound="on" haptics="on"onClick={() => router.push(prevUrl)} disabled={page <= 1} variant="secondary" size="sm">Prev</Button>
-        <Button sound="on" haptics="on"onClick={() => router.push(nextUrl)} disabled={page >= totalPages} variant="secondary" size="sm">Next</Button>
+        <Button onClick={() => router.push(prevUrl)} disabled={page <= 1} variant="secondary" size="sm">Prev</Button>
+        <Button onClick={() => router.push(nextUrl)} disabled={page >= totalPages} variant="secondary" size="sm">Next</Button>
       </div>
     </div>
   );

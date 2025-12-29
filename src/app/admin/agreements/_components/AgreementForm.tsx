@@ -163,11 +163,15 @@ export function AgreementForm({
     return m.startsWith("+") ? m : `+${m}`;
   });
 
-  const [startDate, setStartDate] = useState(initial?.date_start ?? "");
+  const [startDate, setStartDate] = useState(
+    (initial?.date_start ?? "").slice(0, 10)
+  );
   const [startTime, setStartTime] = useState(
     initial?.start_time ?? nowTimeHHmm()
   );
-  const [endDate, setEndDate] = useState(initial?.date_end ?? "");
+  const [endDate, setEndDate] = useState(
+    (initial?.date_end ?? "").slice(0, 10)
+  );
   const [endTime, setEndTime] = useState(initial?.end_time ?? nowTimeHHmm());
 
   const [total, setTotal] = useState(String(initial?.total_price ?? "0"));
@@ -188,9 +192,9 @@ export function AgreementForm({
       customerName: initial?.customer_name ?? "",
       idNumber: initial?.id_number ?? "",
       mobile: (initial?.mobile ?? "").toString(),
-      startDate: initial?.date_start ?? "",
+      startDate: (initial?.date_start ?? "").slice(0, 10),
       startTime: initial?.start_time ?? "",
-      endDate: initial?.date_end ?? "",
+      endDate: (initial?.date_end ?? "").slice(0, 10),
       endTime: initial?.end_time ?? "",
       total: String(initial?.total_price ?? "0"),
       deposit: String(initial?.deposit_price ?? "0"),
@@ -218,8 +222,21 @@ export function AgreementForm({
   const carLabel = (selectedCar?.car_label ?? "").trim();
   const catalogId = selectedCar?.catalog_id ?? null;
 
-  const startIso = startDate ? `${startDate}T${startTime}:00` : "";
-  const endIso = endDate ? `${endDate}T${endTime}:00` : "";
+  // ✅✅✅ THIS IS THE FIX ✅✅✅
+  // Instead of sending a raw string, we create a Date object and convert to ISO (UTC)
+  const startIso = useMemo(() => {
+    if (!startDate || !startTime) return "";
+    const d = new Date(`${startDate}T${startTime}:00`); 
+    return !isNaN(d.getTime()) ? d.toISOString() : ""; 
+  }, [startDate, startTime]);
+
+  const endIso = useMemo(() => {
+    if (!endDate || !endTime) return "";
+    const d = new Date(`${endDate}T${endTime}:00`);
+    return !isNaN(d.getTime()) ? d.toISOString() : "";
+  }, [endDate, endTime]);
+  // ✅✅✅ END FIX ✅✅✅
+
   const durationDays = startIso && endIso ? diffDays(startIso, endIso) : 0;
 
   useEffect(() => {
@@ -578,9 +595,10 @@ export function AgreementForm({
         <div className="grid md:grid-cols-4 gap-3">
           <div>
             <div className="text-xs opacity-60 mb-1">Total (RM)</div>
+            {/* Green Price */}
             <input
               type="number"
-              className="w-full border rounded-lg px-3 py-2"
+              className="w-full border rounded-lg px-3 py-2 font-bold text-green-700"
               value={total}
               onChange={(e) => {
                 setTotalTouched(true);
@@ -659,7 +677,7 @@ export function AgreementForm({
         </div>
 
         <div className="flex gap-2 justify-end">
-          <Button sound="on" haptics="on"variant="secondary" onClick={preview} loading={busy}>
+          <Button variant="secondary" onClick={preview} loading={busy}>
             Preview PDF
           </Button>
         </div>
@@ -681,7 +699,7 @@ export function AgreementForm({
                 >
                   Close
                 </Button>
-                <Button sound="on" haptics="on"onClick={confirm} loading={busy}>
+                <Button onClick={confirm} loading={busy}>
                   Confirm & Send WhatsApp
                 </Button>
               </div>

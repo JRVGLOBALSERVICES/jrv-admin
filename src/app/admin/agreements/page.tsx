@@ -1,4 +1,5 @@
-import AgreementsClient from "./AgreementsClient";
+import { Suspense } from "react";
+import AgreementsClient from "./_components/AgreementsClient";
 import { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 
@@ -7,8 +8,14 @@ export const metadata: Metadata = pageMetadata({
   description:
     "Manage agreements, including booking details and car information.",
   path: "/admin/agreements",
-  index: false, // ✅ admin pages should not be indexed
+  index: false, 
 });
-export default async function AgreementsPage() {
-  return <AgreementsClient />;
+
+export default function AgreementsPage() {
+  return (
+    // ✅ FIX: Wrapped in Suspense to handle searchParams during build
+    <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading agreements...</div>}>
+      <AgreementsClient />
+    </Suspense>
+  );
 }
