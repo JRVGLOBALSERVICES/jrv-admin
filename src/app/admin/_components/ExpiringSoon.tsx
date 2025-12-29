@@ -101,7 +101,6 @@ export default function ExpiringSoon({
       ) : (
         <div className="divide-y divide-gray-100">
           {sorted.map((r) => {
-            console.log(r)
             const endMs = r.date_end ? new Date(r.date_end).getTime() : 0;
             const ms = Math.max(0, endMs - nowMs);
             const hoursLeft = ms / (1000 * 60 * 60);
