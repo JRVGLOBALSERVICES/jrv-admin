@@ -659,7 +659,7 @@ export function AgreementForm({
         </div>
 
         <div className="flex gap-2 justify-end">
-          <Button variant="secondary" onClick={preview} loading={busy}>
+          <Button sound="on" haptics="on"variant="secondary" onClick={preview} loading={busy}>
             Preview PDF
           </Button>
         </div>
@@ -681,7 +681,7 @@ export function AgreementForm({
                 >
                   Close
                 </Button>
-                <Button onClick={confirm} loading={busy}>
+                <Button sound="on" haptics="on"onClick={confirm} loading={busy}>
                   Confirm & Send WhatsApp
                 </Button>
               </div>

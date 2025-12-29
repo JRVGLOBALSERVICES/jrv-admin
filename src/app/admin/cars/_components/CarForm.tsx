@@ -704,7 +704,7 @@ export function CarForm({
           </div>
         </div>
 
-        <Button loading={saving} onClick={save} className="w-full">
+        <Button sound="on" haptics="on"loading={saving} onClick={save} className="w-full">
           {mode === "edit" ? "Update Car" : "Create Car"}
         </Button>
       </Card>

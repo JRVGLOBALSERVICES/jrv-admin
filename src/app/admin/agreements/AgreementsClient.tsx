@@ -125,7 +125,7 @@ export default function AgreementsClient() {
 
         <div className="flex gap-2">
           <Link href="/admin/agreements/new">
-            <Button type="button" variant="primary" sound="on">
+            <Button sound="on" haptics="on"type="button" variant="primary">
               + New
             </Button>
           </Link>
@@ -183,10 +183,10 @@ export default function AgreementsClient() {
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button variant="secondary" onClick={loadFilters}>
+          <Button sound="on" haptics="on"variant="secondary" onClick={loadFilters}>
             Refresh Filters
           </Button>
-          <Button variant="secondary" onClick={reset} disabled={!canReset}>
+          <Button sound="on" haptics="on"variant="secondary" onClick={reset} disabled={!canReset}>
             Reset
           </Button>
         </div>

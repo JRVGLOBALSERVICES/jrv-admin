@@ -80,7 +80,7 @@ export default function LoginPage() {
 
           {err ? <div className="text-sm text-red-600">{err}</div> : null}
 
-          <Button sound="on" type="submit" loading={loading} className="w-full">
+          <Button sound="on" haptics="on"type="submit" loading={loading} className="w-full">
             Sign in
           </Button>
 
