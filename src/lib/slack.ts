@@ -3,7 +3,11 @@
 const APP_TZ = "Asia/Kuala_Lumpur";
 
 export async function sendSlackMessage(webhookUrl: string, text: string) {
-  if (process.env.ENABLE_SLACK !== "true") return;
+  // ✅ Do NOT gate here — caller decides when to send.
+  if (!webhookUrl) {
+    console.error("Slack webhook missing");
+    return;
+  }
 
   try {
     const res = await fetch(webhookUrl, {
@@ -11,6 +15,7 @@ export async function sendSlackMessage(webhookUrl: string, text: string) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text }),
     });
+
     if (!res.ok) {
       console.error("Slack error:", await res.text());
     }
@@ -20,7 +25,6 @@ export async function sendSlackMessage(webhookUrl: string, text: string) {
 }
 
 function fmtMYDateTime(d: Date) {
-  // Example: "30 Dec, 02:15 AM"
   return new Intl.DateTimeFormat("en-MY", {
     timeZone: APP_TZ,
     day: "2-digit",
@@ -38,14 +42,12 @@ export function buildReminderText(
   phone: string,
   isExpired: boolean
 ) {
-  // 1) Clean phone + WhatsApp link
   const cleanPhone = (phone || "").replace(/\D/g, "");
   const whatsappLink = cleanPhone
     ? `<https://wa.me/${cleanPhone}|${phone}>`
     : phone;
 
-  // 2) Force Malaysia timezone for both date + time
-  const whenStr = fmtMYDateTime(endTime); // "30 Dec, 02:15 AM"
+  const whenStr = fmtMYDateTime(endTime);
 
   const modelHighlighted = `\`${carModel}\``;
   const plateHighlighted = `\`${plate}\``;
