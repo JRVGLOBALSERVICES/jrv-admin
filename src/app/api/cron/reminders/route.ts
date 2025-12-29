@@ -17,11 +17,16 @@ const CHECKS = [
   { minutes: 0, label: "EXPIRED" },
 ];
 
-// Window + dedupe
-const WINDOW_MINUTES = Number(process.env.REMINDER_WINDOW_MINUTES ?? "5"); // keep 5 by default
+// ✅ For 1-min cron testing: set REMINDER_WINDOW_MINUTES=1
+const WINDOW_MINUTES = Number(process.env.REMINDER_WINDOW_MINUTES ?? "1");
+
+// ✅ Prevent repeated Slack sends if cron runs every minute
 const DEDUPE_COOLDOWN_MINUTES = Number(
   process.env.REMINDER_DEDUPE_COOLDOWN_MINUTES ?? "15"
 );
+
+// ✅ Include New/Edited/etc, exclude terminal statuses
+const EXCLUDED_STATUSES = ["Deleted", "Cancelled", "Completed"];
 
 async function alreadySentRecently(agreementId: string, reminderType: string) {
   const since = new Date(Date.now() - DEDUPE_COOLDOWN_MINUTES * 60 * 1000);
@@ -48,10 +53,12 @@ export async function GET(req: Request) {
   const isTest = searchParams.get("test") === "true";
   const debug = searchParams.get("debug") === "1";
 
+  // 1) Test Slack connection
   if (isTest) {
     if (!REMINDER_WEBHOOK) {
       return NextResponse.json({ error: "No Webhook URL" }, { status: 500 });
     }
+
     await sendSlackMessage(
       REMINDER_WEBHOOK,
       "🔔 *Test Notification*: Connection is working!"
@@ -59,6 +66,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, message: "Test message sent" });
   }
 
+  // 2) Standard Logic
   if (process.env.ENABLE_SLACK !== "true") {
     return NextResponse.json({ ok: true, message: "Disabled" });
   }
@@ -76,8 +84,10 @@ export async function GET(req: Request) {
 
   const debugInfo: any[] = [];
 
+  // --- SLACK NOTIFICATIONS ---
   for (const check of CHECKS) {
     const targetTime = new Date(now.getTime() + check.minutes * 60 * 1000);
+
     const startWindow = new Date(
       targetTime.getTime() - WINDOW_MINUTES * 60 * 1000
     );
@@ -87,8 +97,9 @@ export async function GET(req: Request) {
 
     const { data: agreements, error } = await supabase
       .from("agreements")
-      .select("id, mobile, plate_number, car_type, date_end, status")
-      .eq("status", "Active")
+      .select("id, customer_name, mobile, plate_number, car_type, date_end, status")
+      // ✅ include New/Edited/whatever else, exclude terminal statuses
+      .not("status", "in", `(${EXCLUDED_STATUSES.map((s) => `"${s}"`).join(",")})`)
       .gt("date_end", startWindow.toISOString())
       .lte("date_end", endWindow.toISOString());
 
@@ -108,8 +119,8 @@ export async function GET(req: Request) {
         sample: (agreements ?? []).slice(0, 3).map((a) => ({
           id: a.id,
           plate: a.plate_number,
-          end: a.date_end,
           status: a.status,
+          end: a.date_end,
         })),
       });
     }
@@ -118,6 +129,8 @@ export async function GET(req: Request) {
 
     for (const ag of agreements) {
       const reminderType = check.label;
+
+      // ✅ DEDUPE
       const dup = await alreadySentRecently(ag.id, reminderType);
       if (dup) {
         skippedDuplicate++;
@@ -148,19 +161,22 @@ export async function GET(req: Request) {
     }
   }
 
-  // Cleanup logs
+  // --- CLEANUP ---
   const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
   await supabase
     .from("notification_logs")
     .delete()
     .lt("sent_at", twoDaysAgo.toISOString());
 
-  // Auto-complete
+  // --- AUTO-COMPLETE ---
+  // Buffer so EXPIRED can fire first
   const bufferTime = new Date(now.getTime() - 5 * 60 * 1000);
+
   const { data: expiredList, error: expireError } = await supabase
     .from("agreements")
     .update({ status: "Completed" })
-    .eq("status", "Active")
+    // ✅ same filter here: complete any non-terminal agreements past end time
+    .not("status", "in", `(${EXCLUDED_STATUSES.map((s) => `"${s}"`).join(",")})`)
     .lt("date_end", bufferTime.toISOString())
     .select("id, plate_number");
 
@@ -171,9 +187,11 @@ export async function GET(req: Request) {
     nowISO: now.toISOString(),
     window_minutes: WINDOW_MINUTES,
     dedupe_cooldown_minutes: DEDUPE_COOLDOWN_MINUTES,
+    excluded_statuses: EXCLUDED_STATUSES,
     notifications_sent: sentCount,
     skipped_duplicate: skippedDuplicate,
     auto_completed: expiredList?.length || 0,
+    expired_ids: expiredList?.map((e) => e.id),
     ...(debug ? { debug: debugInfo } : {}),
   });
 }
