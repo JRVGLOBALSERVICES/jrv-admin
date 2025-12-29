@@ -134,6 +134,14 @@ export function Sidebar() {
           <Icon d="M3 10.5h6V21H3V10.5Zm12 0h6V21h-6V10.5ZM3 3h6v6H3V3Zm12 0h6v6h-6V3Z" />
         ),
       },
+      // ✅ NEW: Revenue Analytics
+      {
+        href: "/admin/revenue",
+        label: "Revenue Analytics",
+        icon: (
+          <Icon d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        ),
+      },
       {
         href: "/admin/agreements",
         label: "Agreements",
@@ -153,7 +161,6 @@ export function Sidebar() {
         label: "Catalog",
         icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
       },
-      // ✅ NEW: FB Posts & Videos (Clapperboard/Video Icon)
       {
         href: "/admin/posts",
         label: "FB Posts & Videos",
@@ -174,7 +181,6 @@ export function Sidebar() {
           <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" />
         ),
       },
-      // ✅ NEW: Marketing Tracker (Megaphone Icon)
       {
         href: "/admin/marketing-tracker",
         label: "Marketing Tracker",
@@ -211,7 +217,6 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile top bar */}
       <div className="md:hidden flex items-center justify-between border-b bg-white px-4 py-3">
         <button
           type="button"
@@ -245,7 +250,6 @@ export function Sidebar() {
         ].join(" ")}
       >
         <div className="flex h-full flex-col">
-          {/* Header */}
           <div className="flex items-center justify-between gap-2 border-b px-3 py-3">
             <Link
               href="/admin"
@@ -293,7 +297,6 @@ export function Sidebar() {
             </button>
           </div>
 
-          {/* Nav */}
           <nav className="flex-1 space-y-3 px-2 py-4">
             <Group
               title="Main"
@@ -313,7 +316,6 @@ export function Sidebar() {
             )}
           </nav>
 
-          {/* Logout */}
           <form action="/admin/logout" method="post" className="border-t p-3">
             <Button
               type="submit"
