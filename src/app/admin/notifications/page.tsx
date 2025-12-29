@@ -1,8 +1,9 @@
+// src/app/admin/notifications/page.tsx
+
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { pageMetadata } from "@/lib/seo";
 import NotificationControls from "./_components/NotificationControls";
-import { Button } from "@/components/ui/Button";
 
 export const metadata = pageMetadata({
   title: "Notification Logs",
@@ -10,9 +11,12 @@ export const metadata = pageMetadata({
   path: "/admin/notifications",
 });
 
-// ... (Keep existing helper functions: fmtDate, getRelativeTime, type QueueItem) ...
+const APP_TZ = "Asia/Kuala_Lumpur";
+
 function fmtDate(d: string) {
+  // ✅ Force Malaysia time, consistent on Vercel + localhost
   return new Date(d).toLocaleString("en-MY", {
+    timeZone: APP_TZ,
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -22,6 +26,7 @@ function fmtDate(d: string) {
 }
 
 function getRelativeTime(d: string) {
+  // ✅ This is correct (epoch ms math works everywhere)
   const diff = new Date(d).getTime() - Date.now();
   const mins = Math.ceil(diff / 60000);
   const hours = Math.ceil(mins / 60);
@@ -48,14 +53,14 @@ export default async function NotificationsPage() {
 
   const supabase = await createSupabaseServer();
 
-  // 1. Fetch Logs
+  // 1) Fetch Logs
   const { data: logs } = await supabase
     .from("notification_logs")
     .select("*")
     .order("sent_at", { ascending: false })
     .limit(100);
 
-  // 2. Fetch Active Agreements
+  // 2) Fetch Active Agreements (48h window)
   const now = new Date();
   const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
@@ -68,7 +73,7 @@ export default async function NotificationsPage() {
     .lte("date_end", in48h.toISOString())
     .order("date_end", { ascending: true });
 
-  // 3. Generate Queue
+  // 3) Generate Queue
   const upcomingQueue: QueueItem[] = [];
   const checkpoints = [120, 60, 30, 10, 0];
 
@@ -99,6 +104,7 @@ export default async function NotificationsPage() {
       }
     });
   }
+
   upcomingQueue.sort(
     (a, b) =>
       new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime()
@@ -106,22 +112,19 @@ export default async function NotificationsPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto">
-      {/* Header with Buttons */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Notification Center</h1>
           <p className="text-sm text-gray-500">
-            Monitoring 48h Notification Window
+            Monitoring 48h Notification Window (MYT)
           </p>
         </div>
 
-        {/* ✅ Insert Controls Here */}
         <NotificationControls />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* ... (Keep existing Left/Right Columns exactly as before) ... */}
-
         {/* LEFT: SENT LOGS */}
         <div className="bg-white border rounded-xl shadow-sm overflow-hidden flex flex-col h-150">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
@@ -131,6 +134,7 @@ export default async function NotificationsPage() {
             </h3>
             <span className="text-xs text-gray-500">Last 48 Hours</span>
           </div>
+
           <div className="flex-1 overflow-y-auto p-0">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0 z-10">
@@ -181,6 +185,7 @@ export default async function NotificationsPage() {
             </h3>
             <span className="text-xs text-gray-500">Next 48 Hours</span>
           </div>
+
           <div className="flex-1 overflow-y-auto p-0">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0 z-10">
