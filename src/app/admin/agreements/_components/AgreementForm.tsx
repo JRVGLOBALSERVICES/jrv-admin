@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { normalizePhoneInternational } from "@/lib/phone";
 import { useRole } from "@/lib/auth/useRole";
+import { PdfViewer } from "./PdfViewer";
 
 type CarRow = {
   id: string;
@@ -668,15 +669,22 @@ export function AgreementForm({
               </div>
             </div>
 
-            <div className="p-3">
+            <div className="p-3 max-h-[80vh] overflow-y-auto bg-gray-50">
               {previewUrl ? (
-                <div className="AgreementViewer">
-                  <iframe
-                    title="Agreement PDF"
-                    src={previewUrl}
-                    className="AgreementFrame"
-                  />
-                </div>
+                <>
+                  <PdfViewer url={previewUrl} />
+
+                  <div className="text-center mt-4 mb-2">
+                    <a
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 underline"
+                    >
+                      Open PDF in new tab
+                    </a>
+                  </div>
+                </>
               ) : (
                 <div className="p-6 text-center opacity-60">
                   Generating preview…
@@ -686,31 +694,6 @@ export function AgreementForm({
           </div>
         </div>
       ) : null}
-
-      <style jsx global>{`
-        .AgreementViewer {
-          width: 100%;
-          height: 90vh;
-          display: flex;
-          justify-content: center;
-        }
-        .AgreementFrame {
-          width: min(100%, 900px);
-          aspect-ratio: 210 / 297;
-          height: auto;
-          border: 1px solid rgba(0, 0, 0, 0.12);
-          border-radius: 12px;
-          background: #fff;
-        }
-        @media (max-width: 768px) {
-          .AgreementViewer {
-            height: 80vh;
-          }
-          .AgreementFrame {
-            width: 95vw;
-          }
-        }
-      `}</style>
     </div>
   );
 }
