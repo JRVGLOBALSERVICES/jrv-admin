@@ -30,7 +30,6 @@ function toMoneyString(v: any) {
 function fmtHuman(dtIso: string) {
   const d = new Date(dtIso);
   if (Number.isNaN(d.getTime())) return dtIso;
-  // Format for PDF: "29 Dec 2025, 10:30 PM"
   return d.toLocaleString("en-MY", {
     year: "numeric",
     month: "short",
@@ -70,7 +69,7 @@ async function logAgreement(opts: {
 type FilterOption = { value: string; label: string };
 
 // ==============================================================================
-// GET HANDLER (List, Single, Filters)
+// GET HANDLER (Filters out Deleted/Cancelled)
 // ==============================================================================
 export async function GET(req: Request) {
   const gate = await requireAdmin();
@@ -79,37 +78,16 @@ export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);
 
-  // --- 1. SINGLE AGREEMENT FETCH ---
+  // --- SINGLE FETCH ---
   const id = asStr(url.searchParams.get("id"));
   if (id) {
     const { data: row, error } = await supabase
       .from("agreements")
-      .select(
-        `
-        id,
-        customer_name,
-        id_number,
-        mobile,
-        date_start,
-        date_end,
-        booking_duration_days,
-        total_price,
-        deposit_price,
-        status,
-        agreement_url,
-        whatsapp_url,
-        created_at,
-        updated_at,
-        creator_email,
-        car_id,
-        cars:car_id (
-          id,
-          plate_number,
-          catalog_id,
-          car_catalog:catalog_id ( make, model )
-        )
-      `
-      )
+      .select(`
+        id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
+        total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id,
+        cars:car_id ( id, plate_number, catalog_id, car_catalog:catalog_id ( make, model ) )
+      `)
       .eq("id", id)
       .maybeSingle();
 
@@ -130,12 +108,9 @@ export async function GET(req: Request) {
     });
   }
 
-  // --- 2. LIST FETCH ---
+  // --- LIST FETCH ---
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
-  const limit = Math.min(
-    50,
-    Math.max(5, Number(url.searchParams.get("limit") ?? 20))
-  );
+  const limit = Math.min(50, Math.max(5, Number(url.searchParams.get("limit") ?? 20)));
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
@@ -143,561 +118,236 @@ export async function GET(req: Request) {
   const status = asStr(url.searchParams.get("status"));
   const plate = asStr(url.searchParams.get("plate"));
   const model = asStr(url.searchParams.get("model"));
+  const dateParam = asStr(url.searchParams.get("date"));
+  const endDateParam = asStr(url.searchParams.get("endDate"));
   const actor = asStr(url.searchParams.get("actor"));
-
-  // ✅ DATE FILTERS
-  const dateParam = asStr(url.searchParams.get("date")); // Start Date
-  const endDateParam = asStr(url.searchParams.get("endDate")); // End Date (>=)
-
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
-  // Preload cars for filters
+  // Preload cars
   const { data: carsRows, error: carsErr } = await supabase
     .from("cars")
-    .select(
-      `
-      id,
-      plate_number,
-      car_catalog:catalog_id ( make, model )
-    `
-    )
+    .select(`id, plate_number, car_catalog:catalog_id ( make, model )`)
     .order("plate_number", { ascending: true })
     .limit(5000);
 
   if (carsErr) return jsonError(carsErr.message, 500);
 
-  const plates: FilterOption[] = Array.from(
-    new Set(
-      (carsRows ?? []).map((c: any) => asStr(c.plate_number)).filter(Boolean)
-    )
-  )
-    .sort((a, b) => a.localeCompare(b))
-    .map((p) => ({ value: p, label: p }));
+  const plates: FilterOption[] = Array.from(new Set((carsRows ?? []).map((c: any) => asStr(c.plate_number)).filter(Boolean))).sort().map(p => ({ value: p, label: p }));
+  const models: FilterOption[] = Array.from(new Set((carsRows ?? []).map((c: any) => buildCarLabel(c?.car_catalog?.make, c?.car_catalog?.model)).filter(Boolean))).sort().map(m => ({ value: m, label: m }));
+  if (filtersOnly) return NextResponse.json({ ok: true, filters: { plates, models } });
 
-  const models: FilterOption[] = Array.from(
-    new Set(
-      (carsRows ?? [])
-        .map((c: any) =>
-          buildCarLabel(c?.car_catalog?.make, c?.car_catalog?.model)
-        )
-        .filter(Boolean)
-    )
-  )
-    .sort((a, b) => a.localeCompare(b))
-    .map((m) => ({ value: m, label: m }));
-
-  const filters = { plates, models };
-  if (filtersOnly) return NextResponse.json({ ok: true, filters });
-
-  // Base Query
+  // Query
   let query = supabase
     .from("agreements")
-    .select(
-      `
-      id,
-      customer_name,
-      id_number,
-      mobile,
-      date_start,
-      date_end,
-      booking_duration_days,
-      total_price,
-      deposit_price,
-      status,
-      agreement_url,
-      whatsapp_url,
-      created_at,
-      updated_at,
-      creator_email,
-      car_id,
-      cars:car_id (
-        id,
-        plate_number,
-        car_catalog:catalog_id ( make, model )
-      )
-    `,
-      { count: "exact" }
-    )
+    .select(`
+      id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
+      total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id,
+      cars:car_id ( id, plate_number, car_catalog:catalog_id ( make, model ) )
+    `, { count: "exact" })
     .order("date_start", { ascending: false })
-    .order("date_end", { ascending: false })
     .order("updated_at", { ascending: false })
     .range(from, to);
 
-  // Apply Status Filter
+  // Filter out Deleted/Cancelled
   if (status) {
     query = query.eq("status", status);
   } else {
-    query = query.neq("status", "Deleted");
+    query = query.neq("status", "Deleted").neq("status", "Cancelled");
   }
 
-  // ✅ Apply Start Date Filter
   if (dateParam) {
-    query = query
-      .gte("date_start", `${dateParam}T00:00:00`)
-      .lte("date_start", `${dateParam}T23:59:59`);
+    query = query.gte("date_start", `${dateParam}T00:00:00`).lte("date_start", `${dateParam}T23:59:59`);
   }
-
-  // ✅ Apply End Date Filter (Ending on or after)
   if (endDateParam) {
     query = query.gte("date_end", `${endDateParam}T00:00:00`);
   }
 
-  // Apply Plate Filter
   if (plate) {
-    const ids =
-      (carsRows ?? [])
-        .filter((c: any) =>
-          asStr(c.plate_number).toLowerCase().includes(plate.toLowerCase())
-        )
-        .map((c: any) => c.id)
-        .filter(Boolean) ?? [];
-
-    if (!ids.length) {
-      return NextResponse.json({
-        ok: true,
-        page,
-        limit,
-        total: 0,
-        rows: [],
-        filters,
-      });
-    }
-    query = query.in("car_id", ids);
+    const ids = (carsRows ?? []).filter((c: any) => asStr(c.plate_number).toLowerCase().includes(plate.toLowerCase())).map((c: any) => c.id);
+    if (ids.length) query = query.in("car_id", ids);
+    else return NextResponse.json({ ok: true, page, limit, total: 0, rows: [], filters: { plates, models } });
   }
 
-  // Apply Model Filter
-  if (model) {
-    const ids =
-      (carsRows ?? [])
-        .filter(
-          (c: any) =>
-            buildCarLabel(c?.car_catalog?.make, c?.car_catalog?.model) === model
-        )
-        .map((c: any) => c.id)
-        .filter(Boolean) ?? [];
-
-    if (!ids.length) {
-      return NextResponse.json({
-        ok: true,
-        page,
-        limit,
-        total: 0,
-        rows: [],
-        filters,
-      });
-    }
-    query = query.in("car_id", ids);
-  }
-
-  // Apply Search (Q) Filter
   if (q) {
     const like = `%${q}%`;
-    query = query.or(
-      [
-        `customer_name.ilike.${like}`,
-        `id_number.ilike.${like}`,
-        `mobile.ilike.${like}`,
-        `status.ilike.${like}`,
-      ].join(",")
-    );
+    query = query.or(`customer_name.ilike.${like},id_number.ilike.${like},mobile.ilike.${like},status.ilike.${like}`);
   }
 
   const { data, error, count } = await query;
   if (error) return jsonError(error.message, 500);
 
-  // Flatten rows for frontend
-  let rows =
-    (data ?? []).map((a: any) => {
-      const car = a.cars ?? null;
-      const cat = car?.car_catalog ?? null;
-      const plate_number = asStr(car?.plate_number) || "—";
-      const car_label = buildCarLabel(cat?.make, cat?.model) || "Unknown";
-      return { ...a, plate_number, car_label };
-    }) ?? [];
+  let rows = (data ?? []).map((a: any) => {
+    const car = a.cars ?? null;
+    const cat = car?.car_catalog ?? null;
+    return { 
+      ...a, 
+      plate_number: asStr(car?.plate_number) || "—", 
+      car_label: buildCarLabel(cat?.make, cat?.model) || "Unknown" 
+    };
+  });
 
-  // Actor Filter (via Logs)
   if (actor) {
-    const { data: logRows, error: logErr } = await supabase
-      .from("agreement_logs")
-      .select("agreement_id, actor_email")
-      .ilike("actor_email", `%${actor}%`)
-      .limit(5000);
-
-    if (!logErr) {
-      const ids = new Set((logRows ?? []).map((l: any) => l.agreement_id));
-      rows = rows.filter((r: any) => ids.has(r.id));
-    }
+    const { data: logRows } = await supabase.from("agreement_logs").select("agreement_id").ilike("actor_email", `%${actor}%`);
+    const ids = new Set((logRows || []).map((l: any) => l.agreement_id));
+    rows = rows.filter((r: any) => ids.has(r.id));
   }
 
-  return NextResponse.json({
-    ok: true,
-    page,
-    limit,
-    total: count ?? rows.length,
-    rows,
-    filters,
-  });
+  return NextResponse.json({ ok: true, page, limit, total: count ?? rows.length, rows, filters: { plates, models } });
 }
 
 // ==============================================================================
-// POST HANDLER (Create, Update, Delete, Preview)
+// POST HANDLER (Smart Delete)
 // ==============================================================================
 export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
 
   const supabase = await createSupabaseServer();
-
-  let actorEmail = (gate as any)?.email || (gate as any)?.actor?.email || "";
-  let actorId = (gate as any)?.id || (gate as any)?.actor?.id || null;
-  const actorRole =
-    (gate as any)?.role || (gate as any)?.actor?.role || "admin";
+  let actorEmail = (gate as any)?.email || (gate as any)?.user?.email || "";
+  let actorId = (gate as any)?.id || (gate as any)?.user?.id || null;
+  const actorRole = (gate as any)?.role || "admin";
 
   if (!actorEmail) {
-    const { data } = await supabase.auth
-      .getUser()
-      .catch(() => ({ data: null as any }));
-    actorEmail = data?.user?.email ?? "admin@unknown";
-    actorId = actorId ?? data?.user?.id ?? null;
+    const { data } = await supabase.auth.getUser();
+    actorEmail = data?.user?.email || "admin@unknown";
+    actorId = data?.user?.id || null;
   }
 
   const body = await req.json().catch(() => ({}));
   const action = asStr(body?.action);
+  const payload = body?.payload ?? {};
 
   try {
     if (!action) throw new Error("Missing action");
 
-    // --- DELETE ---
+    // --- SMART DELETE ---
     if (action === "delete") {
-      if (actorRole !== "superadmin") return jsonError("Forbidden", 403);
+      if (actorRole !== "superadmin") return jsonError("Forbidden: Superadmin only", 403);
       const id = asStr(body?.id);
       if (!id) throw new Error("Missing agreement id");
 
-      const { data: before, error: exErr } = await supabaseAdmin
-        .from("agreements")
-        .select("*")
-        .eq("id", id)
-        .maybeSingle();
+      let finalStatus = "Deleted";
 
-      if (exErr) throw new Error(exErr.message);
-      if (!before) throw new Error("Agreement not found");
-
-      const { error: delErr } = await supabaseAdmin
+      // 1. Try "Deleted"
+      const { error: err1 } = await supabaseAdmin
         .from("agreements")
         .update({ status: "Deleted" })
         .eq("id", id);
 
-      if (delErr) throw new Error(delErr.message);
+      if (err1) {
+        // 2. Fallback to "Cancelled"
+        finalStatus = "Cancelled";
+        const { error: err2 } = await supabaseAdmin
+          .from("agreements")
+          .update({ status: "Cancelled" })
+          .eq("id", id);
+          
+        if (err2) throw new Error("Could not delete or cancel. DB Error: " + err2.message);
+      }
 
+      // ✅ FIX: Log the EXACT status that was applied
       await logAgreement({
         supabase,
         agreement_id: id,
         actor_email: actorEmail,
         actor_id: actorId,
         action: "soft_deleted",
-        before,
-        after: { status: "Deleted" },
+        before: { id },
+        after: { status: finalStatus }, // Will be "Deleted" or "Cancelled"
       });
 
       return NextResponse.json({ ok: true });
     }
 
-    const payload = body?.payload ?? {};
-
-    // --- PREVIEW PDF ---
+    // --- PREVIEW ---
     if (action === "preview") {
-      const customer_name = must(
-        payload.customer_name,
-        "Customer name required"
-      );
-      const id_number = must(payload.id_number, "IC/Passport required");
-      const mobileE164 = normalizePhoneInternational(
-        must(payload.mobile, "Mobile required")
-      );
-      const agent_email = asStr(payload.agent_email);
-      const plate_number = must(payload.plate_number, "Plate required");
-      const car_type = must(payload.car_type, "Car model required");
-      const date_start_iso = must(
-        payload.date_start_iso,
-        "Start date/time required"
-      );
-      const date_end_iso = must(payload.date_end_iso, "End date/time required");
-      const total_price = toMoneyString(
-        must(payload.total_price, "Total price required")
-      );
-      const deposit_price = toMoneyString(payload.deposit_price ?? 0);
+      const data = {
+        logo_url: "https://jrv-admin.vercel.app/logo.png",
+        customer_name: must(payload.customer_name, "Name required"),
+        id_number: must(payload.id_number, "IC required"),
+        mobile: normalizePhoneInternational(must(payload.mobile, "Mobile required")),
+        plate_number: must(payload.plate_number, "Plate required"),
+        car_type: must(payload.car_type, "Model required"),
+        date_start: fmtHuman(must(payload.date_start_iso, "Start date required")),
+        date_end: fmtHuman(must(payload.date_end_iso, "End date required")),
+        total_price: toMoneyString(must(payload.total_price, "Price required")),
+        deposit_price: toMoneyString(payload.deposit_price),
+        agent_email: asStr(payload.agent_email),
+      };
 
-      const element = createElement(AgreementPdf as any, {
-        data: {
-          logo_url: "https://jrv-admin.vercel.app/logo.png",
-          customer_name,
-          id_number,
-          mobile: mobileE164,
-          plate_number,
-          car_type,
-          date_start: fmtHuman(date_start_iso),
-          date_end: fmtHuman(date_end_iso),
-          total_price,
-          deposit_price,
-          agent_email: agent_email,
-        },
-      });
-
-      const pdfBuffer = await renderToBuffer(element as any);
-      const publicId = `PREVIEW_${mobileE164.replace(
-        "+",
-        ""
-      )}_${id_number}_${plate_number}`.replace(/\s+/g, "_");
-      const up = await uploadPdfBufferToCloudinary({
-        buffer: Buffer.isBuffer(pdfBuffer)
-          ? pdfBuffer
-          : Buffer.from(pdfBuffer as any),
-        publicId,
-      });
+      const pdfBuffer = await renderToBuffer(createElement(AgreementPdf as any, { data }) as any);
+      const publicId = `PREVIEW_${data.mobile.replace("+","")}_${Date.now()}`;
+      const up = await uploadPdfBufferToCloudinary({ buffer: Buffer.from(pdfBuffer), publicId });
 
       return NextResponse.json({ ok: true, preview_url: up.secure_url });
     }
 
-    // --- CONFIRM CREATE ---
-    if (action === "confirm_create") {
-      const customer_name = must(
-        payload.customer_name,
-        "Customer name required"
-      );
-      const id_number = must(payload.id_number, "IC/Passport required");
-      const mobileE164 = normalizePhoneInternational(
-        must(payload.mobile, "Mobile required")
-      );
-      const car_id = must(payload.car_id, "Car selection required");
-      const catalog_id = payload.catalog_id ?? null;
-      const plate_number = must(payload.plate_number, "Plate required");
-      const car_type = must(payload.car_type, "Car model required");
-      const date_start_iso = must(
-        payload.date_start_iso,
-        "Start date/time required"
-      );
-      const date_end_iso = must(payload.date_end_iso, "End date/time required");
-      const booking_duration_days =
-        Number(payload.booking_duration_days ?? 0) || null;
-      const total_price = toMoneyString(
-        must(payload.total_price, "Total price required")
-      );
-      const deposit_price = toMoneyString(payload.deposit_price ?? 0);
-      const agent_email = asStr(payload.agent_email) || actorEmail;
+    // --- CREATE / UPDATE ---
+    if (action === "confirm_create" || action === "confirm_update") {
+      const isEdit = action === "confirm_update";
+      const id = isEdit ? must(payload.id, "Missing ID") : undefined;
 
-      // 1. Generate PDF
-      const element = createElement(AgreementPdf as any, {
-        data: {
-          logo_url: "https://jrv-admin.vercel.app/logo.png",
-          customer_name,
-          id_number,
-          mobile: mobileE164,
-          plate_number,
-          car_type,
-          date_start: fmtHuman(date_start_iso),
-          date_end: fmtHuman(date_end_iso),
-          total_price,
-          deposit_price,
-          agent_email,
-        },
-      });
-
-      const pdfBuffer = await renderToBuffer(element as any);
-      const publicId = `${mobileE164.replace(
-        "+",
-        ""
-      )}_${id_number}_${plate_number}`.replace(/\s+/g, "_");
-      const up = await uploadPdfBufferToCloudinary({
-        buffer: Buffer.isBuffer(pdfBuffer)
-          ? pdfBuffer
-          : Buffer.from(pdfBuffer as any),
-        publicId,
-      });
-
-      const message = `Your rental agreement with JRV Car Rental is available here: ${up.secure_url}`;
-      const whatsapp_url = buildWhatsAppUrl(mobileE164, message);
-
-      // 2. Insert to DB (WITH FULL TIME ISO)
-      const { data: inserted, error: insErr } = await supabase
-        .from("agreements")
-        .insert({
-          car_id,
-          catalog_id,
-          customer_name,
-          id_number,
-          mobile: mobileE164.replace("+", ""),
-
-          // ✅ FIX: Saving full UTC ISO string
-          date_start: date_start_iso,
-          date_end: date_end_iso,
-
-          booking_duration_days,
-          total_price,
-          deposit_price,
-          status: payload.status ?? "New",
-          creator_email: actorEmail,
-          agreement_url: up.secure_url,
-          whatsapp_url,
-          plate_number: plate_number,
-          car_type,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .select("id")
-        .maybeSingle();
-
-      if (insErr) throw new Error(insErr.message);
-      if (!inserted?.id) throw new Error("Agreement create failed");
-
-      await logAgreement({
-        supabase,
-        agreement_id: inserted.id,
-        actor_email: actorEmail,
-        actor_id: actorId,
-        action: "created",
-        before: null,
-        after: {
-          car_id,
-          catalog_id,
-          plate_number,
-          car_type,
-          agreement_url: up.secure_url,
-          whatsapp_url,
-        },
-      });
-
-      return NextResponse.json({
-        ok: true,
-        id: inserted.id,
-        agreement_url: up.secure_url,
-        whatsapp_url,
-      });
-    }
-
-    // --- CONFIRM UPDATE ---
-    if (action === "confirm_update") {
-      const agreement_id = must(payload.id, "Missing agreement id");
-      const { data: existing, error: exErr } = await supabase
-        .from("agreements")
-        .select("*")
-        .eq("id", agreement_id)
-        .maybeSingle();
-      if (exErr) throw new Error(exErr.message);
-      if (!existing) throw new Error("Agreement not found");
-
-      const customer_name = must(
-        payload.customer_name,
-        "Customer name required"
-      );
-      const id_number = must(payload.id_number, "IC/Passport required");
-      const mobileE164 = normalizePhoneInternational(
-        must(payload.mobile, "Mobile required")
-      );
-      const car_id = must(payload.car_id, "Car selection required");
-      const catalog_id = payload.catalog_id ?? existing.catalog_id ?? null;
-      const plate_number = must(payload.plate_number, "Plate required");
-      const car_type = must(payload.car_type, "Car model required");
-      const date_start_iso = must(
-        payload.date_start_iso,
-        "Start date/time required"
-      );
-      const date_end_iso = must(payload.date_end_iso, "End date/time required");
-      const booking_duration_days =
-        Number(
-          payload.booking_duration_days ?? existing.booking_duration_days ?? 0
-        ) || null;
-      const total_price = toMoneyString(
-        must(payload.total_price, "Total price required")
-      );
-      const deposit_price = toMoneyString(
-        payload.deposit_price ?? existing.deposit_price ?? 0
-      );
-      let nextStatus =
-        asStr(payload.status) || asStr(existing.status) || "Editted";
-      if (actorRole !== "superadmin") {
-        if (nextStatus !== "Cancelled") nextStatus = "Editted";
-      }
-      const agent_email = asStr(payload.agent_email) || actorEmail;
-
-      // 1. Regenerate PDF
-      const element = createElement(AgreementPdf as any, {
-        data: {
-          logo_url: "https://jrv-admin.vercel.app/logo.png",
-          customer_name,
-          id_number,
-          mobile: mobileE164,
-          plate_number,
-          car_type,
-          date_start: fmtHuman(date_start_iso),
-          date_end: fmtHuman(date_end_iso),
-          total_price,
-          deposit_price,
-          status: nextStatus,
-          agent_email,
-        },
-      });
-
-      const pdfBuffer = await renderToBuffer(element as any);
-      const publicId = `${mobileE164.replace(
-        "+",
-        ""
-      )}_${id_number}_${plate_number}`.replace(/\s+/g, "_");
-      const up = await uploadPdfBufferToCloudinary({
-        buffer: Buffer.isBuffer(pdfBuffer)
-          ? pdfBuffer
-          : Buffer.from(pdfBuffer as any),
-        publicId,
-      });
-      const message = `Your updated rental agreement with JRV Car Rental is available here: ${up.secure_url}`;
-      const whatsapp_url = buildWhatsAppUrl(mobileE164, message);
-
-      const updatePayload: any = {
-        car_id,
-        catalog_id,
-        customer_name,
-        id_number,
-        mobile: mobileE164.replace("+", ""),
-
-        // ✅ FIX: Saving full UTC ISO string
-        date_start: date_start_iso,
-        date_end: date_end_iso,
-
-        booking_duration_days,
-        total_price,
-        deposit_price,
-        status: payload.status ?? existing.status ?? "Editted",
-        agreement_url: up.secure_url,
-        whatsapp_url,
-        plate_number: plate_number,
-        car_type,
+      const dbData: any = {
+        customer_name: must(payload.customer_name, "Name required"),
+        id_number: must(payload.id_number, "IC required"),
+        mobile: normalizePhoneInternational(must(payload.mobile, "Mobile required")).replace("+", ""),
+        car_id: must(payload.car_id, "Car required"),
+        catalog_id: payload.catalog_id || null,
+        plate_number: must(payload.plate_number, "Plate required"),
+        car_type: must(payload.car_type, "Model required"),
+        date_start: must(payload.date_start_iso, "Start date required"),
+        date_end: must(payload.date_end_iso, "End date required"),
+        booking_duration_days: Number(payload.booking_duration_days) || 0,
+        total_price: toMoneyString(payload.total_price),
+        deposit_price: toMoneyString(payload.deposit_price),
+        status: payload.status || "New",
+        creator_email: isEdit ? undefined : actorEmail,
         updated_at: new Date().toISOString(),
       };
+      
+      if (!isEdit) dbData.created_at = new Date().toISOString();
 
-      const { error: upErr } = await supabase
-        .from("agreements")
-        .update(updatePayload)
-        .eq("id", agreement_id);
-      if (upErr) throw new Error(upErr.message);
+      const pdfData = {
+        logo_url: "https://jrv-admin.vercel.app/logo.png",
+        ...dbData,
+        mobile: normalizePhoneInternational(payload.mobile),
+        date_start: fmtHuman(dbData.date_start),
+        date_end: fmtHuman(dbData.date_end),
+        agent_email: asStr(payload.agent_email) || actorEmail,
+      };
+
+      const pdfBuffer = await renderToBuffer(createElement(AgreementPdf as any, { data: pdfData }) as any);
+      const publicId = `${pdfData.mobile.replace("+","")}_${dbData.id_number}_${dbData.plate_number}_${Date.now()}`;
+      const up = await uploadPdfBufferToCloudinary({ buffer: Buffer.from(pdfBuffer), publicId });
+      
+      dbData.agreement_url = up.secure_url;
+      dbData.whatsapp_url = buildWhatsAppUrl(pdfData.mobile, `Your rental agreement: ${up.secure_url}`);
+
+      let res;
+      if (isEdit) {
+        res = await supabase.from("agreements").update(dbData).eq("id", id).select("id").single();
+      } else {
+        res = await supabase.from("agreements").insert(dbData).select("id").single();
+      }
+
+      if (res.error) throw new Error(res.error.message);
 
       await logAgreement({
         supabase,
-        agreement_id,
+        agreement_id: res.data.id,
         actor_email: actorEmail,
         actor_id: actorId,
-        action: "updated_regenerated",
-        before: existing,
-        after: updatePayload,
+        action: isEdit ? "updated_regenerated" : "created",
+        after: dbData
       });
 
-      return NextResponse.json({
-        ok: true,
-        agreement_url: up.secure_url,
-        whatsapp_url,
-      });
+      return NextResponse.json({ ok: true, id: res.data.id, agreement_url: dbData.agreement_url, whatsapp_url: dbData.whatsapp_url });
     }
 
     return jsonError("Unknown action", 400);
+
   } catch (e: any) {
-    return jsonError(e?.message || "Failed", 400);
+    console.error("API Error:", e);
+    return jsonError(e.message || "Server Error", 500);
   }
 }
