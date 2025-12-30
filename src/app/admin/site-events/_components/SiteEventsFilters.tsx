@@ -1,3 +1,4 @@
+// src/app/admin/site-events/_components/SiteEventsFilters.tsx
 "use client";
 
 import { useMemo } from "react";
@@ -31,7 +32,6 @@ export default function SiteEventsFilters({
     if (!value) next.delete(key);
     else next.set(key, value);
 
-    // if switching away from custom, remove from/to (optional)
     if (key === "range" && value !== "custom") {
       next.delete("from");
       next.delete("to");
@@ -42,7 +42,6 @@ export default function SiteEventsFilters({
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-6 gap-3">
-      {/* Range */}
       <div className="lg:col-span-2">
         <label className="text-xs text-gray-500 font-semibold">
           Date Range
@@ -76,7 +75,6 @@ export default function SiteEventsFilters({
         ) : null}
       </div>
 
-      {/* Event */}
       <div>
         <label className="text-xs text-gray-500 font-semibold">Event</label>
         <select
@@ -96,7 +94,6 @@ export default function SiteEventsFilters({
         </select>
       </div>
 
-      {/* Traffic */}
       <div>
         <label className="text-xs text-gray-500 font-semibold">Traffic</label>
         <select
@@ -112,7 +109,6 @@ export default function SiteEventsFilters({
         </select>
       </div>
 
-      {/* Device */}
       <div>
         <label className="text-xs text-gray-500 font-semibold">Device</label>
         <select
@@ -128,7 +124,6 @@ export default function SiteEventsFilters({
         </select>
       </div>
 
-      {/* Path contains */}
       <div>
         <label className="text-xs text-gray-500 font-semibold">
           Path contains
