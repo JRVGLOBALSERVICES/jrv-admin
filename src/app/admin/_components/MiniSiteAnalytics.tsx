@@ -4,7 +4,7 @@ import Link from "next/link";
 
 type TopModel = { key: string; count: number };
 type TopReferrer = { name: string; count: number };
-type TopLocation = { name: string; count: number };
+type TopLoc = { name: string; count: number };
 
 export default function MiniSiteAnalytics({
   activeUsers,
@@ -13,9 +13,9 @@ export default function MiniSiteAnalytics({
   traffic,
   topModels,
   topReferrers,
-  topCountries = [],
-  topRegions = [],
-  topCities = [],
+  topCountries,
+  topRegions,
+  topCities,
 }: {
   activeUsers: number;
   whatsappClicks: number;
@@ -23,12 +23,10 @@ export default function MiniSiteAnalytics({
   traffic: { direct: number; organic: number; paid: number; referral: number };
   topModels: TopModel[];
   topReferrers: TopReferrer[];
-  topCountries?: TopLocation[];
-  topRegions?: TopLocation[];
-  topCities?: TopLocation[];
+  topCountries: TopLoc[];
+  topRegions: TopLoc[];
+  topCities: TopLoc[];
 }) {
-  const showLocations = (topCountries?.length || 0) + (topRegions?.length || 0) + (topCities?.length || 0) > 0;
-
   return (
     <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
       <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
@@ -46,15 +44,15 @@ export default function MiniSiteAnalytics({
       </div>
 
       <div className="p-4 grid grid-cols-2 md:grid-cols-6 gap-3">
-        <Kpi title="Active Users (24h)" value={activeUsers} tone="indigo" />
-        <Kpi title="WhatsApp CLICKS" value={whatsappClicks} tone="emerald" />
+        <Kpi title="Active Users (5m)" value={activeUsers} tone="indigo" />
+        <Kpi title="WhatsApp Clicks" value={whatsappClicks} tone="emerald" />
         <Kpi title="Call Clicks" value={phoneClicks} tone="rose" />
-        <Kpi title="Organic Events" value={traffic.organic} tone="emerald" />
-        <Kpi title="Direct Events" value={traffic.direct} tone="amber" />
-        <Kpi title="Paid Events" value={traffic.paid} tone="sky" />
+        <Kpi title="Organic" value={traffic.organic} tone="emerald" />
+        <Kpi title="Direct" value={traffic.direct} tone="amber" />
+        <Kpi title="Paid" value={traffic.paid} tone="sky" />
       </div>
 
-      <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-4 gap-4">
+      <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="border rounded-lg p-3 bg-gray-50">
           <div className="text-xs font-semibold text-gray-600 mb-2">Traffic Mix</div>
           <div className="flex flex-wrap gap-2">
@@ -66,11 +64,19 @@ export default function MiniSiteAnalytics({
         </div>
 
         <div className="border rounded-lg p-3 bg-white">
-          <div className="text-xs font-semibold text-gray-600 mb-2">Top Models (all car activity)</div>
+          <div className="text-xs font-semibold text-gray-600 mb-2">Top Models</div>
           <div className="space-y-2">
             {topModels.length ? (
               topModels.slice(0, 5).map((m, i) => (
-                <RowLine key={m.key} index={i} name={m.key || "Unknown"} count={m.count} />
+                <div key={m.key} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-xs font-bold">
+                      {i + 1}
+                    </span>
+                    <span className="font-semibold text-gray-900">{m.key}</span>
+                  </div>
+                  <span className="font-bold text-gray-800">{m.count}</span>
+                </div>
               ))
             ) : (
               <div className="text-sm text-gray-400">No model activity yet</div>
@@ -83,73 +89,59 @@ export default function MiniSiteAnalytics({
           <div className="space-y-2">
             {topReferrers.length ? (
               topReferrers.slice(0, 5).map((r, i) => (
-                <RowLine key={`${r.name}-${i}`} index={i} name={r.name || "Direct / None"} count={r.count} />
+                <div key={r.name} className="flex items-center justify-between text-sm">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-xs font-bold">
+                      {i + 1}
+                    </span>
+                    <span className="font-semibold text-gray-900">{r.name}</span>
+                  </div>
+                  <span className="font-bold text-gray-800">{r.count}</span>
+                </div>
               ))
             ) : (
               <div className="text-sm text-gray-400">No referrers yet</div>
             )}
           </div>
         </div>
+      </div>
 
-        <div className="border rounded-lg p-3 bg-white">
-          <div className="text-xs font-semibold text-gray-600 mb-2">Top Locations</div>
-
-          {!showLocations ? (
-            <div className="text-sm text-gray-400">
-              No geo data yet (country/region/city empty on events)
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <LocationBlock title="Countries" rows={topCountries} />
-              <LocationBlock title="Regions" rows={topRegions} />
-              <LocationBlock title="Cities" rows={topCities} />
-            </div>
-          )}
-        </div>
+      <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <LocCard title="Top Countries" rows={topCountries} empty="No resolved countries yet" />
+        <LocCard title="Top Regions" rows={topRegions} empty="No resolved regions yet" />
+        <LocCard title="Top Cities" rows={topCities} empty="No resolved cities yet" />
       </div>
     </div>
   );
 }
 
-function LocationBlock({ title, rows }: { title: string; rows: { name: string; count: number }[] }) {
-  const list = (rows || []).slice(0, 3);
-  if (!list.length) return null;
-
+function LocCard({ title, rows, empty }: { title: string; rows: { name: string; count: number }[]; empty: string }) {
   return (
-    <div>
-      <div className="text-[11px] font-semibold text-gray-500 mb-1">{title}</div>
-      <div className="space-y-1">
-        {list.map((r, i) => (
-          <div key={`${title}-${r.name}-${i}`} className="flex items-center justify-between text-sm">
-            <div className="truncate pr-2 font-semibold text-gray-900">{r.name || "Unknown"}</div>
-            <div className="font-bold text-gray-800 tabular-nums">{r.count}</div>
-          </div>
-        ))}
+    <div className="border rounded-lg p-3 bg-white">
+      <div className="text-xs font-semibold text-gray-600 mb-2">{title}</div>
+      <div className="space-y-2">
+        {rows?.length ? (
+          rows.slice(0, 5).map((r, i) => (
+            <div key={`${title}-${r.name}`} className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2">
+                <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-xs font-bold">
+                  {i + 1}
+                </span>
+                <span className="font-semibold text-gray-900">{r.name}</span>
+              </div>
+              <span className="font-bold text-gray-800">{r.count}</span>
+            </div>
+          ))
+        ) : (
+          <div className="text-sm text-gray-400">{empty}</div>
+        )}
       </div>
-    </div>
-  );
-}
-
-function RowLine({ index, name, count }: { index: number; name: string; count: number }) {
-  return (
-    <div className="flex items-center justify-between text-sm">
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="w-5 h-5 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-xs font-bold">
-          {index + 1}
-        </span>
-        <span className="font-semibold text-gray-900 truncate">{name}</span>
-      </div>
-      <span className="font-bold text-gray-800 tabular-nums">{count}</span>
     </div>
   );
 }
 
 function Pill({ label }: { label: string }) {
-  return (
-    <span className="text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700">
-      {label}
-    </span>
-  );
+  return <span className="text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700">{label}</span>;
 }
 
 function Kpi({
@@ -172,7 +164,7 @@ function Kpi({
   return (
     <div className={`rounded-xl border p-3 ${toneMap[tone]}`}>
       <div className="text-[11px] font-semibold uppercase opacity-80">{title}</div>
-      <div className="text-xl font-black mt-1 tabular-nums">{value}</div>
+      <div className="text-xl font-black mt-1">{value}</div>
     </div>
   );
 }

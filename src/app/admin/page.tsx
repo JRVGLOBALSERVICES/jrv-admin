@@ -44,6 +44,9 @@ type MiniSummary = {
   traffic: { direct: number; organic: number; paid: number; referral: number };
   topModels: { key: string; count: number }[];
   topReferrers: { name: string; count: number }[];
+  topCountries: { name: string; count: number }[];
+  topRegions: { name: string; count: number }[];
+  topCities: { name: string; count: number }[];
   campaigns: {
     campaign: string;
     count: number;
@@ -329,72 +332,113 @@ export default async function AdminDashboard({
   // -------------------------
   const now2 = new Date();
   const last24h = new Date(now2.getTime() - 24 * 60 * 60 * 1000);
+  const last5m = new Date(now2.getTime() - 5 * 60 * 1000);
 
   const { data: siteEvents24h } = await supabase
     .from("site_events")
     .select(
-      // ✅ include page_url so gad_campaignid detection works
-      "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer"
+      "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer, ip, country, region, city"
     )
     .gte("created_at", last24h.toISOString())
     .lte("created_at", now2.toISOString())
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: true })
     .limit(5000);
 
-  const activeUserSet = new Set<string>();
+  const events = (siteEvents24h ?? []) as any[];
+
+  const active5mSet = new Set<string>();
   let whatsappClicks24h = 0;
   let phoneClicks24h = 0;
 
   const trafficCounts = { direct: 0, organic: 0, paid: 0, referral: 0 };
   const modelCounts = new Map<string, number>();
   const refCounts = new Map<string, number>();
+  const countryCounts = new Map<string, number>();
+  const regionCounts = new Map<string, number>();
+  const cityCounts = new Map<string, number>();
 
   const campaignAgg = new Map<
     string,
     { count: number; views: number; wa: number; calls: number }
   >();
 
-  for (const e of siteEvents24h ?? []) {
-    const sid = e.session_id || e.anon_id || "";
-    if (sid) activeUserSet.add(sid);
+  const sessionFirst = new Map<string, any>();
+  for (const e of events) {
+    const sid = e.session_id || e.anon_id || "unknown";
+    if (!sessionFirst.has(sid)) sessionFirst.set(sid, e);
+  }
+
+  const sessionMeta = new Map<
+    string,
+    {
+      traffic: "direct" | "organic" | "paid" | "referral";
+      refLabel: string;
+      campaignKey: string;
+    }
+  >();
+
+  for (const [sid, first] of sessionFirst.entries()) {
+    const firstParams = parseUrlParamsSafe(first.page_url);
+    const firstCampaignKey = getCampaignKeyFromUrlParams(firstParams);
+
+    const traffic = inferTrafficTypeGadOnly(first.referrer, first.page_url);
+    const refLabel = referrerLabelGadOnly(first.referrer, first.page_url);
+
+    const campaignKey =
+      traffic === "paid"
+        ? firstCampaignKey === "—"
+          ? "Google Ads"
+          : firstCampaignKey
+        : traffic === "organic"
+        ? "Google (Organic)"
+        : traffic === "direct"
+        ? "Direct"
+        : refLabel || "Referral";
+
+    sessionMeta.set(sid, { traffic, refLabel, campaignKey });
+  }
+
+  for (const e of events) {
+    const sid = e.session_id || e.anon_id || "unknown";
+    const meta = sessionMeta.get(sid);
+
+    const createdAt = new Date(e.created_at).getTime();
+    if (!Number.isNaN(createdAt) && createdAt >= last5m.getTime()) {
+      active5mSet.add(sid);
+    }
 
     const en = String(e.event_name || "").toLowerCase();
-
-    // clicks
     if (en === "whatsapp_click") whatsappClicks24h++;
     if (en === "phone_click") phoneClicks24h++;
 
-    // ✅ traffic (gad_campaignid only)
-    const t = inferTrafficTypeGadOnly((e as any).referrer, (e as any).page_url);
+    const t = (meta?.traffic || "direct") as keyof typeof trafficCounts;
     trafficCounts[t] += 1;
 
-    // ✅ referrer label (Google split)
-    const rLabel = referrerLabelGadOnly(
-      (e as any).referrer,
-      (e as any).page_url
-    );
+    const rLabel = meta?.refLabel || "Direct / None";
     refCounts.set(rLabel, (refCounts.get(rLabel) || 0) + 1);
 
-    // ✅ campaign key (utm_campaign -> gad_campaignid)
-    const params = parseUrlParamsSafe((e as any).page_url);
-    const campaignKey = getCampaignKeyFromUrlParams(params);
+    const ctry = String(e.country || "").trim() || "Unknown";
+    const reg = String(e.region || "").trim() || "Unknown";
+    const cty = String(e.city || "").trim() || "Unknown";
 
-    const looksLikeCarDetail = !!inferCarFromPath((e as any).page_path);
+    countryCounts.set(ctry, (countryCounts.get(ctry) || 0) + 1);
+    regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
+    cityCounts.set(cty, (cityCounts.get(cty) || 0) + 1);
 
-    // model inference (props first, else from /cars/slug)
-    const props = safeJson((e as any).props);
+    const looksLikeCarDetail = !!inferCarFromPath(e.page_path);
+
+    const props = safeJson(e.props);
     let make = String(props?.make || "").trim();
     let model = String(props?.model || "").trim();
 
     if (!model) {
-      const inferred = inferCarFromPath((e as any).page_path);
+      const inferred = inferCarFromPath(e.page_path);
       if (inferred?.model) {
         make = make || inferred.make || "";
         model = inferred.model;
       }
     }
 
-    // ✅ model counts include view + click + conversions
     const shouldCountModel =
       en === "model_click" ||
       en === "whatsapp_click" ||
@@ -406,16 +450,15 @@ export default async function AdminDashboard({
       modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
     }
 
-    // ✅ campaign agg
+    const campaignKey = meta?.campaignKey || "Direct";
     const prev = campaignAgg.get(campaignKey) || {
       count: 0,
       views: 0,
       wa: 0,
       calls: 0,
     };
-    prev.count += 1;
 
-    // We treat views as car detail page load/view
+    prev.count += 1;
     if (looksLikeCarDetail && (en === "page_view" || en === "site_load"))
       prev.views += 1;
     if (en === "whatsapp_click") prev.wa += 1;
@@ -434,6 +477,24 @@ export default async function AdminDashboard({
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  const topCountries24h = Array.from(countryCounts.entries())
+    .filter(([name]) => name !== "Unknown")
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const topRegions24h = Array.from(regionCounts.entries())
+    .filter(([name]) => name !== "Unknown")
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
+  const topCities24h = Array.from(cityCounts.entries())
+    .filter(([name]) => name !== "Unknown")
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 8);
+
   const campaigns24h = Array.from(campaignAgg.entries())
     .map(([campaign, v]) => {
       const conversions = v.wa + v.calls;
@@ -448,23 +509,19 @@ export default async function AdminDashboard({
         rate,
       };
     })
-    // ✅ IMPORTANT: push "—" to bottom so it doesn't pollute the list
-    .sort((a, b) => {
-      const aDash = a.campaign === "—" ? 1 : 0;
-      const bDash = b.campaign === "—" ? 1 : 0;
-      if (aDash !== bDash) return aDash - bDash;
-      return b.conversions - a.conversions || b.count - a.count;
-    })
+    .sort((a, b) => b.conversions - a.conversions || b.count - a.count)
     .slice(0, 20);
 
-  // ✅ the object your MiniSiteAnalytics expects
   const summary: MiniSummary = {
-    activeUsersRealtime: activeUserSet.size,
+    activeUsersRealtime: active5mSet.size,
     whatsappClicks: whatsappClicks24h,
     phoneClicks: phoneClicks24h,
     traffic: trafficCounts,
     topModels: topModels24h,
     topReferrers: topReferrers24h,
+    topCountries: topCountries24h,
+    topRegions: topRegions24h,
+    topCities: topCities24h,
     campaigns: campaigns24h,
   };
 
@@ -747,7 +804,7 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-            {/* ✅ Bottom */}
+      {/* ✅ Bottom */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
@@ -868,11 +925,10 @@ export default async function AdminDashboard({
         phoneClicks={summary.phoneClicks}
         traffic={summary.traffic}
         topModels={summary.topModels}
-        topReferrers={summary.topReferrers.map((r) => ({
-          name: r.name,
-          count: r.count,
-        }))}
-        // campaigns={summary.campaigns}
+        topReferrers={summary.topReferrers}
+        topCountries={summary.topCountries}
+        topRegions={summary.topRegions}
+        topCities={summary.topCities}
       />
 
       {/* ✅ ROW 1 */}
