@@ -1,4 +1,3 @@
-// src/app/admin/site-events/_components/SiteEventsFilters.tsx
 "use client";
 
 import { useMemo } from "react";
@@ -11,12 +10,7 @@ type Props = {
   filters: { event: string; traffic: string; device: string; path: string };
 };
 
-export default function SiteEventsFilters({
-  rangeKey,
-  from,
-  to,
-  filters,
-}: Props) {
+export default function SiteEventsFilters({ rangeKey, from, to, filters }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const sp = useSearchParams();
@@ -31,26 +25,20 @@ export default function SiteEventsFilters({
     const next = new URLSearchParams(paramsObj);
     if (!value) next.delete(key);
     else next.set(key, value);
-
-    if (key === "range" && value !== "custom") {
-      next.delete("from");
-      next.delete("to");
-    }
-
     router.push(`${pathname}?${next.toString()}`);
   }
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-6 gap-3">
       <div className="lg:col-span-2">
-        <label className="text-xs text-gray-500 font-semibold">
-          Date Range
-        </label>
+        <label className="text-xs text-gray-500 font-semibold">Date Range</label>
         <select
           className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-white"
           value={rangeKey}
           onChange={(e) => setParam("range", e.target.value)}
         >
+          <option value="today">Today</option>
+          <option value="yesterday">Yesterday</option>
           <option value="24h">Last 24 hours</option>
           <option value="7d">Last 7 days</option>
           <option value="30d">Last 30 days</option>
@@ -88,6 +76,7 @@ export default function SiteEventsFilters({
           <option value="model_click">model_click</option>
           <option value="whatsapp_click">whatsapp_click</option>
           <option value="phone_click">phone_click</option>
+          <option value="filter_click">filter_click</option>
           <option value="car_image_click">car_image_click</option>
           <option value="location_click">location_click</option>
           <option value="service_click">service_click</option>
@@ -125,9 +114,7 @@ export default function SiteEventsFilters({
       </div>
 
       <div>
-        <label className="text-xs text-gray-500 font-semibold">
-          Path contains
-        </label>
+        <label className="text-xs text-gray-500 font-semibold">Path contains</label>
         <input
           className="mt-1 w-full border rounded-lg px-3 py-2 text-sm bg-white"
           placeholder="/cars/"

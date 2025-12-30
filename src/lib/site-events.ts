@@ -1,37 +1,19 @@
-// src/lib/site-events.ts
-
 export type SiteEventRow = {
   id: string;
   created_at: string;
-
-  event_name: string | null;
-
+  event_name: string;
   page_path: string | null;
   page_url: string | null;
-
   referrer: string | null;
-
   session_id: string | null;
   anon_id: string | null;
-
-  traffic_type: string | null; // whatever you stored
-
+  traffic_type: string | null;
   device_type: string | null;
-
-  utm_source?: string | null;
-  utm_medium?: string | null;
-  utm_campaign?: string | null;
-  utm_term?: string | null;
-  utm_content?: string | null;
-
+  props: any;
   ip?: string | null;
-
-  // ✅ IMPORTANT: you already have these columns
   country?: string | null;
   region?: string | null;
   city?: string | null;
-
-  props: any;
 };
 
 export type UrlParams = Record<string, string>;
@@ -39,7 +21,7 @@ export type UrlParams = Record<string, string>;
 export function safeParseProps(v: any): Record<string, any> {
   try {
     if (!v) return {};
-    if (typeof v === "object") return v;
+    if (typeof v === "object") return v as any;
     if (typeof v === "string") return JSON.parse(v);
     return {};
   } catch {
@@ -47,165 +29,194 @@ export function safeParseProps(v: any): Record<string, any> {
   }
 }
 
-export function parseUrlParams(urlLike?: string | null): UrlParams {
-  const s = String(urlLike || "").trim();
-  if (!s) return {};
+export function parseUrlParams(input?: string | null): UrlParams {
+  if (!input) return {};
   try {
-    // supports relative "/path?x=y"
-    const u = s.startsWith("http") ? new URL(s) : new URL(s, "https://dummy.local");
+    const base = input.startsWith("http")
+      ? input
+      : `https://x.local${input.startsWith("/") ? "" : "/"}${input}`;
+    const u = new URL(base);
     const out: UrlParams = {};
-    u.searchParams.forEach((v, k) => (out[k] = v));
+    u.searchParams.forEach((v, k) => (out[k.toLowerCase()] = v));
     return out;
   } catch {
-    // fallback: manually parse "?a=b"
-    const qIndex = s.indexOf("?");
-    if (qIndex === -1) return {};
-    const q = s.slice(qIndex + 1);
+    const q = input.split("?")[1] || "";
+    const sp = new URLSearchParams(q);
     const out: UrlParams = {};
-    for (const part of q.split("&")) {
-      const [k, v] = part.split("=");
-      if (!k) continue;
-      out[decodeURIComponent(k)] = decodeURIComponent(v || "");
-    }
+    sp.forEach((v, k) => (out[k.toLowerCase()] = v));
     return out;
   }
 }
 
-function hostFromUrl(s?: string | null) {
-  const v = String(s || "").trim();
-  if (!v) return "";
+export function normalizeReferrerHost(ref?: string | null): string {
+  if (!ref) return "";
   try {
-    const u = new URL(v.startsWith("http") ? v : `https://${v.replace(/^\/+/, "")}`);
-    return u.hostname.replace(/^www\./, "");
+    const u = new URL(ref);
+    return u.hostname.replace(/^www\./, "").toLowerCase();
   } catch {
-    return v.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] || "";
+    const s = String(ref).replace(/^https?:\/\//, "");
+    return (s.split("/")[0] || "").replace(/^www\./, "").toLowerCase();
   }
 }
 
-export function referrerLabel(r: Pick<SiteEventRow, "referrer" | "page_url">): string {
-  const ref = String(r.referrer || "").trim();
-
-  if (!ref) return "Direct / None";
-  const host = hostFromUrl(ref);
-
-  // normalize common sources
-  if (host.includes("google.")) return "Google";
-  if (host.includes("facebook.") || host === "m.facebook.com" || host === "l.facebook.com") return "Facebook";
-  if (host.includes("instagram.")) return "Instagram";
-  if (host.includes("tiktok.")) return "TikTok";
-  if (host.includes("bing.")) return "Bing";
-  if (host.includes("yahoo.")) return "Yahoo";
-
-  return host || "Referral";
-}
-
-export function isGoogleAdsHit(r: Pick<SiteEventRow, "page_url" | "referrer" | "props" | "utm_medium">) {
-  const p1 = parseUrlParams(r.page_url);
-  const p2 = parseUrlParams(r.referrer);
-
-  const props = safeParseProps(r.props);
-
-  // also search inside props.url / props.href if they contain query strings
-  const deepUrls: string[] = [];
-  if (props?.url) deepUrls.push(String(props.url));
-  if (props?.href) deepUrls.push(String(props.href));
-  if (props?.page_url) deepUrls.push(String(props.page_url));
-  if (props?.referrer) deepUrls.push(String(props.referrer));
-
-  let p3: UrlParams = {};
-  for (const u of deepUrls) {
-    const x = parseUrlParams(u);
-    if (Object.keys(x).length) {
-      p3 = { ...p3, ...x };
-    }
-  }
-
-  const merged = { ...p1, ...p2, ...p3 };
-
-  const hasAds =
-    !!merged.gclid ||
-    !!merged.gbraid ||
-    !!merged.wbraid ||
-    !!merged.gad_campaignid ||
-    !!merged.gad_source ||
-    String(r.utm_medium || "").toLowerCase().includes("cpc");
-
-  return { hasAds, params: merged };
-}
-
-export function inferTrafficTypeEnhanced(r: SiteEventRow): "direct" | "organic" | "paid" | "referral" {
-  // if you already stored traffic_type, respect it but re-check paid signals
-  const base = String(r.traffic_type || "").toLowerCase();
-
-  const { hasAds } = isGoogleAdsHit(r);
-
-  if (hasAds) return "paid";
-
-  const ref = referrerLabel(r);
-  if (ref === "Direct / None") return "direct";
-
-  // google but not ads -> organic
-  if (ref === "Google") return "organic";
-
-  // social/search etc treat as referral unless your logic wants "organic"
-  return "referral";
-}
-
-export function shouldCountModel(r: SiteEventRow): boolean {
-  const en = String(r.event_name || "").toLowerCase();
-  const isCarDetail = !!String(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
-
+export function isGoogleHost(host: string) {
   return (
-    en === "model_click" ||
-    en === "whatsapp_click" ||
-    en === "phone_click" ||
-    (isCarDetail && (en === "page_view" || en === "site_load"))
+    host === "google.com" ||
+    host.endsWith(".google.com") ||
+    host === "google.com.my" ||
+    host.endsWith(".google.com.my") ||
+    host.includes("google.")
   );
 }
 
-function inferModelFromPath(page_path?: string | null) {
-  const p = String(page_path || "");
-  const m = p.match(/^\/cars\/([^/]+)\/?$/i);
-  if (!m) return "";
-  const slug = decodeURIComponent(m[1] || "");
-  return slug.replace(/-/g, " ").trim();
+export function isOwnHost(host: string) {
+  const h = (host || "").toLowerCase();
+  return (
+    h === "jrvservices.co" ||
+    h === "www.jrvservices.co" ||
+    h === "localhost" ||
+    h.endsWith(".vercel.app")
+  );
+}
+
+function deepStringify(obj: any): string {
+  try {
+    if (!obj) return "";
+    if (typeof obj === "string") return obj;
+    return JSON.stringify(obj);
+  } catch {
+    return "";
+  }
+}
+
+export function findAdsParamsSafe(r: SiteEventRow): UrlParams {
+  const out: UrlParams = {};
+  const take = (p: UrlParams) => {
+    for (const k of [
+      "gclid",
+      "gbraid",
+      "wbraid",
+      "gad_campaignid",
+      "gad_source",
+      "utm_campaign",
+      "utm_source",
+      "utm_medium",
+      "utm_id",
+    ]) {
+      if (p[k] && !out[k]) out[k] = p[k];
+    }
+  };
+
+  take(parseUrlParams(r.page_url));
+
+  const refHost = normalizeReferrerHost(r.referrer);
+  if (refHost && !isOwnHost(refHost)) {
+    take(parseUrlParams(r.referrer));
+  }
+
+  const props = safeParseProps(r.props);
+  const directUrl =
+    props?.url ||
+    props?.href ||
+    props?.link ||
+    props?.page_url ||
+    props?.pageUrl ||
+    props?.landing_url ||
+    props?.landingUrl;
+
+  take(parseUrlParams(directUrl));
+  take(parseUrlParams(deepStringify(props)));
+
+  return out;
+}
+
+export function getCampaignFromParams(p: UrlParams): string {
+  const utm = p["utm_campaign"];
+  const gad = p["gad_campaignid"];
+  const utmId = p["utm_id"];
+
+  if (utm && String(utm).trim()) return String(utm).trim();
+  if (utmId && String(utmId).trim()) return String(utmId).trim();
+  if (gad && String(gad).trim()) return `gad:${String(gad).trim()}`;
+  return "";
+}
+
+export function getSessionKey(r: SiteEventRow): string {
+  return r.session_id || r.anon_id || "unknown";
+}
+
+export function referrerLabelFromFirstEvent(first: SiteEventRow): string {
+  const host = normalizeReferrerHost(first.referrer);
+  if (!host) return "Direct / None";
+  if (isGoogleHost(host)) return "Google";
+  if (host.includes("facebook.")) return "Facebook";
+  if (host.includes("instagram.")) return "Instagram";
+  if (host.includes("tiktok.")) return "TikTok";
+  return host || "Direct / None";
+}
+
+export type Acquisition = "direct" | "organic" | "paid" | "referral";
+
+export function inferAcquisitionFromFirstEvent(first: SiteEventRow): {
+  traffic: Acquisition;
+  campaign: string;
+  refName: string;
+  adsMeta: UrlParams;
+} {
+  const adsMeta = findAdsParamsSafe(first);
+  const campaign = getCampaignFromParams(adsMeta);
+  const refHost = normalizeReferrerHost(first.referrer);
+
+  const utmMedium = String(adsMeta.utm_medium || "").toLowerCase();
+  const hasAds =
+    !!adsMeta.gclid ||
+    !!adsMeta.gbraid ||
+    !!adsMeta.wbraid ||
+    !!adsMeta.gad_campaignid ||
+    !!adsMeta.gad_source ||
+    utmMedium === "cpc" ||
+    utmMedium === "ppc" ||
+    utmMedium === "paidsearch";
+
+  if (hasAds) {
+    return {
+      traffic: "paid",
+      campaign: campaign || "Google Ads",
+      refName: "Google Ads",
+      adsMeta,
+    };
+  }
+
+  if (!refHost) return { traffic: "direct", campaign: "", refName: "Direct / None", adsMeta };
+
+  if (isGoogleHost(refHost)) {
+    return { traffic: "organic", campaign: "", refName: "Google (Organic)", adsMeta };
+  }
+
+  return { traffic: "referral", campaign: "", refName: referrerLabelFromFirstEvent(first), adsMeta };
 }
 
 export function getModelKey(r: SiteEventRow): string {
   const props = safeParseProps(r.props);
   const make = String(props?.make || "").trim();
   const model = String(props?.model || "").trim();
+  if (make || model) return `${make} ${model}`.trim();
 
-  if (make || model) return `${make} ${model}`.trim() || "Unknown";
-  const fromPath = inferModelFromPath(r.page_path);
-  return fromPath || "Unknown";
+  const p = r.page_path || "";
+  const m = p.match(/^\/cars\/([^/]+)\/?$/i);
+  if (m?.[1]) {
+    const slug = decodeURIComponent(m[1]);
+    return slug.replace(/-/g, " ").trim() || "Unknown";
+  }
+  return "Unknown";
 }
 
-// ✅ Campaign Key extraction
-// Prefer utm_campaign, fallback to gad_campaignid
-export function getCampaignKeyRaw(r: SiteEventRow): string {
-  const utm = String(r.utm_campaign || "").trim();
-  if (utm) return utm;
-
-  const { params } = isGoogleAdsHit(r);
-
-  const gad = String(params.gad_campaignid || "").trim();
-  if (gad) return `gad:${gad}`;
-
-  // deep search in props string
-  const props = safeParseProps(r.props);
-  const blob = JSON.stringify(props || {});
-  const m = blob.match(/gad_campaignid=([0-9]+)/i);
-  if (m?.[1]) return `gad:${m[1]}`;
-
-  return "";
+export function getCampaignKeyFromSession(sessionFirst: SiteEventRow): string {
+  const meta = findAdsParamsSafe(sessionFirst);
+  const c = getCampaignFromParams(meta);
+  return c || "—";
 }
 
-// ✅ Session-attributed campaign:
-// if this event lacks campaign, use the session's campaign.
-export function getCampaignKey(r: SiteEventRow, sessionCampaign?: string): string {
-  const direct = getCampaignKeyRaw(r);
-  if (direct) return direct;
-  if (sessionCampaign) return sessionCampaign;
-  return "—";
+export function referrerLabel(r: SiteEventRow) {
+  return referrerLabelFromFirstEvent(r);
 }
