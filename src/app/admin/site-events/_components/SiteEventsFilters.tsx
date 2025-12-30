@@ -11,6 +11,66 @@ type Filters = {
   path: string;
 };
 
+/**
+ * Convert YYYY-MM-DD -> Date in user's LOCAL timezone
+ */
+function dateInputToLocalDate(v: string) {
+  // v = "2025-12-31"
+  const [y, m, d] = v.split("-").map((x) => Number(x));
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+/**
+ * Convert ISO or any date string -> YYYY-MM-DD for <input type="date" />
+ */
+function anyToDateInput(v: string) {
+  if (!v) return "";
+  // If already date-only
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Start/end of LOCAL day -> ISO string
+ * (Browser in Malaysia => local = Asia/Kuala_Lumpur, so this becomes correct boundaries.)
+ */
+function localDayStartISO(dateOnly: string) {
+  const base = dateInputToLocalDate(dateOnly);
+  if (!base) return "";
+  const d = new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate(),
+    0,
+    0,
+    0,
+    0
+  );
+  return d.toISOString();
+}
+
+function localDayEndISO(dateOnly: string) {
+  const base = dateInputToLocalDate(dateOnly);
+  if (!base) return "";
+  const d = new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate(),
+    23,
+    59,
+    59,
+    999
+  );
+  return d.toISOString();
+}
+
 export default function SiteEventsFilters({
   rangeKey,
   from,
@@ -27,8 +87,13 @@ export default function SiteEventsFilters({
   const [isPending, startTransition] = useTransition();
 
   const [localRange, setLocalRange] = useState(rangeKey || "24h");
-  const [localFrom, setLocalFrom] = useState(from || "");
-  const [localTo, setLocalTo] = useState(to || "");
+
+  // IMPORTANT: store as YYYY-MM-DD for the inputs
+  const [localFromDate, setLocalFromDate] = useState(
+    anyToDateInput(from || "")
+  );
+  const [localToDate, setLocalToDate] = useState(anyToDateInput(to || ""));
+
   const [local, setLocal] = useState<Filters>({
     event: filters.event || "",
     traffic: filters.traffic || "",
@@ -37,8 +102,11 @@ export default function SiteEventsFilters({
   });
 
   useEffect(() => setLocalRange(rangeKey || "24h"), [rangeKey]);
-  useEffect(() => setLocalFrom(from || ""), [from]);
-  useEffect(() => setLocalTo(to || ""), [to]);
+
+  // If server gives ISO, convert to YYYY-MM-DD for date inputs
+  useEffect(() => setLocalFromDate(anyToDateInput(from || "")), [from]);
+  useEffect(() => setLocalToDate(anyToDateInput(to || "")), [to]);
+
   useEffect(() => {
     setLocal({
       event: filters.event || "",
@@ -50,8 +118,8 @@ export default function SiteEventsFilters({
 
   const canApply = useMemo(() => {
     if (localRange !== "custom") return true;
-    return !!localFrom && !!localTo;
-  }, [localRange, localFrom, localTo]);
+    return !!localFromDate && !!localToDate;
+  }, [localRange, localFromDate, localToDate]);
 
   function buildQuery() {
     const params = new URLSearchParams(sp.toString());
@@ -59,11 +127,32 @@ export default function SiteEventsFilters({
     params.set("range", localRange);
 
     if (localRange === "custom") {
-      if (localFrom) params.set("from", localFrom);
-      if (localTo) params.set("to", localTo);
+      // Convert to ISO boundaries
+      let fromIso = localDayStartISO(localFromDate);
+      let toIso = localDayEndISO(localToDate);
+
+      // Safety: swap if user picked end < start (prevents empty results)
+      if (fromIso && toIso) {
+        const a = new Date(fromIso).getTime();
+        const b = new Date(toIso).getTime();
+        if (b < a) {
+          const tmp = fromIso;
+          fromIso = toIso;
+          toIso = tmp;
+        }
+      }
+
+      if (fromIso) params.set("from", fromIso);
+      if (toIso) params.set("to", toIso);
+
+      // Optional (nice): keep UI-friendly dates too
+      params.set("fromDate", localFromDate);
+      params.set("toDate", localToDate);
     } else {
       params.delete("from");
       params.delete("to");
+      params.delete("fromDate");
+      params.delete("toDate");
     }
 
     const setOrDel = (k: keyof Filters, v: string) => {
@@ -137,8 +226,8 @@ export default function SiteEventsFilters({
           <div className="text-xs font-semibold text-gray-600 mb-1">From</div>
           <input
             type="date"
-            value={localRange === "custom" ? localFrom : ""}
-            onChange={(e) => setLocalFrom(e.target.value)}
+            value={localRange === "custom" ? localFromDate : ""}
+            onChange={(e) => setLocalFromDate(e.target.value)}
             disabled={localRange !== "custom"}
             className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
           />
@@ -148,8 +237,8 @@ export default function SiteEventsFilters({
           <div className="text-xs font-semibold text-gray-600 mb-1">To</div>
           <input
             type="date"
-            value={localRange === "custom" ? localTo : ""}
-            onChange={(e) => setLocalTo(e.target.value)}
+            value={localRange === "custom" ? localToDate : ""}
+            onChange={(e) => setLocalToDate(e.target.value)}
             disabled={localRange !== "custom"}
             className="w-full border rounded-lg px-3 py-2 text-sm disabled:bg-gray-50"
           />
