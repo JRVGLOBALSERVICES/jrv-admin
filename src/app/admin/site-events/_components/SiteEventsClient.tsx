@@ -34,123 +34,130 @@ type Summary = {
   compare?: any;
 };
 
+/* =========================
+   Location normalization
+   ========================= */
+
 const COUNTRY_CODE_TO_NAME: Record<string, string> = {
   MY: "Malaysia",
   SG: "Singapore",
   US: "United States",
-  IN: "India",
+  UK: "United Kingdom",
+  GB: "United Kingdom",
   ID: "Indonesia",
+  IN: "India",
+  AU: "Australia",
+  CA: "Canada",
+  CN: "China",
+  HK: "Hong Kong",
+  JP: "Japan",
+  KR: "South Korea",
+  TH: "Thailand",
+  VN: "Vietnam",
+  PH: "Philippines",
+  TW: "Taiwan",
 };
 
 function decodeSafe(v: any) {
-  const raw = String(v ?? "").trim();
+  const raw = String(v || "").trim();
   if (!raw) return "";
   try {
+    // also handle "+" as spaces
     return decodeURIComponent(raw.replace(/\+/g, "%20")).trim();
   } catch {
     return raw;
   }
 }
 
-function normalizeCountry(v: any) {
-  const s = decodeSafe(v);
+function normalizeCountry(input: any) {
+  const s = decodeSafe(input);
   if (!s) return "";
 
+  // if user saved full name already, keep it
   const upper = s.toUpperCase();
+
+  // "MY" -> Malaysia
   if (COUNTRY_CODE_TO_NAME[upper]) return COUNTRY_CODE_TO_NAME[upper];
 
-  // if already a country name
-  // normalize common casing
-  return s
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w[0]?.toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
+  // If value is already "Malaysia" etc, keep it
+  // (you can add more aliases if needed)
+  if (upper === "MALAYSIA") return "Malaysia";
+  if (upper === "SINGAPORE") return "Singapore";
+  if (upper === "UNITED STATES" || upper === "USA") return "United States";
+  if (upper === "UNITED KINGDOM" || upper === "GREAT BRITAIN")
+    return "United Kingdom";
+
+  return s;
 }
 
-/**
- * region can be:
- * - "14" (Kuala Lumpur state code from some geo sources)
- * - "CA"
- * - "Kuala Lumpur"
- * - "Selangor"
- * We will REMOVE numeric-only region tokens.
- */
-function normalizeRegion(v: any) {
+function cleanPart(v: any) {
   const s = decodeSafe(v);
   if (!s) return "";
 
-  // remove pure numeric regions like "14"
-  if (/^\d+$/.test(s)) return "";
-
-  // Title Case, but keep short codes (CA, NY, etc)
-  if (/^[A-Z]{2,3}$/.test(s)) return s.toUpperCase();
-
-  return s
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w[0]?.toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
+  // kill things like "Kuala Lumpur, 14, MY" middle numeric region codes
+  // (your earlier example had 14)
+  return s.replace(/\s+/g, " ").trim();
 }
 
 /**
- * city can be:
- * - "Kuala%20Lumpur"
- * - "Santa Clara"
- * - "Kuala Lumpur, 14, MY" (packed)
- * We'll split packed strings and keep only the first segment as city.
+ * Build a pretty label from either:
+ * - separate fields (city/region/country), OR
+ * - a packed string "Kuala%20Lumpur, 14, MY"
  */
-function normalizeCity(v: any) {
-  const s = decodeSafe(v);
-  if (!s) return "";
+function buildLocationLabel(cityRaw: any, regionRaw: any, countryRaw: any) {
+  const city = cleanPart(cityRaw);
+  const region = cleanPart(regionRaw);
 
-  // If packed: "City, Region, Country"
-  const parts = s
+  // Country: normalize MY -> Malaysia
+  const country = normalizeCountry(countryRaw);
+
+  // remove numeric-only region segments (like "14")
+  const regionIsNumeric = region && /^\d+$/.test(region);
+
+  const city2 = city;
+  let region2 = regionIsNumeric ? "" : region;
+  const country2 = country;
+
+  // prevent duplication: "Kuala Lumpur, Kuala Lumpur, MY"
+  if (city2 && region2 && city2.toLowerCase() === region2.toLowerCase()) {
+    region2 = "";
+  }
+
+  const parts = [city2, region2, country2].filter(Boolean);
+
+  // If you only have "MY" in city etc, avoid weird output
+  const out = parts.join(", ").trim();
+  return out;
+}
+
+/**
+ * When x.name is already a combined string like:
+ * "Santa%20Clara, CA, US" OR "Kuala%20Lumpur, 14, MY"
+ */
+function normalizePackedLocation(name: any) {
+  const decoded = decodeSafe(name);
+  if (!decoded) return "";
+
+  const parts = decoded
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
 
-  const first = parts[0] || "";
-  if (!first) return "";
-
-  // Title Case
-  return first
-    .split(" ")
-    .filter(Boolean)
-    .map((w) => w[0]?.toUpperCase() + w.slice(1).toLowerCase())
-    .join(" ");
-}
-
-/**
- * Build ONE clean label and prevent duplicates:
- * - drop empty
- * - remove duplicates case-insensitively
- * - avoid "Kuala Lumpur, Kuala Lumpur, Malaysia"
- */
-function buildLocationLabel(cityRaw: any, regionRaw: any, countryRaw: any) {
-  const city = normalizeCity(cityRaw);
-  const region = normalizeRegion(regionRaw);
-  const country = normalizeCountry(countryRaw);
-
-  const pieces = [city, region, country].filter(Boolean);
-
-  // remove duplicates (case-insensitive)
-  const seen = new Set<string>();
-  const uniq: string[] = [];
-  for (const p of pieces) {
-    const key = p.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    uniq.push(p);
+  // remove numeric middle parts e.g. [Kuala Lumpur, 14, MY]
+  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
+    parts.splice(parts.length - 2, 1);
   }
 
-  // Special case: city == region, keep city only
-  if (uniq.length >= 2 && uniq[0].toLowerCase() === uniq[1].toLowerCase()) {
-    uniq.splice(1, 1);
-  }
+  const city = parts[0] || "";
+  const region = parts[1] || "";
+  const country = parts[2] || "";
 
-  return uniq.join(", ");
+  return buildLocationLabel(city, region, country) || decoded;
 }
+
+/* =========================
+   UI helpers
+   ========================= */
 
 function fmtPct(p: number) {
   const v = Math.round(p * 100);
@@ -344,6 +351,29 @@ function trafficPill(t: string) {
   return "px-2 py-1 rounded-full text-xs font-black bg-gray-100 text-gray-800 border border-gray-200";
 }
 
+// fixed palette so Tailwind keeps the classes
+const RANK_BADGES = [
+  "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "bg-emerald-50 text-emerald-700 border-emerald-200",
+  "bg-amber-50 text-amber-700 border-amber-200",
+  "bg-rose-50 text-rose-700 border-rose-200",
+  "bg-sky-50 text-sky-700 border-sky-200",
+  "bg-violet-50 text-violet-700 border-violet-200",
+];
+
+function rankBadge(i: number) {
+  return RANK_BADGES[i % RANK_BADGES.length];
+}
+
+function typeChip(t: string) {
+  const s = String(t || "").toLowerCase();
+  if (s === "paid") return "bg-amber-50 text-amber-800 border-amber-200";
+  if (s === "organic")
+    return "bg-emerald-50 text-emerald-800 border-emerald-200";
+  if (s === "referral") return "bg-sky-50 text-sky-800 border-sky-200";
+  return "bg-slate-50 text-slate-800 border-slate-200";
+}
+
 function Card({
   title,
   headerClass,
@@ -395,6 +425,7 @@ export default function SiteEventsClient({
     setFilters(initialFilters);
   }, [initialFrom, initialTo, initialRange, initialFilters]);
 
+  // debounce fetch a bit
   useEffect(() => {
     const t = setTimeout(() => setReqTick((x) => x + 1), 150);
     return () => clearTimeout(t);
@@ -408,6 +439,7 @@ export default function SiteEventsClient({
     filters.path,
   ]);
 
+  // main fetch (rows + summary)
   useEffect(() => {
     const ac = new AbortController();
 
@@ -451,6 +483,7 @@ export default function SiteEventsClient({
     return () => ac.abort();
   }, [reqTick]);
 
+  // refresh only summary every 5s (light)
   useEffect(() => {
     const t = setInterval(async () => {
       try {
@@ -609,133 +642,48 @@ export default function SiteEventsClient({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card
-          title="Top Campaigns Funnel (Views → WhatsApp → Calls)"
-          headerClass="bg-gradient-to-r from-amber-50 via-rose-50 to-indigo-50"
+          title="Top Countries (by Traffic Type)"
+          headerClass="bg-gradient-to-r from-slate-50 via-indigo-50 to-emerald-50"
         >
-          <div className="space-y-3">
-            {(s?.campaigns || []).slice(0, 12).map((c, i) => {
-              const maxViews = Math.max(
-                ...(s?.campaigns || []).map((x) => x.views),
-                1
-              );
-              const viewPct = Math.min(100, (c.views / maxViews) * 100);
-              const waPct =
-                c.views > 0 ? Math.min(100, (c.whatsapp / c.views) * 100) : 0;
-              const callPct =
-                c.views > 0 ? Math.min(100, (c.calls / c.views) * 100) : 0;
-
-              return (
-                <div
-                  key={`${c.campaign}-${i}`}
-                  className="rounded-xl border bg-white p-3"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="w-7 h-7 rounded-full bg-amber-50 text-amber-800 flex items-center justify-center text-xs font-black border border-amber-200">
-                          {i + 1}
-                        </span>
-                        <div className="font-semibold text-gray-900 truncate max-w-90">
-                          {c.campaign}
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        Views <b>{c.views}</b> • WhatsApp <b>{c.whatsapp}</b> •
-                        Calls <b>{c.calls}</b> • Events <b>{c.count}</b>
-                      </div>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="text-sm font-black text-emerald-700">
-                        {c.conversions}
-                      </div>
-                      <div className="text-[11px] text-gray-500">
-                        conversions
-                      </div>
-                      <div className="text-[11px] text-gray-500 mt-1">
-                        WA rate: <b>{Math.round((c.rate || 0) * 100)}%</b>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 space-y-2">
-                    <Bar
-                      label="Views"
-                      pct={viewPct}
-                      tone="indigo"
-                      value={c.views}
-                    />
-                    <Bar
-                      label="WhatsApp"
-                      pct={waPct}
-                      tone="emerald"
-                      value={c.whatsapp}
-                    />
-                    <Bar
-                      label="Calls"
-                      pct={callPct}
-                      tone="rose"
-                      value={c.calls}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-
-            {!s?.campaigns?.length && (
-              <div className="text-sm text-gray-400">
-                No campaigns detected yet
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card
-          title="Top Referrers"
-          headerClass="bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50"
-        >
-          <div className="space-y-2">
-            {(s?.topReferrers || []).slice(0, 15).map((r, i) => (
-              <div
-                key={`${r.name}-${i}`}
-                className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs font-black border border-indigo-200">
-                    {i + 1}
-                  </span>
-                  <span className="font-semibold text-gray-900">{r.name}</span>
-                </div>
-                <span className="font-black text-gray-900">{r.count}</span>
-              </div>
-            ))}
-            {!s?.topReferrers?.length && (
-              <div className="text-sm text-gray-400">No referrers yet</div>
-            )}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Top Countries (by Traffic Type)" headerClass="bg-gray-50">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {(["paid", "organic", "direct", "referral"] as const).map((k) => (
               <div key={k} className="rounded-xl border bg-white p-3">
-                <div className="text-xs font-black uppercase text-gray-700 mb-2">
-                  {k}
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-xs font-black uppercase text-gray-700">
+                    {k}
+                  </div>
+                  <span
+                    className={`px-2 py-0.5 rounded-full border text-[11px] font-black ${typeChip(
+                      k
+                    )}`}
+                  >
+                    {k}
+                  </span>
                 </div>
+
                 <div className="space-y-2">
                   {(s?.topCountries?.[k] || []).slice(0, 6).map((x, idx) => (
                     <div
                       key={`${k}-${x.name}-${idx}`}
-                      className="flex items-center justify-between text-sm"
+                      className="flex items-center justify-between text-sm border rounded-xl p-2 bg-white"
                     >
-                      <div className="font-semibold text-gray-900">
-                        {x.name}
+                      <div className="min-w-0 flex items-center gap-2">
+                        <span
+                          className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black ${rankBadge(
+                            idx
+                          )}`}
+                        >
+                          {idx + 1}
+                        </span>
+
+                        <div className="font-semibold text-gray-900 truncate max-w-56">
+                          {normalizeCountry(x.name) || x.name}
+                        </div>
                       </div>
                       <div className="font-black text-gray-900">{x.count}</div>
                     </div>
                   ))}
+
                   {!(s?.topCountries?.[k] || []).length && (
                     <div className="text-sm text-gray-400">No data</div>
                   )}
@@ -745,30 +693,28 @@ export default function SiteEventsClient({
           </div>
         </Card>
 
-        <Card title="Top Cities / Regions" headerClass="bg-gray-50">
+        <Card
+          title="Top Cities / Regions"
+          headerClass="bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50"
+        >
           <div className="space-y-2">
             {(s?.topCities || []).slice(0, 15).map((x, i) => (
               <div
                 key={`${x.name}-${i}`}
                 className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white"
               >
-                <div className="font-semibold text-gray-900">
-                  {(() => {
-                    // Try to interpret the "name" bucket as a packed label
-                    const decoded = decodeSafe(x.name);
-                    const parts = decoded
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean);
-                    const city = parts[0] || "";
-                    const region = parts[1] || "";
-                    const country = parts[2] || parts[1] || ""; // fallback
-                    return (
-                      buildLocationLabel(city, region, country) ||
-                      decoded ||
-                      "Unknown"
-                    );
-                  })()}
+                <div className="min-w-0 flex items-center gap-2">
+                  <span
+                    className={`w-7 h-7 rounded-full border flex items-center justify-center text-xs font-black ${rankBadge(
+                      i
+                    )}`}
+                  >
+                    {i + 1}
+                  </span>
+
+                  <div className="font-semibold text-gray-900 truncate max-w-90">
+                    {normalizePackedLocation(x.name) || "Unknown"}
+                  </div>
                 </div>
                 <div className="font-black text-gray-900">{x.count}</div>
               </div>
