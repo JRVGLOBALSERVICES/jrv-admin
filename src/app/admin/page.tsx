@@ -872,7 +872,7 @@ export default async function AdminDashboard({
           name: r.name,
           count: r.count,
         }))}
-        campaigns={summary.campaigns}
+        // campaigns={summary.campaigns}
       />
 
       {/* ✅ ROW 1 */}

@@ -7,7 +7,9 @@ import {
   referrerLabel,
   shouldCountModel,
   getModelKey,
+  getCampaignKeyRaw,
   getCampaignKey,
+  isGoogleAdsHit,
 } from "@/lib/site-events";
 
 function toIsoSafe(s: string) {
@@ -33,25 +35,18 @@ function clampRange(fromIso: string, toIso: string) {
 
 function pctChange(curr: number, prev: number) {
   if (prev <= 0 && curr <= 0) return 0;
-  if (prev <= 0 && curr > 0) return 1; // "infinite" growth → treat as +100% (you can show special label)
+  if (prev <= 0 && curr > 0) return 1; // treat as +100% (UI can label as "NEW")
   return (curr - prev) / prev;
 }
 
 function compareBlock(curr: any, prev: any) {
-  // returns deltas for key fields
-  const mk = (c: number, p: number) => ({
-    curr: c,
-    prev: p,
-    delta: c - p,
-    pct: pctChange(c, p),
-  });
+  const mk = (c: number, p: number) => ({ curr: c, prev: p, delta: c - p, pct: pctChange(c, p) });
 
   return {
     activeUsersRealtime: mk(curr.activeUsersRealtime, prev.activeUsersRealtime),
     pageViews: mk(curr.pageViews, prev.pageViews),
     whatsappClicks: mk(curr.whatsappClicks, prev.whatsappClicks),
     phoneClicks: mk(curr.phoneClicks, prev.phoneClicks),
-
     traffic: {
       direct: mk(curr.traffic.direct, prev.traffic.direct),
       organic: mk(curr.traffic.organic, prev.traffic.organic),
@@ -80,27 +75,84 @@ type Metrics = {
     conversions: number;
     rate: number;
   }[];
+
+  // ✅ geo
+  topCountries: { traffic: "paid" | "organic" | "direct" | "referral"; country: string; count: number }[];
 };
 
-async function fetchRows(fromIso: string, toIso: string) {
-  const { data, error } = await supabaseAdmin
-    .from("site_events")
-    .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props"
-    )
-    .gte("created_at", fromIso)
-    .lte("created_at", toIso)
-    .order("created_at", { ascending: false })
-    .limit(5000);
+async function fetchRowsPaged(fromIso: string, toIso: string, hardCap = 20000) {
+  const pageSize = 2000;
+  let out: SiteEventRow[] = [];
+  let offset = 0;
 
-  if (error) throw new Error(error.message);
-  return (data || []) as SiteEventRow[];
+  while (out.length < hardCap) {
+    const { data, error } = await supabaseAdmin
+      .from("site_events")
+      .select(
+        "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, utm_campaign, utm_source, utm_medium, country, region, city, props"
+      )
+      .gte("created_at", fromIso)
+      .lte("created_at", toIso)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + pageSize - 1);
+
+    if (error) throw new Error(error.message);
+
+    const rows = (data || []) as SiteEventRow[];
+    out = out.concat(rows);
+
+    if (rows.length < pageSize) break;
+    offset += pageSize;
+  }
+
+  return out;
+}
+
+/**
+ * ✅ Session attribution:
+ * - determine sessionCampaign from ANY event in session that has campaign (utm_campaign or gad_campaignid)
+ * - apply it to all events in that session
+ */
+function buildSessionMaps(rows: SiteEventRow[]) {
+  // sort oldest -> newest for stable "first seen" logic
+  const sorted = [...rows].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  const sessionCampaign = new Map<string, string>();
+  const sessionTraffic = new Map<string, "direct" | "organic" | "paid" | "referral">();
+
+  for (const r of sorted) {
+    const sid = String(r.session_id || r.anon_id || "").trim();
+    if (!sid) continue;
+
+    // traffic (once paid, stays paid)
+    const t = inferTrafficTypeEnhanced(r);
+    const prevT = sessionTraffic.get(sid);
+    if (!prevT) sessionTraffic.set(sid, t);
+    else if (prevT !== "paid" && t === "paid") sessionTraffic.set(sid, "paid");
+
+    // campaign
+    const ck = getCampaignKeyRaw(r);
+    if (ck && !sessionCampaign.has(sid)) sessionCampaign.set(sid, ck);
+
+    // if it's a google ads hit but campaign is still missing, try extracting gad_campaignid specifically
+    if (!sessionCampaign.has(sid)) {
+      const { hasAds, params } = isGoogleAdsHit(r);
+      if (hasAds) {
+        const gad = String(params.gad_campaignid || "").trim();
+        if (gad) sessionCampaign.set(sid, `gad:${gad}`);
+      }
+    }
+  }
+
+  return { sessionCampaign, sessionTraffic };
 }
 
 function computeMetrics(rows: SiteEventRow[], opts?: { realtimeWindowMs?: number }): Metrics {
   const now = new Date();
   const windowMs = opts?.realtimeWindowMs ?? 5 * 60 * 1000;
   const windowAgo = new Date(now.getTime() - windowMs);
+
+  const { sessionCampaign, sessionTraffic } = buildSessionMaps(rows);
 
   const activeSessions = new Set<string>();
   let pageViews = 0;
@@ -116,25 +168,41 @@ function computeMetrics(rows: SiteEventRow[], opts?: { realtimeWindowMs?: number
   const modelViews = new Map<string, number>();
   const modelWhats = new Map<string, number>();
 
-  const campMap = new Map<
-    string,
-    { count: number; views: number; wa: number; calls: number }
-  >();
+  const campMap = new Map<string, { count: number; views: number; wa: number; calls: number }>();
+
+  // geo counters by traffic
+  const geoPaid = new Map<string, number>();
+  const geoOrg = new Map<string, number>();
+  const geoDir = new Map<string, number>();
+  const geoRef = new Map<string, number>();
 
   for (const r of rows) {
-    // realtime sessions (only counts events in last N minutes of this dataset window)
     const created = new Date(r.created_at);
-    const sid = r.session_id || r.anon_id || "";
+    const sid = String(r.session_id || r.anon_id || "").trim();
+    const sessionCamp = sid ? sessionCampaign.get(sid) : "";
+    const sessionT = sid ? sessionTraffic.get(sid) : undefined;
+
+    // realtime sessions
     if (sid && !isNaN(created.getTime()) && created.getTime() >= windowAgo.getTime()) {
       activeSessions.add(sid);
     }
 
-    const t = inferTrafficTypeEnhanced(r) as keyof typeof traffic;
+    // ✅ traffic uses session traffic if present
+    const t = (sessionT || inferTrafficTypeEnhanced(r)) as keyof typeof traffic;
     traffic[t] = (traffic[t] || 0) + 1;
 
+    // ✅ geo from columns (no geoip-lite)
+    const country = String(r.country || "").trim() || "Unknown";
+    if (t === "paid") geoPaid.set(country, (geoPaid.get(country) || 0) + 1);
+    else if (t === "organic") geoOrg.set(country, (geoOrg.get(country) || 0) + 1);
+    else if (t === "direct") geoDir.set(country, (geoDir.get(country) || 0) + 1);
+    else geoRef.set(country, (geoRef.get(country) || 0) + 1);
+
+    // referrer label
     const rn = referrerLabel(r);
     refCounts.set(rn, (refCounts.get(rn) || 0) + 1);
 
+    // traffic series
     if (!isNaN(created.getTime())) {
       const hk = hourKeyUTC(created);
       trafficOverTime.set(hk, (trafficOverTime.get(hk) || 0) + 1);
@@ -150,8 +218,8 @@ function computeMetrics(rows: SiteEventRow[], opts?: { realtimeWindowMs?: number
       modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
     }
 
-    // funnel
-    const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
+    // funnel only on car detail pages
+    const isCarDetail = !!String(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
     if (isCarDetail && (en === "page_view" || en === "site_load")) {
       const key = getModelKey(r);
       modelViews.set(key, (modelViews.get(key) || 0) + 1);
@@ -161,13 +229,15 @@ function computeMetrics(rows: SiteEventRow[], opts?: { realtimeWindowMs?: number
       modelWhats.set(key, (modelWhats.get(key) || 0) + 1);
     }
 
-    // campaigns
-    const campKey = getCampaignKey(r) || "—";
+    // ✅ campaigns (session-attributed!)
+    const campKey = getCampaignKey(r, sessionCamp || "");
     const prev = campMap.get(campKey) || { count: 0, views: 0, wa: 0, calls: 0 };
     prev.count += 1;
+
     if (isCarDetail && (en === "page_view" || en === "site_load")) prev.views += 1;
     if (en === "whatsapp_click") prev.wa += 1;
     if (en === "phone_click") prev.calls += 1;
+
     campMap.set(campKey, prev);
   }
 
@@ -199,18 +269,19 @@ function computeMetrics(rows: SiteEventRow[], opts?: { realtimeWindowMs?: number
     .map(([campaign, v]) => {
       const conversions = v.wa + v.calls;
       const rate = v.views > 0 ? v.wa / v.views : 0;
-      return {
-        campaign,
-        count: v.count,
-        views: v.views,
-        whatsapp: v.wa,
-        calls: v.calls,
-        conversions,
-        rate,
-      };
+      return { campaign, count: v.count, views: v.views, whatsapp: v.wa, calls: v.calls, conversions, rate };
     })
     .sort((a, b) => b.conversions - a.conversions || b.count - a.count)
     .slice(0, 20);
+
+  const topCountries = (
+    trafficKey: "paid" | "organic" | "direct" | "referral",
+    m: Map<string, number>
+  ) =>
+    Array.from(m.entries())
+      .map(([country, count]) => ({ traffic: trafficKey, country, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8);
 
   return {
     activeUsersRealtime: activeSessions.size,
@@ -223,6 +294,12 @@ function computeMetrics(rows: SiteEventRow[], opts?: { realtimeWindowMs?: number
     trafficSeries,
     funnel,
     campaigns,
+    topCountries: [
+      ...topCountries("paid", geoPaid),
+      ...topCountries("organic", geoOrg),
+      ...topCountries("direct", geoDir),
+      ...topCountries("referral", geoRef),
+    ],
   };
 }
 
@@ -242,15 +319,15 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Invalid from/to" }, { status: 400 });
     }
 
-    const { from: fromD, to: toD, ms } = clampRange(fromIso, toIso);
+    const { from: fromD, ms } = clampRange(fromIso, toIso);
 
     // previous window: same duration immediately before from
     const prevTo = new Date(fromD.getTime());
     const prevFrom = new Date(fromD.getTime() - ms);
 
     const [currRows, prevRows] = await Promise.all([
-      fetchRows(fromIso, toIso),
-      fetchRows(prevFrom.toISOString(), prevTo.toISOString()),
+      fetchRowsPaged(fromIso, toIso, 20000),
+      fetchRowsPaged(prevFrom.toISOString(), prevTo.toISOString(), 20000),
     ]);
 
     const current = computeMetrics(currRows);
@@ -261,10 +338,10 @@ export async function GET(req: Request) {
       range: { from: fromIso, to: toIso },
       prevRange: { from: prevFrom.toISOString(), to: prevTo.toISOString() },
 
-      // keep existing top-level fields so your UI doesn't break
+      // keep existing fields
       ...current,
 
-      // ✅ new blocks
+      // new blocks
       current,
       previous,
       compare: compareBlock(current, previous),
