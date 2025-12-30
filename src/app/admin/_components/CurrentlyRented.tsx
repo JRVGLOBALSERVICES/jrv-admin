@@ -22,7 +22,15 @@ function WhatsAppIcon() {
   );
 }
 
-function Pill({ label, value, tone = "dark" }: { label: string; value: number; tone?: "dark" | "green" | "blue" }) {
+function Pill({
+  label,
+  value,
+  tone = "dark",
+}: {
+  label: string;
+  value: number;
+  tone?: "dark" | "green" | "blue";
+}) {
   const cls =
     tone === "green"
       ? "bg-emerald-100 text-emerald-900 border-emerald-200"
@@ -31,18 +39,20 @@ function Pill({ label, value, tone = "dark" }: { label: string; value: number; t
       : "bg-gray-100 text-gray-900 border-gray-200";
 
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full border ${cls}`}>
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full border ${cls}`}
+    >
       <span className="opacity-70">{label}</span>
       <span className="tabular-nums">{value}</span>
     </span>
   );
 }
 
-function remainingMs(endIso?: string | null) {
+function remainingMs(endIso: string | null | undefined, nowMs: number) {
   if (!endIso) return 0;
   const end = new Date(endIso).getTime();
-  const now = Date.now();
-  return Math.max(0, end - now);
+  if (Number.isNaN(end)) return 0;
+  return Math.max(0, end - nowMs);
 }
 
 function formatCountdown(ms: number) {
@@ -68,43 +78,53 @@ export default function CurrentlyRented({
   availableCount: number;
   rentedCount: number;
 }) {
-  const [, tick] = useState(0);
+  // ✅ real ticking value that forces re-render
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
-    const t = setInterval(() => tick((x) => x + 1), 1000);
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
 
   const sorted = useMemo(() => {
-    return [...rows].sort((a, b) => remainingMs(a.date_end) - remainingMs(b.date_end));
-  }, [rows]);
+    return [...rows].sort(
+      (a, b) => remainingMs(a.date_end, nowMs) - remainingMs(b.date_end, nowMs)
+    );
+  }, [rows, nowMs]);
 
   return (
     <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
       <div className="px-4 py-3 border-b flex items-center justify-between bg-blue-50">
         <div className="min-w-0">
           <div className="font-bold text-blue-900">{title}</div>
-          <div className="text-xs text-blue-700 opacity-80">Active agreements right now</div>
+          <div className="text-xs text-blue-700 opacity-80">
+            Active agreements right now
+          </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* ✅ header pill badges */}
           <Pill label="Rented" value={rentedCount} tone="blue" />
           <Pill label="Available" value={availableCount} tone="green" />
 
-          <Link className="text-xs font-semibold text-blue-800 hover:underline ml-1" href="/admin/agreements">
+          <Link
+            className="text-xs font-semibold text-blue-800 hover:underline ml-1"
+            href="/admin/agreements"
+          >
             View
           </Link>
         </div>
       </div>
 
       {!sorted.length ? (
-        <div className="p-6 text-sm opacity-60 text-center">No active rentals right now.</div>
+        <div className="p-6 text-sm opacity-60 text-center">
+          No active rentals right now.
+        </div>
       ) : (
         <div className="divide-y divide-gray-100">
           {sorted.map((r) => {
-            const ms = remainingMs(r.date_end);
-            const client = (r.customer_name && r.customer_name.trim()) || r.mobile || "—";
+            const ms = remainingMs(r.date_end, nowMs);
+            const client =
+              (r.customer_name && r.customer_name.trim()) || r.mobile || "—";
             const mobileRaw = (r.mobile || "").replace(/\D/g, "");
             const whatsappLink = mobileRaw ? `https://wa.me/${mobileRaw}` : "#";
 
@@ -115,13 +135,16 @@ export default function CurrentlyRented({
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="font-bold text-gray-900">{r.plate_number}</div>
+                    <div className="font-bold text-gray-900">
+                      {r.plate_number}
+                    </div>
                     <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
                       {r.car_label}
                     </span>
                   </div>
                   <div className="text-xs text-gray-500">
-                    Client: <span className="font-medium text-gray-800">{client}</span>
+                    Client:{" "}
+                    <span className="font-medium text-gray-800">{client}</span>
                   </div>
                 </div>
 
@@ -130,7 +153,6 @@ export default function CurrentlyRented({
                     {formatCountdown(ms)}
                   </div>
 
-                  {/* ✅ WhatsApp icon */}
                   <a
                     href={whatsappLink}
                     target="_blank"
@@ -145,7 +167,6 @@ export default function CurrentlyRented({
                     <WhatsAppIcon />
                   </a>
 
-                  {/* ✅ Open button */}
                   <Link
                     href={`/admin/agreements/${r.agreement_id}`}
                     className="px-3 py-2 rounded-full text-xs font-bold border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 transition"

@@ -1,3 +1,4 @@
+// src/app/api/site-events/summary/route.ts
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { SiteEventRow } from "@/lib/site-events";
@@ -6,7 +7,6 @@ import {
   referrerLabel,
   shouldCountModel,
   getModelKey,
-  getCampaignKey,
 } from "@/lib/site-events";
 
 function toIsoSafe(s: string) {
@@ -16,6 +16,7 @@ function toIsoSafe(s: string) {
 }
 
 function hourKey(d: Date) {
+  // "2025-12-30 08:00"
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
   const dd = String(d.getUTCDate()).padStart(2, "0");
@@ -29,87 +30,97 @@ export async function GET(req: Request) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
-    if (!from || !to) return NextResponse.json({ ok: false, error: "Missing from/to" }, { status: 400 });
+    if (!from || !to) {
+      return NextResponse.json(
+        { ok: false, error: "Missing from/to" },
+        { status: 400 }
+      );
+    }
 
     const fromIso = toIsoSafe(from);
     const toIso = toIsoSafe(to);
-    if (!fromIso || !toIso) return NextResponse.json({ ok: false, error: "Invalid from/to" }, { status: 400 });
+    if (!fromIso || !toIso) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid from/to" },
+        { status: 400 }
+      );
+    }
 
-    // ✅ Pull more safely, but cap hard so server won’t die
-    const HARD_CAP = 50000;
-
+    // Pull enough rows for analytics
     const { data, error } = await supabaseAdmin
       .from("site_events")
-      .select("id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, props, utm_campaign")
+      .select(
+        "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props"
+      )
       .gte("created_at", fromIso)
       .lte("created_at", toIso)
-      .order("created_at", { ascending: true }) // ✅ important for "first touch" session campaign
-      .limit(HARD_CAP);
+      .order("created_at", { ascending: false })
+      .limit(5000);
 
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 }
+      );
+    }
 
     const rows = (data || []) as SiteEventRow[];
 
-    // ✅ Session-first campaign map (fixes your "-" campaign issue)
-    const sessionCampaign = new Map<string, string>();
-    for (const r of rows) {
-      const sid = r.session_id || r.anon_id || "";
-      if (!sid) continue;
-      if (sessionCampaign.has(sid)) continue;
-
-      const c = getCampaignKey(r);
-      if (c) sessionCampaign.set(sid, c);
-    }
-
+    // Realtime = active in last 5 minutes (based on events)
     const now = new Date();
     const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000);
     const activeNowSessions = new Set<string>();
 
+    // KPIs
     let pageViews = 0;
     let whatsappClicks = 0;
     let phoneClicks = 0;
 
     const traffic = { direct: 0, organic: 0, paid: 0, referral: 0 };
+
+    // Top models
     const modelCounts = new Map<string, number>();
+
+    // Referrers
     const refCounts = new Map<string, number>();
+
+    // Traffic over time (hourly buckets)
     const trafficOverTime = new Map<string, number>();
 
+    // Funnel (view → whatsapp): per model
     const modelViews = new Map<string, number>();
     const modelWhats = new Map<string, number>();
 
-    // ✅ Campaign aggregates
-    const campAgg = new Map<string, { count: number; views: number; wa: number; calls: number }>();
-
     for (const r of rows) {
+      const t = inferTrafficTypeEnhanced(r) as keyof typeof traffic;
+      traffic[t] = (traffic[t] || 0) + 1;
+
+      // ✅ rename: referrerName -> referrerLabel
+      const rn = referrerLabel(r);
+      refCounts.set(rn, (refCounts.get(rn) || 0) + 1);
+
       const created = new Date(r.created_at);
       if (!isNaN(created.getTime())) {
-        trafficOverTime.set(hourKey(created), (trafficOverTime.get(hourKey(created)) || 0) + 1);
+        const hk = hourKey(created);
+        trafficOverTime.set(hk, (trafficOverTime.get(hk) || 0) + 1);
+
         const sid = r.session_id || r.anon_id || "";
-        if (sid && created.getTime() >= fiveMinAgo.getTime()) activeNowSessions.add(sid);
+        if (sid && created.getTime() >= fiveMinAgo.getTime()) {
+          activeNowSessions.add(sid);
+        }
       }
 
       const en = String(r.event_name || "").toLowerCase();
-
-      // KPIs
       if (en === "page_view") pageViews++;
       if (en === "whatsapp_click") whatsappClicks++;
       if (en === "phone_click") phoneClicks++;
 
-      // traffic
-      const t = inferTrafficTypeEnhanced(r) as keyof typeof traffic;
-      traffic[t] = (traffic[t] || 0) + 1;
-
-      // referrer
-      const rn = referrerLabel(r);
-      refCounts.set(rn, (refCounts.get(rn) || 0) + 1);
-
-      // top models
       if (shouldCountModel(r)) {
         const key = getModelKey(r);
         modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
       }
 
-      // model funnel
+      // funnel by model: treat car detail views as "view"
       const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
       if (isCarDetail && (en === "page_view" || en === "site_load")) {
         const key = getModelKey(r);
@@ -119,18 +130,6 @@ export async function GET(req: Request) {
         const key = getModelKey(r);
         modelWhats.set(key, (modelWhats.get(key) || 0) + 1);
       }
-
-      // ✅ campaign key with session fallback (THIS FIXES "-")
-      const sid = r.session_id || r.anon_id || "";
-      const cDirect = getCampaignKey(r);
-      const c = cDirect || (sid ? sessionCampaign.get(sid) : "") || "—";
-
-      const prev = campAgg.get(c) || { count: 0, views: 0, wa: 0, calls: 0 };
-      prev.count += 1;
-      if (isCarDetail && (en === "page_view" || en === "site_load")) prev.views += 1;
-      if (en === "whatsapp_click") prev.wa += 1;
-      if (en === "phone_click") prev.calls += 1;
-      campAgg.set(c, prev);
     }
 
     const topModels = Array.from(modelCounts.entries())
@@ -143,12 +142,13 @@ export async function GET(req: Request) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
 
+    // Build a sorted series for chart (last 48 buckets max)
     const series = Array.from(trafficOverTime.entries())
       .sort((a, b) => (a[0] > b[0] ? 1 : -1))
-      .slice(-96)
-      .map(([t, v]) => ({ t, v }));
+      .slice(-48)
+      .map(([k, v]) => ({ t: k, v }));
 
-    const funnel = Array.from(modelViews.entries())
+    const funnelTop = Array.from(modelViews.entries())
       .map(([model, views]) => {
         const wa = modelWhats.get(model) || 0;
         const rate = views > 0 ? wa / views : 0;
@@ -157,19 +157,8 @@ export async function GET(req: Request) {
       .sort((a, b) => b.views - a.views)
       .slice(0, 15);
 
-    const campaigns = Array.from(campAgg.entries())
-      .map(([campaign, v]) => {
-        const conversions = v.wa + v.calls;
-        const rate = v.views > 0 ? v.wa / v.views : 0;
-        return { campaign, count: v.count, views: v.views, whatsapp: v.wa, calls: v.calls, conversions, rate };
-      })
-      .sort((a, b) => b.conversions - a.conversions || b.count - a.count)
-      .slice(0, 20);
-
     return NextResponse.json({
       ok: true,
-      hardCap: HARD_CAP,
-      rowsScanned: rows.length,
       activeUsersRealtime: activeNowSessions.size,
       pageViews,
       whatsappClicks,
@@ -178,10 +167,12 @@ export async function GET(req: Request) {
       topModels,
       topReferrers,
       trafficSeries: series,
-      funnel,
-      campaigns,
+      funnel: funnelTop,
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }

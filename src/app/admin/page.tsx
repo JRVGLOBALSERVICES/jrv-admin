@@ -37,25 +37,40 @@ type AgreementLite = {
   total_price: number | null;
 };
 
-// --- Date Helpers ---
+type MiniSummary = {
+  activeUsersRealtime: number;
+  whatsappClicks: number;
+  phoneClicks: number;
+  traffic: { direct: number; organic: number; paid: number; referral: number };
+  topModels: { key: string; count: number }[];
+  topReferrers: { name: string; count: number }[];
+  campaigns: {
+    campaign: string;
+    count: number;
+    views: number;
+    whatsapp: number;
+    calls: number;
+    conversions: number;
+    rate: number;
+  }[];
+};
+
+/* ===========================
+   Date Helpers
+   =========================== */
 function isValidDate(d: any): d is Date {
   return d instanceof Date && !isNaN(d.getTime());
 }
 function safeISO(d: Date) {
   return isValidDate(d) ? d.toISOString() : new Date().toISOString();
 }
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
-}
-function endOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
-}
 function startOfWeekMonday(d: Date) {
   const day = d.getDay();
   const diff = (day === 0 ? -6 : 1) - day;
   const monday = new Date(d);
   monday.setDate(d.getDate() + diff);
-  return startOfDay(monday);
+  monday.setHours(0, 0, 0, 0);
+  return monday;
 }
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
@@ -81,7 +96,9 @@ function diffDays(start: string | null, end: string | null) {
   return Math.max(1, Math.ceil((b - a) / (1000 * 60 * 60 * 24)));
 }
 
-// --- Model normalization ---
+/* ===========================
+   Model normalization
+   =========================== */
 function normalizeModel(rawName: string | null) {
   if (!rawName) return "Unknown";
   const lower = rawName.toLowerCase().trim();
@@ -114,7 +131,9 @@ function getBrand(model: string) {
   return model.split(" ")[0] || "Other";
 }
 
-// ✅ daily = last 24 hours (yesterday this time → today this time)
+/* ===========================
+   Range logic
+   =========================== */
 function getRange(
   period: Period,
   fromParam: string,
@@ -130,9 +149,9 @@ function getRange(
     }
   }
 
-  let start: Date;
   if (period === "all") return { start: new Date(0), end: now };
 
+  let start: Date;
   if (period === "daily") start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   else if (period === "weekly") start = startOfWeekMonday(now);
   else if (period === "monthly") start = startOfMonth(now);
@@ -143,7 +162,9 @@ function getRange(
   return { start, end: now };
 }
 
-// ✅ Supabase relation can be object OR array depending on typing/join shape
+/* ===========================
+   Supabase relation helper
+   =========================== */
 function pickCatalog(rel: any): { make?: any; model?: any } {
   if (!rel) return {};
   if (Array.isArray(rel)) return rel[0] ?? {};
@@ -151,15 +172,11 @@ function pickCatalog(rel: any): { make?: any; model?: any } {
 }
 
 /* ===========================
-   ✅ KL TIMEZONE HELPERS
-   Fixes Vercel UTC "today/tomorrow" shifting
+   KL timezone helpers (UTC instants)
    =========================== */
-
-const KL_TZ = "Asia/Kuala_Lumpur";
-const KL_OFFSET_MS = 8 * 60 * 60 * 1000; // Malaysia is UTC+8, no DST
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 function startOfDayInKLToUTC(baseUtc: Date) {
-  // Convert "now UTC" into KL local clock, then clamp to 00:00 KL, then convert back to UTC instant.
   const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
   const klMidnight = new Date(
     kl.getFullYear(),
@@ -172,19 +189,120 @@ function startOfDayInKLToUTC(baseUtc: Date) {
   );
   return new Date(klMidnight.getTime() - KL_OFFSET_MS);
 }
-
 function endOfDayInKLToUTC(baseUtc: Date) {
   const start = startOfDayInKLToUTC(baseUtc);
   return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
 }
-
 function addDaysKL(baseUtc: Date, days: number) {
-  // Move KL day forward, then return the UTC instant corresponding to the same KL clock time.
   const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
   kl.setDate(kl.getDate() + days);
   return new Date(kl.getTime() - KL_OFFSET_MS);
 }
 
+/* ===========================
+   Site events helpers (gad_campaignid only)
+   =========================== */
+function safeJson(v: any) {
+  try {
+    if (!v) return {};
+    if (typeof v === "object") return v;
+    if (typeof v === "string") return JSON.parse(v);
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+// ✅ safe for null page_url
+function parseUrlParamsSafe(pageUrl: string | null | undefined) {
+  const out: Record<string, string> = {};
+  if (!pageUrl) return out;
+  try {
+    const u = new URL(pageUrl);
+    u.searchParams.forEach((val, key) => {
+      out[key] = val;
+    });
+    return out;
+  } catch {
+    // handle relative URLs like "/?gad_campaignid=..."
+    try {
+      const u = new URL(pageUrl, "https://example.com");
+      u.searchParams.forEach((val, key) => {
+        out[key] = val;
+      });
+      return out;
+    } catch {
+      return out;
+    }
+  }
+}
+
+function isGoogleRef(referrer: string | null | undefined) {
+  if (!referrer) return false;
+  const r = referrer.toLowerCase();
+  return r.includes("google.");
+}
+
+// ✅ your request: prefer utm_campaign else gad_campaignid (only)
+function getCampaignKeyFromUrlParams(p: Record<string, string>) {
+  const utm = (p["utm_campaign"] || "").trim();
+  if (utm) return `utm:${utm}`;
+  const gad = (p["gad_campaignid"] || "").trim();
+  if (gad) return `gad:${gad}`;
+  return "—";
+}
+
+// ✅ Split referrer label: Google Ads vs Google Organic
+function referrerLabelGadOnly(
+  referrer: string | null | undefined,
+  pageUrl: string | null | undefined
+) {
+  const p = parseUrlParamsSafe(pageUrl);
+  const hasGad = !!(p["gad_campaignid"] || "").trim();
+
+  if (isGoogleRef(referrer)) {
+    return hasGad ? "Google Ads" : "Google (Organic)";
+  }
+
+  if (!referrer) return "Direct / None";
+  try {
+    const u = new URL(referrer);
+    return u.hostname.replace(/^www\./, "");
+  } catch {
+    return (
+      String(referrer)
+        .replace(/^https?:\/\//, "")
+        .replace(/^www\./, "")
+        .split("/")[0] || "Direct / None"
+    );
+  }
+}
+
+function inferTrafficTypeGadOnly(
+  referrer: string | null | undefined,
+  pageUrl: string | null | undefined
+) {
+  const p = parseUrlParamsSafe(pageUrl);
+  const hasGad = !!(p["gad_campaignid"] || "").trim();
+  if (hasGad) return "paid" as const;
+  if (isGoogleRef(referrer)) return "organic" as const;
+  if (!referrer) return "direct" as const;
+  return "referral" as const;
+}
+
+function inferCarFromPath(page_path: string | null) {
+  if (!page_path) return null;
+  const m = page_path.match(/^\/cars\/([^/]+)\/?$/i);
+  if (!m) return null;
+  const slug = decodeURIComponent(m[1] || "");
+  const parts = slug.split("-");
+  if (parts.length < 2) return { make: "", model: slug.replace(/-/g, " ") };
+  return { make: parts[0], model: parts.slice(1).join(" ").trim() };
+}
+
+/* ===========================
+   MAIN
+   =========================== */
 export default async function AdminDashboard({
   searchParams,
 }: {
@@ -207,7 +325,7 @@ export default async function AdminDashboard({
   const supabase = await createSupabaseServer();
 
   // -------------------------
-  // MINI SITE ANALYTICS (last 24h rolling)
+  // ✅ MINI SITE ANALYTICS (last 24h rolling)
   // -------------------------
   const now2 = new Date();
   const last24h = new Date(now2.getTime() - 24 * 60 * 60 * 1000);
@@ -215,47 +333,13 @@ export default async function AdminDashboard({
   const { data: siteEvents24h } = await supabase
     .from("site_events")
     .select(
-      "event_name, session_id, anon_id, traffic_type, page_path, props, referrer"
+      // ✅ include page_url so gad_campaignid detection works
+      "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer"
     )
     .gte("created_at", last24h.toISOString())
     .lte("created_at", now2.toISOString())
+    .order("created_at", { ascending: false })
     .limit(5000);
-
-  const safeParse = (v: any) => {
-    try {
-      if (!v) return {};
-      if (typeof v === "object") return v;
-      if (typeof v === "string") return JSON.parse(v);
-      return {};
-    } catch {
-      return {};
-    }
-  };
-
-  const inferCarFromPath = (page_path: string | null) => {
-    if (!page_path) return null;
-    const m = page_path.match(/^\/cars\/([^/]+)\/?$/i);
-    if (!m) return null;
-    const slug = decodeURIComponent(m[1] || "");
-    const parts = slug.split("-");
-    if (parts.length < 2) return { make: "", model: slug.replace(/-/g, " ") };
-    return { make: parts[0], model: parts.slice(1).join(" ").trim() };
-  };
-
-  const refDomain = (ref?: string | null) => {
-    if (!ref) return "Direct / None";
-    try {
-      const u = new URL(ref);
-      return u.hostname.replace(/^www\./, "");
-    } catch {
-      return (
-        String(ref)
-          .replace(/^https?:\/\//, "")
-          .replace(/^www\./, "")
-          .split("/")[0] || "Direct / None"
-      );
-    }
-  };
 
   const activeUserSet = new Set<string>();
   let whatsappClicks24h = 0;
@@ -265,27 +349,40 @@ export default async function AdminDashboard({
   const modelCounts = new Map<string, number>();
   const refCounts = new Map<string, number>();
 
+  const campaignAgg = new Map<
+    string,
+    { count: number; views: number; wa: number; calls: number }
+  >();
+
   for (const e of siteEvents24h ?? []) {
     const sid = e.session_id || e.anon_id || "";
     if (sid) activeUserSet.add(sid);
 
-    // traffic
-    const traffic = String(
-      e.traffic_type || "direct"
-    ).toLowerCase() as keyof typeof trafficCounts;
-    if (trafficCounts[traffic] !== undefined) trafficCounts[traffic] += 1;
-    else trafficCounts.direct += 1;
+    const en = String(e.event_name || "").toLowerCase();
 
     // clicks
-    if (e.event_name === "whatsapp_click") whatsappClicks24h++;
-    if (e.event_name === "phone_click") phoneClicks24h++;
+    if (en === "whatsapp_click") whatsappClicks24h++;
+    if (en === "phone_click") phoneClicks24h++;
 
-    // referrers (domain)
-    const dom = refDomain((e as any).referrer);
-    refCounts.set(dom, (refCounts.get(dom) || 0) + 1);
+    // ✅ traffic (gad_campaignid only)
+    const t = inferTrafficTypeGadOnly((e as any).referrer, (e as any).page_url);
+    trafficCounts[t] += 1;
 
-    // model inference
-    const props = safeParse((e as any).props);
+    // ✅ referrer label (Google split)
+    const rLabel = referrerLabelGadOnly(
+      (e as any).referrer,
+      (e as any).page_url
+    );
+    refCounts.set(rLabel, (refCounts.get(rLabel) || 0) + 1);
+
+    // ✅ campaign key (utm_campaign -> gad_campaignid)
+    const params = parseUrlParamsSafe((e as any).page_url);
+    const campaignKey = getCampaignKeyFromUrlParams(params);
+
+    const looksLikeCarDetail = !!inferCarFromPath((e as any).page_path);
+
+    // model inference (props first, else from /cars/slug)
+    const props = safeJson((e as any).props);
     let make = String(props?.make || "").trim();
     let model = String(props?.model || "").trim();
 
@@ -297,20 +394,34 @@ export default async function AdminDashboard({
       }
     }
 
-    const looksLikeCarDetail = !!inferCarFromPath((e as any).page_path);
-
-    // ✅ FIXED: include whatsapp & phone too
+    // ✅ model counts include view + click + conversions
     const shouldCountModel =
-      e.event_name === "model_click" ||
-      e.event_name === "whatsapp_click" ||
-      e.event_name === "phone_click" ||
-      ((e.event_name === "page_view" || e.event_name === "site_load") &&
-        looksLikeCarDetail);
+      en === "model_click" ||
+      en === "whatsapp_click" ||
+      en === "phone_click" ||
+      ((en === "page_view" || en === "site_load") && looksLikeCarDetail);
 
     if (shouldCountModel && model) {
       const key = `${make ? make + " " : ""}${model}`.trim();
       modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
     }
+
+    // ✅ campaign agg
+    const prev = campaignAgg.get(campaignKey) || {
+      count: 0,
+      views: 0,
+      wa: 0,
+      calls: 0,
+    };
+    prev.count += 1;
+
+    // We treat views as car detail page load/view
+    if (looksLikeCarDetail && (en === "page_view" || en === "site_load"))
+      prev.views += 1;
+    if (en === "whatsapp_click") prev.wa += 1;
+    if (en === "phone_click") prev.calls += 1;
+
+    campaignAgg.set(campaignKey, prev);
   }
 
   const topModels24h = Array.from(modelCounts.entries())
@@ -319,11 +430,47 @@ export default async function AdminDashboard({
     .slice(0, 10);
 
   const topReferrers24h = Array.from(refCounts.entries())
-    .map(([key, count]) => ({ key, count }))
+    .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  const campaigns24h = Array.from(campaignAgg.entries())
+    .map(([campaign, v]) => {
+      const conversions = v.wa + v.calls;
+      const rate = v.views > 0 ? v.wa / v.views : 0;
+      return {
+        campaign,
+        count: v.count,
+        views: v.views,
+        whatsapp: v.wa,
+        calls: v.calls,
+        conversions,
+        rate,
+      };
+    })
+    // ✅ IMPORTANT: push "—" to bottom so it doesn't pollute the list
+    .sort((a, b) => {
+      const aDash = a.campaign === "—" ? 1 : 0;
+      const bDash = b.campaign === "—" ? 1 : 0;
+      if (aDash !== bDash) return aDash - bDash;
+      return b.conversions - a.conversions || b.count - a.count;
+    })
+    .slice(0, 20);
+
+  // ✅ the object your MiniSiteAnalytics expects
+  const summary: MiniSummary = {
+    activeUsersRealtime: activeUserSet.size,
+    whatsappClicks: whatsappClicks24h,
+    phoneClicks: phoneClicks24h,
+    traffic: trafficCounts,
+    topModels: topModels24h,
+    topReferrers: topReferrers24h,
+    campaigns: campaigns24h,
+  };
+
+  // -------------------------
   // Filters dropdown data (based on agreements history)
+  // -------------------------
   const { data: allAgreements } = await supabase
     .from("agreements")
     .select("car_type, plate_number")
@@ -336,6 +483,7 @@ export default async function AdminDashboard({
         .filter(Boolean)
     )
   ) as string[];
+
   const uniquePlates = Array.from(
     new Set((allAgreements ?? []).map((a) => a.plate_number).filter(Boolean))
   ) as string[];
@@ -343,7 +491,9 @@ export default async function AdminDashboard({
   uniqueModels.sort();
   uniquePlates.sort();
 
+  // -------------------------
   // Revenue query
+  // -------------------------
   let query = supabase
     .from("agreements")
     .select(
@@ -368,7 +518,9 @@ export default async function AdminDashboard({
   if (filterModel)
     rows = rows.filter((r) => normalizeModel(r.car_type) === filterModel);
 
-  // Analytics
+  // -------------------------
+  // Analytics (Revenue)
+  // -------------------------
   let totalRevenue = 0;
   let totalDaysRented = 0;
 
@@ -426,14 +578,14 @@ export default async function AdminDashboard({
   const avgLength = bookingCount > 0 ? totalDaysRented / bookingCount : 0;
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
-  // ---- Cards data ----
+  // -------------------------
+  // Cards data
+  // -------------------------
   const now = new Date();
 
-  // ✅ FIXED: KL "today" boundaries in UTC instants
   const todayStartUTC = startOfDayInKLToUTC(now);
   const todayEndUTC = endOfDayInKLToUTC(now);
 
-  // Expiring today (ALL) — based on KL day
   const { data: expiringToday } = await supabase
     .from("agreements")
     .select(
@@ -445,7 +597,6 @@ export default async function AdminDashboard({
     .order("date_end", { ascending: true })
     .limit(5000);
 
-  // Cars base (IMPORTANT: alias catalog_rel)
   const { data: carsBase } = await supabase
     .from("cars")
     .select(
@@ -454,7 +605,6 @@ export default async function AdminDashboard({
     .order("plate_number", { ascending: true })
     .limit(5000);
 
-  // Active agreements right now => currently rented
   const nowIso = now.toISOString();
   const { data: activeNow } = await supabase
     .from("agreements")
@@ -472,7 +622,6 @@ export default async function AdminDashboard({
     (activeNow ?? []).map((a: any) => a?.car_id).filter(Boolean)
   );
 
-  // Available now = car.status available AND not currently busy
   const availableNowRows =
     (carsBase ?? [])
       .filter(
@@ -490,7 +639,6 @@ export default async function AdminDashboard({
         };
       }) ?? [];
 
-  // Currently rented rows (join car label)
   const currentlyRentedRows =
     (activeNow ?? []).map((ag: any) => {
       const car = (carsBase ?? []).find((c: any) => c?.id === ag.car_id);
@@ -511,12 +659,10 @@ export default async function AdminDashboard({
       };
     }) ?? [];
 
-  // ✅ FIXED: Tomorrow KL boundaries
   const tomorrowBase = addDaysKL(now, 1);
   const tomorrowStartUTC = startOfDayInKLToUTC(tomorrowBase);
   const tomorrowEndUTC = endOfDayInKLToUTC(tomorrowBase);
 
-  // Available tomorrow = ONLY currently rented now AND end tomorrow (KL day)
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;
     return (
@@ -552,15 +698,6 @@ export default async function AdminDashboard({
         </Suspense>
       </div>
 
-      <MiniSiteAnalytics
-        activeUsers={activeUserSet.size}
-        whatsappClicks={whatsappClicks24h}
-        phoneClicks={phoneClicks24h}
-        traffic={trafficCounts}
-        topModels={topModels24h}
-        topReferrers={topReferrers24h}
-      />
-
       {/* KPI GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl border shadow-sm">
@@ -574,6 +711,7 @@ export default async function AdminDashboard({
             {bookingCount} bookings
           </div>
         </div>
+
         <div className="bg-white p-4 rounded-xl border shadow-sm">
           <div className="text-xs font-semibold text-gray-400 uppercase">
             Days Rented
@@ -585,6 +723,7 @@ export default async function AdminDashboard({
             days total
           </div>
         </div>
+
         <div className="bg-white p-4 rounded-xl border shadow-sm">
           <div className="text-xs font-semibold text-gray-400 uppercase">
             Avg Daily Rate
@@ -594,6 +733,7 @@ export default async function AdminDashboard({
           </div>
           <div className="text-xs text-gray-500 mt-1 font-medium">per day</div>
         </div>
+
         <div className="bg-white p-4 rounded-xl border shadow-sm">
           <div className="text-xs font-semibold text-gray-400 uppercase">
             Avg Length
@@ -607,38 +747,7 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      {/* ✅ ROW 1: 3 cards side-by-side */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <ExpiringSoon
-          title="Expiring Today ⏳"
-          subtitle="All agreements ending today"
-          rows={(expiringToday ?? []) as any}
-        />
-
-        <AvailableNow
-          title="Available Now ✅"
-          rows={availableNowRows as any}
-          availableCount={availableCount}
-          rentedCount={rentedCount}
-        />
-
-        <AvailableTomorrow
-          title="Available Tomorrow 📅"
-          rows={availableTomorrowRows as any}
-        />
-      </div>
-
-      {/* ✅ ROW 2: Currently rented full width */}
-      <div className="grid grid-cols-1">
-        <CurrentlyRented
-          title="Currently Rented 🚗"
-          rows={currentlyRentedRows as any}
-          availableCount={availableCount}
-          rentedCount={rentedCount}
-        />
-      </div>
-
-      {/* ✅ Bottom: top plate + revenue by model */}
+            {/* ✅ Bottom */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
@@ -750,6 +859,51 @@ export default async function AdminDashboard({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ✅ NOW summary is real */}
+      <MiniSiteAnalytics
+        activeUsers={summary.activeUsersRealtime}
+        whatsappClicks={summary.whatsappClicks}
+        phoneClicks={summary.phoneClicks}
+        traffic={summary.traffic}
+        topModels={summary.topModels}
+        topReferrers={summary.topReferrers.map((r) => ({
+          name: r.name,
+          count: r.count,
+        }))}
+        campaigns={summary.campaigns}
+      />
+
+      {/* ✅ ROW 1 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <ExpiringSoon
+          title="Expiring Today ⏳"
+          subtitle="All agreements ending today"
+          rows={(expiringToday ?? []) as any}
+        />
+
+        <AvailableNow
+          title="Available Now ✅"
+          rows={availableNowRows as any}
+          availableCount={availableCount}
+          rentedCount={rentedCount}
+        />
+
+        <AvailableTomorrow
+          title="Available Tomorrow 📅"
+          rows={availableTomorrowRows as any}
+        />
+      </div>
+
+      {/* ✅ ROW 2 */}
+      <div className="grid grid-cols-1">
+        <CurrentlyRented
+          title="Currently Rented 🚗"
+          rows={currentlyRentedRows as any}
+          availableCount={availableCount}
+          rentedCount={rentedCount}
+        />
       </div>
     </div>
   );

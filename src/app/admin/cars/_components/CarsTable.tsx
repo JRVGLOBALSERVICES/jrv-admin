@@ -20,6 +20,7 @@ const STATUS = [
   "rented",
   "maintenance",
   "inactive",
+  "website-display-only",
 ] as const;
 const BODY = [
   "All",

@@ -457,6 +457,7 @@ export function CarForm({
               <option value="rented">rented</option>
               <option value="maintenance">maintenance</option>
               <option value="inactive">inactive</option>
+              <option value="website-display-only">website-display-only</option>
             </select>
           </div>
         </div>

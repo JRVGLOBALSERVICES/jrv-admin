@@ -1,20 +1,23 @@
-// src/lib/site-events.ts
-
 export type SiteEventRow = {
   id: string;
   created_at: string;
-  event_name: string;
+  event_name: string | null;
   page_path: string | null;
   page_url: string | null;
   referrer: string | null;
   session_id: string | null;
   anon_id: string | null;
   traffic_type: string | null;
-  device_type: string | null;
-  props: any; // can be stringified JSON or object
+  device_type?: string | null;
+  props?: any;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
+  utm_term?: string | null;
+  utm_content?: string | null;
 };
 
-export function safeParseProps(v: any): Record<string, any> {
+export function safeParseProps(v: any) {
   try {
     if (!v) return {};
     if (typeof v === "object") return v;
@@ -25,154 +28,114 @@ export function safeParseProps(v: any): Record<string, any> {
   }
 }
 
-export function parseUrlParams(pageUrl?: string | null) {
+/** ✅ FIXES: Argument of type 'string | null' is not assignable to parameter of type 'string | URL'. */
+export function parseUrlParams(pageUrl: string | null) {
   try {
-    if (!pageUrl) return {};
+    if (!pageUrl) return {} as Record<string, string>;
     const u = new URL(pageUrl);
-    const p = u.searchParams;
-
-    return {
-      gclid: p.get("gclid") || "",
-      gbraid: p.get("gbraid") || "",
-      wbraid: p.get("wbraid") || "",
-      gad_source: p.get("gad_source") || "",
-      gad_campaignid: p.get("gad_campaignid") || "",
-      gbbraid: p.get("gbbraid") || "",
-      lang: p.get("lang") || "",
-      utm_source: p.get("utm_source") || "",
-      utm_medium: p.get("utm_medium") || "",
-      utm_campaign: p.get("utm_campaign") || "",
-      utm_term: p.get("utm_term") || "",
-      utm_content: p.get("utm_content") || "",
-    };
+    const out: Record<string, string> = {};
+    u.searchParams.forEach((v, k) => (out[k] = v));
+    return out;
   } catch {
-    return {};
+    return {} as Record<string, string>;
   }
 }
 
-export function referrerName(ref?: string | null) {
-  if (!ref) return "Direct";
-  try {
-    const u = new URL(ref);
-    const host = (u.hostname || "").replace(/^www\./, "");
-    return host || "Referral";
-  } catch {
-    // sometimes referrer stored as plain string
-    return String(ref).replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] || "Referral";
-  }
+function isGoogleReferrer(ref: string | null) {
+  if (!ref) return false;
+  const r = ref.toLowerCase();
+  return r.includes("google.") || r.includes("www.google.com");
 }
 
-export function inferCarFromPath(page_path: string | null) {
-  if (!page_path) return null;
-
-  // Matches:
-  // /cars/Toyota-Yaris/
-  // /cars/Perodua-Axia-G1/
-  // /cars/Toyota-Vellfire
-  const m = page_path.match(/^\/cars\/([^/]+)\/?$/i);
-  if (!m) return null;
-
-  const slug = decodeURIComponent(m[1] || "");
-  const parts = slug.split("-").filter(Boolean);
-
-  if (parts.length < 2) {
-    return { make: "", model: slug.replace(/-/g, " ") };
-  }
-  return { make: parts[0], model: parts.slice(1).join(" ").trim() };
+export function hasAdsParams(pageUrl: string | null) {
+  const p = parseUrlParams(pageUrl);
+  return !!(p.gclid || p.gbraid || p.wbraid || p.gad_campaignid || p.gad_source);
 }
 
-// Normalise to nice names so “Toyota-Yaris” & “Yaris” don’t become separate keys
-export function normalizeModelName(make: string, model: string) {
-  const raw = `${make ? make + " " : ""}${model}`.trim();
-  if (!raw) return "Unknown";
+export function inferTrafficTypeEnhanced(r: SiteEventRow) {
+  const base = String(r.traffic_type || "").toLowerCase();
 
-  const lower = raw.toLowerCase();
+  // ✅ Force PAID if Ads params exist (even if base says organic)
+  if (hasAdsParams(r.page_url)) return "paid";
 
-  if (lower.includes("bezza")) return "Perodua Bezza";
-  if (lower.includes("myvi")) return "Perodua Myvi";
-  if (lower.includes("axia")) return "Perodua Axia";
-  if (lower.includes("alza")) return "Perodua Alza";
-  if (lower.includes("aruz")) return "Perodua Aruz";
-  if (lower.includes("ativa")) return "Perodua Ativa";
+  if (base === "organic" || base === "paid" || base === "referral" || base === "direct") return base;
 
-  if (lower.includes("vios")) return "Toyota Vios";
-  if (lower.includes("yaris")) return "Toyota Yaris";
-  if (lower.includes("alphard")) return "Toyota Alphard";
-  if (lower.includes("vellfire")) return "Toyota Vellfire";
-  if (lower.includes("innova")) return "Toyota Innova";
-
-  if (lower.includes("city")) return "Honda City";
-  if (lower.includes("civic")) return "Honda Civic";
-  if (lower.includes("brv") || lower.includes("br-v")) return "Honda BR-V";
-  if (lower.includes("crv") || lower.includes("cr-v")) return "Honda CR-V";
-
-  // Title Case fallback
-  return raw.replace(/\b\w/g, (c) => c.toUpperCase());
-}
-
-export function inferTrafficTypeEnhanced(row: {
-  traffic_type?: string | null;
-  referrer?: string | null;
-  page_url?: string | null;
-}) {
-  const base = String(row.traffic_type || "").toLowerCase();
-  const params = parseUrlParams(row.page_url);
-
-  // ✅ Google Ads click IDs → treat as PAID
-  const hasAdsId = !!(
-    params.gclid ||
-    params.gbraid ||
-    params.wbraid ||
-    params.gad_campaignid ||
-    params.gad_source
-  );
-
-  if (hasAdsId) return "paid";
-  if (base === "paid") return "paid";
-
-  const ref = (row.referrer || "").toLowerCase();
-  if (ref.includes("google.")) return "organic";
-
-  if (!row.referrer) return "direct";
+  // fallback based on referrer
+  if (!r.referrer) return "direct";
+  if (isGoogleReferrer(r.referrer)) return "organic";
   return "referral";
 }
 
-export function isCarDetailEvent(e: SiteEventRow) {
-  return !!inferCarFromPath(e.page_path);
+/**
+ * ✅ Google split:
+ * - If referrer is Google AND Ads params exist → "Google Ads"
+ * - If referrer is Google only → "Google (Organic)"
+ */
+export function referrerLabel(r: SiteEventRow) {
+  const ref = r.referrer || "";
+  if (!ref) return "Direct / None";
+
+  if (isGoogleReferrer(ref)) {
+    return hasAdsParams(r.page_url) ? "Google Ads" : "Google (Organic)";
+  }
+
+  try {
+    const u = new URL(ref);
+    const host = u.hostname.replace(/^www\./, "");
+    return host || "Referral";
+  } catch {
+    return "Referral";
+  }
+}
+
+/** car model key */
+export function getModelKey(r: SiteEventRow) {
+  // prefer props.make/model if you store it
+  const props = safeParseProps(r.props);
+  const make = String(props?.make || "").trim();
+  const model = String(props?.model || "").trim();
+  if (make || model) return [make, model].filter(Boolean).join(" ").trim();
+
+  // fallback infer from /cars/<slug>
+  const m = (r.page_path || "").match(/^\/cars\/([^/]+)\/?$/i);
+  if (!m) return "—";
+  const slug = decodeURIComponent(m[1] || "").replace(/-/g, " ").trim();
+  return slug ? slug : "—";
 }
 
 /**
- * ✅ FIX: count model activity not only model_click/page_view,
- * but ALSO whatsapp_click/phone_click because those are conversions for a model.
+ * ✅ Campaign Key:
+ * prefer utm_campaign if present, else gad_campaignid
+ * return normalized string like:
+ * - "utm:DeepavaliPromo"
+ * - "gad:23410586632"
  */
-export function shouldCountModel(e: SiteEventRow) {
-  const detail = isCarDetailEvent(e);
-  const name = String(e.event_name || "").toLowerCase();
+export function getCampaignKeyFromUrl(pageUrl: string | null) {
+  const p = parseUrlParams(pageUrl);
+  const utm = (p.utm_campaign || "").trim();
+  const gad = (p.gad_campaignid || "").trim();
 
-  if (name === "model_click") return true;
-
-  // car detail page views/loads count as model interest
-  if (detail && (name === "page_view" || name === "site_load")) return true;
-
-  // ✅ conversions also count toward model popularity
-  if (detail && (name === "whatsapp_click" || name === "phone_click")) return true;
-
-  return false;
+  if (utm) return `utm:${utm}`;
+  if (gad) return `gad:${gad}`;
+  return "";
 }
 
-export function getModelKey(e: SiteEventRow) {
-  const props = safeParseProps(e.props);
-  let make = String(props?.make || "").trim();
-  let model = String(props?.model || "").trim();
+export function getCampaignKey(r: SiteEventRow) {
+  // first try explicit columns if you store them
+  const utmCol = String(r.utm_campaign || "").trim();
+  if (utmCol) return `utm:${utmCol}`;
 
-  if (!model) {
-    const inferred = inferCarFromPath(e.page_path);
-    if (inferred?.model) {
-      make = make || inferred.make || "";
-      model = inferred.model;
-    }
-  }
+  // else parse from url
+  return getCampaignKeyFromUrl(r.page_url) || "";
+}
 
-  if (!model) return "Unknown";
-  return normalizeModelName(make, model);
+/** count model activity (same as your older logic) */
+export function shouldCountModel(r: SiteEventRow) {
+  const en = String(r.event_name || "").toLowerCase();
+  const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
+
+  return (
+    en === "model_click" ||
+    (isCarDetail && (en === "page_view" || en === "site_load" || en === "whatsapp_click" || en === "phone_click"))
+  );
 }

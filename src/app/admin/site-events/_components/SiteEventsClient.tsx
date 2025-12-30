@@ -1,3 +1,4 @@
+// src/app/admin/site-events/SiteEventsClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,9 +7,10 @@ import type { SiteEventRow } from "@/lib/site-events";
 import {
   inferTrafficTypeEnhanced,
   parseUrlParams,
-  referrerName,
+  referrerLabel,
   safeParseProps,
   getModelKey,
+  getCampaignKey,
 } from "@/lib/site-events";
 
 type Summary = {
@@ -21,10 +23,18 @@ type Summary = {
   topReferrers: { name: string; count: number }[];
   trafficSeries: { t: string; v: number }[];
   funnel: { model: string; views: number; whatsapp: number; rate: number }[];
+  campaigns: {
+    campaign: string;
+    count: number;
+    views: number;
+    whatsapp: number;
+    calls: number;
+    conversions: number;
+    rate: number;
+  }[];
 };
 
 function clampDateValue(iso: string) {
-  // input[type=date] needs yyyy-mm-dd
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "";
   const yyyy = d.getFullYear();
@@ -66,11 +76,7 @@ export default function SiteEventsClient({
   async function loadAll() {
     setLoading(true);
     try {
-      const qs = new URLSearchParams({
-        from: fromIso,
-        to: toIso,
-        limit: "500",
-      });
+      const qs = new URLSearchParams({ from: fromIso, to: toIso, limit: "800" });
 
       const [a, b] = await Promise.all([
         fetch(`/api/admin/site-events?${qs.toString()}`, { cache: "no-store" }),
@@ -87,16 +93,14 @@ export default function SiteEventsClient({
     }
   }
 
-  // initial load + reload on range change
   useEffect(() => {
     loadAll();
-    // reflect in URL for shareable ranges
     const sp = new URLSearchParams({ from: fromIso, to: toIso });
     router.replace(`/admin/site-events?${sp.toString()}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromIso, toIso]);
 
-  // realtime refresh for active users + charts
+  // realtime refresh summary
   useEffect(() => {
     const t = setInterval(async () => {
       try {
@@ -110,21 +114,22 @@ export default function SiteEventsClient({
   }, [fromIso, toIso]);
 
   const computed = useMemo(() => {
-    // table enhancements
     return rows.map((r) => {
-      const props = safeParseProps(r.props);
-      const traffic = inferTrafficTypeEnhanced(r);
-      const refName = referrerName(r.referrer);
+      const propsObj = safeParseProps(r.props);
+      const trafficFixed = inferTrafficTypeEnhanced(r);
+      const refName = referrerLabel(r);
       const urlParams = parseUrlParams(r.page_url);
 
       const modelKey = getModelKey(r);
+      const campaignKey = getCampaignKey(r) || "—";
 
-      const isAds = !!(urlParams.gclid || urlParams.gbraid || urlParams.wbraid || urlParams.gad_campaignid);
+      // keep a clear “ads meta” badge
+      const isAds = trafficFixed === "paid";
       const adsLabel = isAds
-        ? `Google Ads • camp:${urlParams.gad_campaignid || "-"} • gclid:${urlParams.gclid ? "yes" : "no"}`
+        ? `Google Ads • ${campaignKey !== "—" ? `camp:${campaignKey}` : "camp:-"} • gclid:${urlParams.gclid ? "yes" : "no"}`
         : "";
 
-      return { ...r, propsObj: props, trafficFixed: traffic, refName, modelKey, adsLabel };
+      return { ...r, propsObj, trafficFixed, refName, modelKey, campaignKey, adsLabel };
     });
   }, [rows]);
 
@@ -141,38 +146,6 @@ export default function SiteEventsClient({
       .slice(0, 20);
   }, [computed]);
 
-  const topModelsLocal = useMemo(() => {
-    // fallback if summary not loaded
-    const m = new Map<string, number>();
-    for (const r of computed) {
-      const en = String(r.event_name || "").toLowerCase();
-      const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
-
-      const countIt =
-        en === "model_click" ||
-        (isCarDetail && (en === "page_view" || en === "site_load" || en === "whatsapp_click" || en === "phone_click"));
-
-      if (!countIt) continue;
-      const key = r.modelKey || "Unknown";
-      m.set(key, (m.get(key) || 0) + 1);
-    }
-    return Array.from(m.entries())
-      .map(([key, count]) => ({ key, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
-  }, [computed]);
-
-  const topReferrersLocal = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of computed) {
-      m.set(r.refName, (m.get(r.refName) || 0) + 1);
-    }
-    return Array.from(m.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 20);
-  }, [computed]);
-
   const trafficFixedCounts = useMemo(() => {
     const base = { direct: 0, organic: 0, paid: 0, referral: 0 };
     for (const r of computed) {
@@ -182,32 +155,66 @@ export default function SiteEventsClient({
     return base;
   }, [computed]);
 
-  const s = summary || {
-    activeUsersRealtime: 0,
-    pageViews: pagePathCounts.reduce((a, b) => a + b.count, 0),
-    whatsappClicks: computed.filter((x) => String(x.event_name).toLowerCase() === "whatsapp_click").length,
-    phoneClicks: computed.filter((x) => String(x.event_name).toLowerCase() === "phone_click").length,
-    traffic: trafficFixedCounts,
-    topModels: topModelsLocal,
-    topReferrers: topReferrersLocal,
-    trafficSeries: [],
-    funnel: [],
-  };
+  const topCampaignsLocal = useMemo(() => {
+    const counts = new Map<string, { count: number; views: number; wa: number; calls: number }>();
+
+    for (const r of computed) {
+      const c = r.campaignKey || "—";
+      const en = String(r.event_name || "").toLowerCase();
+      const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
+
+      const prev = counts.get(c) || { count: 0, views: 0, wa: 0, calls: 0 };
+      prev.count += 1;
+
+      if (isCarDetail && (en === "page_view" || en === "site_load")) prev.views += 1;
+      if (en === "whatsapp_click") prev.wa += 1;
+      if (en === "phone_click") prev.calls += 1;
+
+      counts.set(c, prev);
+    }
+
+    return Array.from(counts.entries())
+      .map(([campaign, v]) => {
+        const conversions = v.wa + v.calls;
+        const rate = v.views > 0 ? v.wa / v.views : 0;
+        return { campaign, count: v.count, views: v.views, whatsapp: v.wa, calls: v.calls, conversions, rate };
+      })
+      .sort((a, b) => b.conversions - a.conversions || b.count - a.count)
+      .slice(0, 20);
+  }, [computed]);
+
+  const s: Summary =
+    summary || {
+      activeUsersRealtime: 0,
+      pageViews: pagePathCounts.reduce((a, b) => a + b.count, 0),
+      whatsappClicks: computed.filter((x) => String(x.event_name).toLowerCase() === "whatsapp_click").length,
+      phoneClicks: computed.filter((x) => String(x.event_name).toLowerCase() === "phone_click").length,
+      traffic: trafficFixedCounts,
+      topModels: [],
+      topReferrers: [],
+      trafficSeries: [],
+      funnel: [],
+      campaigns: topCampaignsLocal,
+    };
+
+  const trafficTotal =
+    (s.traffic.direct || 0) + (s.traffic.organic || 0) + (s.traffic.paid || 0) + (s.traffic.referral || 0) || 1;
 
   return (
     <div className="space-y-6">
       {/* Header + Filters */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-        <div className="p-4 border-b bg-gray-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+      <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
+        <div className="p-4 border-b bg-linear-to-r from-indigo-50 via-sky-50 to-emerald-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <div className="text-lg font-black text-gray-900">Site Events • GA Style</div>
-            <div className="text-xs text-gray-500">
-              Shows full data from DB, enhanced traffic classification (Google Ads gclid/gbraid)
+            <div className="text-xs text-gray-600">
+              Google split: <b>Google (Organic)</b> vs <b>Google Ads</b> (gclid/gbraid/gad_campaignid). Campaigns prefer{" "}
+              <code>utm_campaign</code> → fallback <code>gad_campaignid</code>.
             </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="text-xs font-semibold text-gray-500">Date range</div>
+            <div className="text-xs font-semibold text-gray-600">Date range</div>
             <input
               type="date"
               value={fromDate}
@@ -215,9 +222,9 @@ export default function SiteEventsClient({
                 const d = new Date(e.target.value);
                 if (!isNaN(d.getTime())) setFromIso(startOfDayIso(d));
               }}
-              className="text-xs border rounded px-2 py-2 bg-white"
+              className="text-xs border rounded-lg px-2 py-2 bg-white"
             />
-            <span className="text-xs text-gray-400">→</span>
+            <span className="text-xs text-gray-500">→</span>
             <input
               type="date"
               value={toDate}
@@ -225,13 +232,10 @@ export default function SiteEventsClient({
                 const d = new Date(e.target.value);
                 if (!isNaN(d.getTime())) setToIso(endOfDayIso(d));
               }}
-              className="text-xs border rounded px-2 py-2 bg-white"
+              className="text-xs border rounded-lg px-2 py-2 bg-white"
             />
 
-            <button
-              onClick={() => loadAll()}
-              className="text-xs font-semibold px-3 py-2 rounded border bg-white hover:bg-gray-50"
-            >
+            <button onClick={loadAll} className="text-xs font-semibold px-3 py-2 rounded-lg border bg-white hover:bg-gray-50">
               Refresh
             </button>
           </div>
@@ -247,23 +251,34 @@ export default function SiteEventsClient({
           <Kpi title="Paid" value={s.traffic.paid} tone="amber" />
         </div>
 
-        {/* mini charts + traffic mix */}
+        {/* Traffic mix + chart */}
         <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="border rounded-lg p-3 bg-gray-50">
-            <div className="text-xs font-semibold text-gray-600 mb-2">Traffic Mix</div>
-            <div className="flex flex-wrap gap-2">
+          {/* Traffic Mix with mini bars */}
+          <div className="rounded-xl border p-3 bg-white">
+            <div className="text-xs font-semibold text-gray-700 mb-2">Traffic Mix</div>
+
+            <div className="space-y-2">
+              <MixRow label="Direct" value={s.traffic.direct} total={trafficTotal} tone="slate" />
+              <MixRow label="Organic" value={s.traffic.organic} total={trafficTotal} tone="emerald" />
+              <MixRow label="Paid" value={s.traffic.paid} total={trafficTotal} tone="amber" />
+              <MixRow label="Referral" value={s.traffic.referral} total={trafficTotal} tone="sky" />
+            </div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
               <Pill label={`Direct ${s.traffic.direct}`} />
               <Pill label={`Organic ${s.traffic.organic}`} />
               <Pill label={`Paid ${s.traffic.paid}`} />
               <Pill label={`Referral ${s.traffic.referral}`} />
             </div>
+
             <div className="text-[11px] text-gray-500 mt-2">
-              ✅ Paid is detected via gclid/gbraid/gad_campaignid in page_url
+              ✅ Paid detected via gclid/gbraid/wbraid/gad_campaignid/gad_source
             </div>
           </div>
 
-          <div className="border rounded-lg p-3 bg-white lg:col-span-2">
-            <div className="text-xs font-semibold text-gray-600 mb-2">📈 Traffic Over Time</div>
+          {/* Sparkline */}
+          <div className="rounded-xl border p-3 bg-white lg:col-span-2">
+            <div className="text-xs font-semibold text-gray-700 mb-2">📈 Traffic Over Time</div>
             {s.trafficSeries?.length ? (
               <Sparkline series={s.trafficSeries.map((x) => x.v)} />
             ) : (
@@ -273,56 +288,73 @@ export default function SiteEventsClient({
         </div>
       </div>
 
-      {/* Funnel + Top Models + Top Referrers */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="🧠 Funnel: View → WhatsApp (Top Models)">
-          {s.funnel?.length ? (
-            <div className="space-y-2">
-              {s.funnel.map((f) => (
-                <div key={f.model} className="p-3 border rounded-lg bg-white flex items-center justify-between">
-                  <div>
-                    <div className="font-semibold text-gray-900 text-sm">{f.model}</div>
-                    <div className="text-xs text-gray-500">
-                      Views {f.views} → WhatsApp {f.whatsapp}
+      {/* Campaign funnel card */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card
+          title="🎯 Top Campaigns Funnel (Views → WhatsApp → Calls)"
+          headerClass="bg-gradient-to-r from-amber-50 via-rose-50 to-indigo-50"
+        >
+          <div className="space-y-3">
+            {(s.campaigns?.length ? s.campaigns : topCampaignsLocal).slice(0, 12).map((c, i) => {
+              const maxViews = Math.max(...(s.campaigns || topCampaignsLocal).map((x) => x.views), 1);
+              const viewPct = Math.min(100, (c.views / maxViews) * 100);
+              const waPct = c.views > 0 ? Math.min(100, (c.whatsapp / c.views) * 100) : 0;
+              const callPct = c.views > 0 ? Math.min(100, (c.calls / c.views) * 100) : 0;
+
+              return (
+                <div key={`${c.campaign}-${i}`} className="rounded-xl border bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="w-7 h-7 rounded-full bg-amber-50 text-amber-800 flex items-center justify-center text-xs font-black border border-amber-200">
+                          {i + 1}
+                        </span>
+                        <div className="font-semibold text-gray-900 truncate max-w-90">{c.campaign}</div>
+                      </div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        Views <b>{c.views}</b> • WhatsApp <b>{c.whatsapp}</b> • Calls <b>{c.calls}</b> • Events{" "}
+                        <b>{c.count}</b>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className="text-sm font-black text-emerald-700">{c.conversions}</div>
+                      <div className="text-[11px] text-gray-500">conversions</div>
+                      <div className="text-[11px] text-gray-500 mt-1">
+                        WA rate: <b>{Math.round((c.rate || 0) * 100)}%</b>
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-sm font-black text-emerald-700">{Math.round(f.rate * 100)}%</div>
-                    <div className="text-[11px] text-gray-500">conversion</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-sm text-gray-400">No funnel data yet</div>
-          )}
-        </Card>
 
-        <Card title="🚗 Top Models (Views + WhatsApp + Calls + Model Clicks)">
-          <div className="space-y-2">
-            {(s.topModels?.length ? s.topModels : topModelsLocal).slice(0, 15).map((m, i) => (
-              <div key={m.key} className="flex items-center justify-between text-sm border rounded-lg p-3 bg-white">
-                <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-gray-100 text-gray-700 flex items-center justify-center text-xs font-bold">
-                    {i + 1}
-                  </span>
-                  <span className="font-semibold text-gray-900">{m.key}</span>
+                  {/* Progress bars */}
+                  <div className="mt-3 space-y-2">
+                    <Bar label="Views" pct={viewPct} tone="indigo" value={c.views} />
+                    <Bar label="WhatsApp" pct={waPct} tone="emerald" value={c.whatsapp} />
+                    <Bar label="Calls" pct={callPct} tone="rose" value={c.calls} />
+                  </div>
+
+                  {c.campaign === "—" && (
+                    <div className="mt-2 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-2">
+                      This means the event didn’t contain <code>utm_campaign</code> or <code>gad_campaignid</code>. Best fix:
+                      store campaign into <code>props</code> on first hit and reuse for later events.
+                    </div>
+                  )}
                 </div>
-                <span className="font-black text-gray-900">{m.count}</span>
-              </div>
-            ))}
-            {!((s.topModels?.length ? s.topModels : topModelsLocal).length) && (
-              <div className="text-sm text-gray-400">No model activity yet</div>
+              );
+            })}
+
+            {!((s.campaigns?.length ? s.campaigns : topCampaignsLocal).length) && (
+              <div className="text-sm text-gray-400">No campaigns detected yet</div>
             )}
           </div>
         </Card>
 
-        <Card title="🔗 Top Referrers (names)">
+        <Card title="🔗 Top Referrers (Google split)" headerClass="bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50">
           <div className="space-y-2">
-            {(s.topReferrers?.length ? s.topReferrers : topReferrersLocal).slice(0, 15).map((r, i) => (
-              <div key={r.name} className="flex items-center justify-between text-sm border rounded-lg p-3 bg-white">
+            {(s.topReferrers || []).slice(0, 15).map((r, i) => (
+              <div key={r.name} className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white">
                 <div className="flex items-center gap-2">
-                  <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs font-bold">
+                  <span className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs font-black border border-indigo-200">
                     {i + 1}
                   </span>
                   <span className="font-semibold text-gray-900">{r.name}</span>
@@ -330,22 +362,20 @@ export default function SiteEventsClient({
                 <span className="font-black text-gray-900">{r.count}</span>
               </div>
             ))}
-            {!((s.topReferrers?.length ? s.topReferrers : topReferrersLocal).length) && (
-              <div className="text-sm text-gray-400">No referrers yet</div>
-            )}
+            {!s.topReferrers?.length && <div className="text-sm text-gray-400">No referrers yet</div>}
           </div>
         </Card>
       </div>
 
       {/* Page path count */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
         <div className="p-4 border-b bg-gray-50">
           <div className="font-semibold text-gray-900">Page Views by Page Path</div>
           <div className="text-xs text-gray-500">Counts only page_view events</div>
         </div>
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
           {pagePathCounts.map((p) => (
-            <div key={p.path} className="border rounded-lg p-3 bg-white flex items-center justify-between">
+            <div key={p.path} className="border rounded-xl p-3 bg-white flex items-center justify-between">
               <div className="text-sm font-semibold text-gray-900">{p.path}</div>
               <div className="text-sm font-black text-gray-900">{p.count}</div>
             </div>
@@ -355,13 +385,11 @@ export default function SiteEventsClient({
       </div>
 
       {/* Full events table */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
         <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
           <div>
             <div className="font-semibold text-gray-900">All Events (Full Data)</div>
-            <div className="text-xs text-gray-500">
-              Includes props + Google Ads meta extracted from page_url
-            </div>
+            <div className="text-xs text-gray-500">Rows highlight Paid/Organic/Referral with a colored left border</div>
           </div>
           <div className="text-xs text-gray-500">{loading ? "Loading…" : `${computed.length} rows`}</div>
         </div>
@@ -375,14 +403,15 @@ export default function SiteEventsClient({
                 <th className="px-4 py-3 text-left">Path</th>
                 <th className="px-4 py-3 text-left">Traffic</th>
                 <th className="px-4 py-3 text-left">Referrer</th>
+                <th className="px-4 py-3 text-left">Campaign</th>
                 <th className="px-4 py-3 text-left">Model</th>
-                <th className="px-4 py-3 text-left">Google/Ads Meta</th>
+                <th className="px-4 py-3 text-left">Ads Meta</th>
                 <th className="px-4 py-3 text-left">Props</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {computed.map((r) => (
-                <tr key={r.id} className="hover:bg-gray-50">
+                <tr key={r.id} className={rowBorder(r.trafficFixed) + " hover:bg-gray-50"}>
                   <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
                     {new Date(r.created_at).toLocaleString()}
                   </td>
@@ -401,18 +430,24 @@ export default function SiteEventsClient({
 
                   <td className="px-4 py-3">
                     <div className="font-semibold text-gray-900">{r.refName}</div>
-                    <div className="text-[11px] text-gray-500 truncate max-w-[220px]">
+                    <div className="text-[11px] text-gray-500 truncate max-w-60">
                       {r.referrer || "—"}
                     </div>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-1 rounded-lg border bg-white text-xs font-semibold">
+                      {r.campaignKey || "—"}
+                    </span>
                   </td>
 
                   <td className="px-4 py-3">
                     <div className="font-semibold text-gray-900">{r.modelKey}</div>
                   </td>
 
-                  <td className="px-4 py-3 text-xs text-gray-700">
+                  <td className="px-4 py-3 text-xs">
                     {r.adsLabel ? (
-                      <span className="px-2 py-1 rounded border bg-amber-50 border-amber-200 text-amber-800 font-semibold">
+                      <span className="px-2 py-1 rounded-lg border bg-amber-50 border-amber-200 text-amber-800 font-semibold">
                         {r.adsLabel}
                       </span>
                     ) : (
@@ -421,7 +456,7 @@ export default function SiteEventsClient({
                   </td>
 
                   <td className="px-4 py-3">
-                    <pre className="text-[11px] bg-gray-50 border rounded p-2 max-w-[520px] overflow-auto">
+                    <pre className="text-[11px] bg-gray-50 border rounded-xl p-2 max-w-130 overflow-auto">
                       {JSON.stringify(r.propsObj || {}, null, 2)}
                     </pre>
                   </td>
@@ -430,7 +465,7 @@ export default function SiteEventsClient({
 
               {!computed.length && (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-gray-400">
+                  <td colSpan={9} className="p-8 text-center text-gray-400">
                     No events in this range.
                   </td>
                 </tr>
@@ -443,18 +478,36 @@ export default function SiteEventsClient({
   );
 }
 
-function trafficPill(t: string) {
+/* ---------------- UI helpers ---------------- */
+
+function rowBorder(t: string) {
   const s = String(t || "").toLowerCase();
-  if (s === "paid") return "px-2 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200";
-  if (s === "organic") return "px-2 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200";
-  if (s === "referral") return "px-2 py-1 rounded-full text-xs font-bold bg-sky-50 text-sky-800 border border-sky-200";
-  return "px-2 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200";
+  if (s === "paid") return "border-l-4 border-amber-400";
+  if (s === "organic") return "border-l-4 border-emerald-400";
+  if (s === "referral") return "border-l-4 border-sky-400";
+  return "border-l-4 border-gray-200";
 }
 
-function Card({ title, children }: { title: string; children: any }) {
+function trafficPill(t: string) {
+  const s = String(t || "").toLowerCase();
+  if (s === "paid") return "px-2 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-800 border border-amber-200";
+  if (s === "organic") return "px-2 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200";
+  if (s === "referral") return "px-2 py-1 rounded-full text-xs font-black bg-sky-50 text-sky-800 border border-sky-200";
+  return "px-2 py-1 rounded-full text-xs font-black bg-gray-100 text-gray-800 border border-gray-200";
+}
+
+function Card({
+  title,
+  children,
+  headerClass = "bg-gray-50",
+}: {
+  title: string;
+  children: any;
+  headerClass?: string;
+}) {
   return (
-    <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-      <div className="p-4 border-b bg-gray-50 font-semibold text-gray-900">{title}</div>
+    <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
+      <div className={`p-4 border-b font-semibold text-gray-900 ${headerClass}`}>{title}</div>
       <div className="p-4">{children}</div>
     </div>
   );
@@ -482,9 +535,72 @@ function Kpi({
   };
 
   return (
-    <div className={`rounded-xl border p-3 ${toneMap[tone]}`}>
-      <div className="text-[11px] font-semibold uppercase opacity-80">{title}</div>
+    <div className={`rounded-2xl border p-3 ${toneMap[tone]}`}>
+      <div className="text-[11px] font-black uppercase opacity-80">{title}</div>
       <div className="text-2xl font-black mt-1">{value}</div>
+    </div>
+  );
+}
+
+function MixRow({
+  label,
+  value,
+  total,
+  tone,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  tone: "slate" | "emerald" | "amber" | "sky";
+}) {
+  const pct = Math.round((value / Math.max(1, total)) * 100);
+  const barClass =
+    tone === "emerald"
+      ? "bg-emerald-500"
+      : tone === "amber"
+      ? "bg-amber-500"
+      : tone === "sky"
+      ? "bg-sky-500"
+      : "bg-slate-500";
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs text-gray-700 mb-1">
+        <span className="font-semibold">{label}</span>
+        <span className="font-black">
+          {value} <span className="text-gray-400">({pct}%)</span>
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div className={`h-2 ${barClass}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function Bar({
+  label,
+  pct,
+  tone,
+  value,
+}: {
+  label: string;
+  pct: number;
+  tone: "indigo" | "emerald" | "rose";
+  value: number;
+}) {
+  const c =
+    tone === "indigo" ? "bg-indigo-500" : tone === "emerald" ? "bg-emerald-500" : "bg-rose-500";
+
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] text-gray-600 mb-1">
+        <span className="font-semibold">{label}</span>
+        <span className="font-black text-gray-800">{value}</span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+        <div className={`h-2 ${c}`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+      </div>
     </div>
   );
 }
@@ -508,13 +624,11 @@ function Sparkline({ series }: { series: number[] }) {
 
   return (
     <div className="w-full overflow-x-auto">
-      <svg width={w} height={h} className="block">
+      <svg width={w} height={h} className="block text-indigo-600">
         <polyline fill="none" stroke="currentColor" strokeWidth="2" points={pts.join(" ")} />
         <line x1="0" y1={h - 1} x2={w} y2={h - 1} stroke="#e5e7eb" />
       </svg>
-      <div className="text-[11px] text-gray-500 mt-1">
-        Updated every 5s • shows event volume trend
-      </div>
+      <div className="text-[11px] text-gray-500 mt-1">Updated every 5s • event volume trend</div>
     </div>
   );
 }
