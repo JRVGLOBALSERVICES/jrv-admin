@@ -14,6 +14,7 @@ type CarPayload = {
   catalog_id: string;
   status: string;
   location: string;
+  year: string;
   daily_price: number | null;
   price_3_days: number | null;
   weekly_price: number | null;
@@ -153,6 +154,7 @@ export async function POST(req: Request) {
     catalog_id: String(payload.catalog_id ?? "").trim(),
     status: String(payload.status ?? "available"),
     location: String(payload.location ?? "Seremban"),
+    year: String(payload.year ?? "2025"),
     daily_price: toNumOrNull(payload.daily_price),
     price_3_days: toNumOrNull(payload.price_3_days),
     weekly_price: toNumOrNull(payload.weekly_price),

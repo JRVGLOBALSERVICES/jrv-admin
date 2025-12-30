@@ -120,23 +120,36 @@ export function CarForm({
   const [plate, setPlate] = useState(initial.plate_number ?? "");
   const [status, setStatus] = useState(initial.status ?? "available");
   const [location, setLocation] = useState(initial.location ?? "Seremban");
+  const [year, setYear] = useState(initial.year ?? "2025");
 
   // prices
-  const [dailyPrice, setDailyPrice] = useState(String(initial.daily_price ?? ""));
-  const [price3Days, setPrice3Days] = useState(String(initial.price_3_days ?? ""));
-  const [weeklyPrice, setWeeklyPrice] = useState(String(initial.weekly_price ?? ""));
-  const [monthlyPrice, setMonthlyPrice] = useState(String(initial.monthly_price ?? ""));
+  const [dailyPrice, setDailyPrice] = useState(
+    String(initial.daily_price ?? "")
+  );
+  const [price3Days, setPrice3Days] = useState(
+    String(initial.price_3_days ?? "")
+  );
+  const [weeklyPrice, setWeeklyPrice] = useState(
+    String(initial.weekly_price ?? "")
+  );
+  const [monthlyPrice, setMonthlyPrice] = useState(
+    String(initial.monthly_price ?? "")
+  );
   const [deposit, setDeposit] = useState(String(initial.deposit ?? ""));
 
   // specs
   const [bodyType, setBodyType] = useState(initial.body_type ?? "Local");
   const [seats, setSeats] = useState(String(initial.seats ?? "5"));
-  const [transmission, setTransmission] = useState(initial.transmission ?? "auto");
+  const [transmission, setTransmission] = useState(
+    initial.transmission ?? "auto"
+  );
   const [color, setColor] = useState(initial.color ?? "#111827");
 
   // features
   const [bluetooth, setBluetooth] = useState(!!initial.bluetooth);
-  const [smokingAllowed, setSmokingAllowed] = useState(!!initial.smoking_allowed);
+  const [smokingAllowed, setSmokingAllowed] = useState(
+    !!initial.smoking_allowed
+  );
   const [fuelType, setFuelType] = useState<(typeof FUEL_TYPES)[number]>(
     initial.fuel_type ?? "95"
   );
@@ -157,7 +170,9 @@ export function CarForm({
   });
 
   const [uploadingPrimary, setUploadingPrimary] = useState(false);
-  const [uploadingGalleryIdx, setUploadingGalleryIdx] = useState<number | null>(null);
+  const [uploadingGalleryIdx, setUploadingGalleryIdx] = useState<number | null>(
+    null
+  );
 
   const makes = useMemo(
     () => uniq(catalog.map((r) => (r.make ?? "").trim()).filter(Boolean)),
@@ -182,7 +197,11 @@ export function CarForm({
   }, [catalog, catalogId]);
 
   // ✅ what we display as "primary preview"
-  const primaryPreviewUrl = (primaryImageUrl || catalogDefaultPrimary || "").trim();
+  const primaryPreviewUrl = (
+    primaryImageUrl ||
+    catalogDefaultPrimary ||
+    ""
+  ).trim();
 
   // ✅ Derive make/model from catalog_id on initial edit load
   useEffect(() => {
@@ -258,7 +277,8 @@ export function CarForm({
     if (!plate.trim()) return "Plate number required";
 
     // ✅ primary is valid if either custom OR catalog default exists
-    if (!primaryPreviewUrl) return "Primary image required (upload or set catalog default)";
+    if (!primaryPreviewUrl)
+      return "Primary image required (upload or set catalog default)";
 
     if (gallery.some((x) => !x)) return "Please upload all 4 gallery images";
     return null;
@@ -298,6 +318,7 @@ export function CarForm({
             seats: toNumberOrNull(seats),
             transmission,
             color,
+            year,
 
             primary_image_url: primaryToSave,
             images: gallery,
@@ -358,7 +379,8 @@ export function CarForm({
               Primary thumbnail + 4 gallery images. Make → Model.
               {catalogDefaultPrimary ? (
                 <span className="block text-xs opacity-60 mt-1">
-                  Catalog default primary detected ✅ (will be used if no custom primary)
+                  Catalog default primary detected ✅ (will be used if no custom
+                  primary)
                 </span>
               ) : null}
             </div>
@@ -428,6 +450,15 @@ export function CarForm({
               className="w-full border rounded-lg px-3 py-2"
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Year</FieldLabel>
+            <input
+              className="flex-1 border rounded-lg px-3 py-2"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
             />
           </div>
 
@@ -590,7 +621,11 @@ export function CarForm({
         <div className="space-y-2">
           <div className="text-sm font-medium">Features</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Toggle label="Bluetooth" value={bluetooth} onChange={setBluetooth} />
+            <Toggle
+              label="Bluetooth"
+              value={bluetooth}
+              onChange={setBluetooth}
+            />
             <Toggle
               label="Smoking Allowed"
               value={smokingAllowed}
@@ -598,8 +633,16 @@ export function CarForm({
             />
             <Toggle label="AUX" value={aux} onChange={setAux} />
             <Toggle label="USB" value={usb} onChange={setUsb} />
-            <Toggle label="Android Auto" value={androidAuto} onChange={setAndroidAuto} />
-            <Toggle label="Apple CarPlay" value={appleCarplay} onChange={setAppleCarplay} />
+            <Toggle
+              label="Android Auto"
+              value={androidAuto}
+              onChange={setAndroidAuto}
+            />
+            <Toggle
+              label="Apple CarPlay"
+              value={appleCarplay}
+              onChange={setAppleCarplay}
+            />
           </div>
         </div>
 
@@ -614,7 +657,9 @@ export function CarForm({
                 {primaryImageUrl ? (
                   <span className="ml-2 text-[11px] opacity-70">(custom)</span>
                 ) : catalogDefaultPrimary ? (
-                  <span className="ml-2 text-[11px] opacity-70">(catalog default)</span>
+                  <span className="ml-2 text-[11px] opacity-70">
+                    (catalog default)
+                  </span>
                 ) : null}
               </div>
 
@@ -662,14 +707,21 @@ export function CarForm({
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-medium">Image {idx + 1}</div>
                     <div className="text-xs opacity-60">
-                      {uploadingGalleryIdx === idx ? "Uploading…" : url ? "✅" : "Required"}
+                      {uploadingGalleryIdx === idx
+                        ? "Uploading…"
+                        : url
+                        ? "✅"
+                        : "Required"}
                     </div>
                   </div>
 
                   <input
                     type="file"
                     accept="image/*"
-                    disabled={uploadingGalleryIdx !== null && uploadingGalleryIdx !== idx}
+                    disabled={
+                      uploadingGalleryIdx !== null &&
+                      uploadingGalleryIdx !== idx
+                    }
                     onChange={(e) => {
                       const f = e.target.files?.[0];
                       if (f) handleGalleryUpload(idx, f);

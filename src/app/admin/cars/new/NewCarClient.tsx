@@ -106,6 +106,7 @@ export default function NewCarPage() {
   // basics
   const [plate, setPlate] = useState("");
   const [status, setStatus] = useState("available");
+  const [year, setYear] = useState("2025");
   const [location, setLocation] =
     useState<(typeof LOCATIONS)[number]>("Seremban");
 
@@ -266,6 +267,7 @@ export default function NewCarPage() {
             catalog_id: catalogId,
 
             status,
+            year,
             location,
 
             daily_price: toNumberOrNull(dailyPrice),
@@ -367,6 +369,15 @@ export default function NewCarPage() {
               value={plate}
               onChange={(e) => setPlate(e.target.value)}
               placeholder="e.g. VLV 1234"
+            />
+          </div>
+
+           <div>
+            <FieldLabel>Year</FieldLabel>
+            <input
+              className="flex-1 border rounded-lg px-3 py-2"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
             />
           </div>
 

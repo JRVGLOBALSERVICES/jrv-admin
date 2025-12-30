@@ -398,7 +398,7 @@ export default function SiteEventsClient({
     <div className="space-y-6">
       {/* Header + Filters */}
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
-        <div className="p-4 border-b bg-gradient-to-r from-indigo-50 via-sky-50 to-emerald-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="p-4 border-b bg-linear-to-r from-indigo-50 via-sky-50 to-emerald-50 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
             <div className="text-lg font-black text-gray-900">
               Site Events • GA Style
@@ -861,7 +861,7 @@ export default function SiteEventsClient({
                     <div className="font-semibold text-gray-900">
                       {r.refName}
                     </div>
-                    <div className="text-[11px] text-gray-500 truncate max-w-[240px]">
+                    <div className="text-[11px] text-gray-500 truncate max-w-60">
                       {(r as any).referrer || "—"}
                     </div>
                   </td>
@@ -889,7 +889,7 @@ export default function SiteEventsClient({
                   </td>
 
                   <td className="px-4 py-3">
-                    <pre className="text-[11px] bg-gray-50 border rounded-xl p-2 max-w-[520px] overflow-auto">
+                    <pre className="text-[11px] bg-gray-50 border rounded-xl p-2 max-w-130 overflow-auto">
                       {JSON.stringify(r.propsObj || {}, null, 2)}
                     </pre>
                   </td>

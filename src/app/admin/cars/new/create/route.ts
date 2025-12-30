@@ -28,6 +28,7 @@ export async function POST(req: Request) {
     color: body.color ?? null,
     primary_image_url: primary,
     images,
+    year: String(body.year ?? "2025").trim(),
     status: body.status ?? "active",
     location: body.location ?? null,
     daily_price: body.daily_price == null || body.daily_price === "" ? null : Number(body.daily_price),
