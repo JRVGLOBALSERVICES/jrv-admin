@@ -5,6 +5,7 @@ import AvailableNow from "../admin/_components/AvailableNow";
 import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
 import CurrentlyRented from "../admin/_components/CurrentlyRented";
 import DashboardFilters from "../admin/_components/DashboardFilters";
+import MiniSiteAnalytics from "./_components/MiniSiteAnalytics";
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 
@@ -204,6 +205,123 @@ export default async function AdminDashboard({
 
   const { start, end } = getRange(period, fromParam, toParam, new Date());
   const supabase = await createSupabaseServer();
+
+  // -------------------------
+  // MINI SITE ANALYTICS (last 24h rolling)
+  // -------------------------
+  const now2 = new Date();
+  const last24h = new Date(now2.getTime() - 24 * 60 * 60 * 1000);
+
+  const { data: siteEvents24h } = await supabase
+    .from("site_events")
+    .select(
+      "event_name, session_id, anon_id, traffic_type, page_path, props, referrer"
+    )
+    .gte("created_at", last24h.toISOString())
+    .lte("created_at", now2.toISOString())
+    .limit(5000);
+
+  const safeParse = (v: any) => {
+    try {
+      if (!v) return {};
+      if (typeof v === "object") return v;
+      if (typeof v === "string") return JSON.parse(v);
+      return {};
+    } catch {
+      return {};
+    }
+  };
+
+  const inferCarFromPath = (page_path: string | null) => {
+    if (!page_path) return null;
+    const m = page_path.match(/^\/cars\/([^/]+)\/?$/i);
+    if (!m) return null;
+    const slug = decodeURIComponent(m[1] || "");
+    const parts = slug.split("-");
+    if (parts.length < 2) return { make: "", model: slug.replace(/-/g, " ") };
+    return { make: parts[0], model: parts.slice(1).join(" ").trim() };
+  };
+
+  const refDomain = (ref?: string | null) => {
+    if (!ref) return "Direct / None";
+    try {
+      const u = new URL(ref);
+      return u.hostname.replace(/^www\./, "");
+    } catch {
+      return (
+        String(ref)
+          .replace(/^https?:\/\//, "")
+          .replace(/^www\./, "")
+          .split("/")[0] || "Direct / None"
+      );
+    }
+  };
+
+  const activeUserSet = new Set<string>();
+  let whatsappClicks24h = 0;
+  let phoneClicks24h = 0;
+
+  const trafficCounts = { direct: 0, organic: 0, paid: 0, referral: 0 };
+  const modelCounts = new Map<string, number>();
+  const refCounts = new Map<string, number>();
+
+  for (const e of siteEvents24h ?? []) {
+    const sid = e.session_id || e.anon_id || "";
+    if (sid) activeUserSet.add(sid);
+
+    // traffic
+    const traffic = String(
+      e.traffic_type || "direct"
+    ).toLowerCase() as keyof typeof trafficCounts;
+    if (trafficCounts[traffic] !== undefined) trafficCounts[traffic] += 1;
+    else trafficCounts.direct += 1;
+
+    // clicks
+    if (e.event_name === "whatsapp_click") whatsappClicks24h++;
+    if (e.event_name === "phone_click") phoneClicks24h++;
+
+    // referrers (domain)
+    const dom = refDomain((e as any).referrer);
+    refCounts.set(dom, (refCounts.get(dom) || 0) + 1);
+
+    // model inference
+    const props = safeParse((e as any).props);
+    let make = String(props?.make || "").trim();
+    let model = String(props?.model || "").trim();
+
+    if (!model) {
+      const inferred = inferCarFromPath((e as any).page_path);
+      if (inferred?.model) {
+        make = make || inferred.make || "";
+        model = inferred.model;
+      }
+    }
+
+    const looksLikeCarDetail = !!inferCarFromPath((e as any).page_path);
+
+    // ✅ FIXED: include whatsapp & phone too
+    const shouldCountModel =
+      e.event_name === "model_click" ||
+      e.event_name === "whatsapp_click" ||
+      e.event_name === "phone_click" ||
+      ((e.event_name === "page_view" || e.event_name === "site_load") &&
+        looksLikeCarDetail);
+
+    if (shouldCountModel && model) {
+      const key = `${make ? make + " " : ""}${model}`.trim();
+      modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
+    }
+  }
+
+  const topModels24h = Array.from(modelCounts.entries())
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const topReferrers24h = Array.from(refCounts.entries())
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
 
   // Filters dropdown data (based on agreements history)
   const { data: allAgreements } = await supabase
@@ -433,6 +551,15 @@ export default async function AdminDashboard({
           <DashboardFilters plates={uniquePlates} models={uniqueModels} />
         </Suspense>
       </div>
+
+      <MiniSiteAnalytics
+        activeUsers={activeUserSet.size}
+        whatsappClicks={whatsappClicks24h}
+        phoneClicks={phoneClicks24h}
+        traffic={trafficCounts}
+        topModels={topModels24h}
+        topReferrers={topReferrers24h}
+      />
 
       {/* KPI GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
