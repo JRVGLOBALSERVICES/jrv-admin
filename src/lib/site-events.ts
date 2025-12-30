@@ -107,6 +107,66 @@ export function findAdsParamsSafe(r: SiteEventRow): UrlParams {
     }
   };
 
+  const COUNTRY_MAP: Record<string, string> = {
+    MY: "Malaysia",
+    SG: "Singapore",
+    US: "United States",
+    ID: "Indonesia",
+    IN: "India",
+    GB: "United Kingdom",
+    AU: "Australia",
+    CN: "China",
+    JP: "Japan",
+    TH: "Thailand",
+    PH: "Philippines",
+    VN: "Vietnam",
+  };
+
+  function decodeMaybe(v: any) {
+    const raw = String(v ?? "").trim();
+    if (!raw) return "";
+
+    try {
+      // decode Santa%20Clara and also "+" (querystring style)
+      return decodeURIComponent(raw.replace(/\+/g, "%20"));
+    } catch {
+      return raw;
+    }
+  }
+
+  function normalizeCountry(v: any) {
+    const s = decodeMaybe(v);
+    if (!s) return "";
+    const upper = s.toUpperCase().trim();
+
+    // If ISO code, map to full name
+    if (COUNTRY_MAP[upper]) return COUNTRY_MAP[upper];
+
+    // If already a name, keep it
+    return s;
+  }
+
+  function normalizeRegion(v: any) {
+    const s = decodeMaybe(v);
+    if (!s) return "";
+
+    // remove numeric admin codes like "14"
+    if (/^\d+$/.test(s.trim())) return "";
+    return s;
+  }
+
+  function normalizeCity(v: any) {
+    return decodeMaybe(v);
+  }
+
+  function formatLocation(r: any) {
+    const city = normalizeCity(r?.city);
+    const region = normalizeRegion(r?.region);
+    const country = normalizeCountry(r?.country);
+
+    return [city, region, country].filter(Boolean).join(", ") || "Unknown";
+  }
+
   take(parseUrlParams(r.page_url));
 
   const refHost = normalizeReferrerHost(r.referrer);
@@ -187,13 +247,29 @@ export function inferAcquisitionFromFirstEvent(first: SiteEventRow): {
     };
   }
 
-  if (!refHost) return { traffic: "direct", campaign: "", refName: "Direct / None", adsMeta };
+  if (!refHost)
+    return {
+      traffic: "direct",
+      campaign: "",
+      refName: "Direct / None",
+      adsMeta,
+    };
 
   if (isGoogleHost(refHost)) {
-    return { traffic: "organic", campaign: "", refName: "Google (Organic)", adsMeta };
+    return {
+      traffic: "organic",
+      campaign: "",
+      refName: "Google (Organic)",
+      adsMeta,
+    };
   }
 
-  return { traffic: "referral", campaign: "", refName: referrerLabelFromFirstEvent(first), adsMeta };
+  return {
+    traffic: "referral",
+    campaign: "",
+    refName: referrerLabelFromFirstEvent(first),
+    adsMeta,
+  };
 }
 
 export function getModelKey(r: SiteEventRow): string {

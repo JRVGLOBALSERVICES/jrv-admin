@@ -8,6 +8,57 @@ import {
   safeParseProps,
 } from "@/lib/site-events";
 
+/* ===========================
+   Location normalization
+   =========================== */
+
+function decodeMaybe(v: unknown) {
+  const raw = String(v ?? "").trim();
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, "%20"));
+  } catch {
+    return raw;
+  }
+}
+
+const COUNTRY_MAP: Record<string, string> = {
+  MY: "Malaysia",
+  MALAYSIA: "Malaysia",
+  SG: "Singapore",
+  SINGAPORE: "Singapore",
+  US: "United States",
+  USA: "United States",
+  "UNITED STATES": "United States",
+  ID: "Indonesia",
+  INDONESIA: "Indonesia",
+  IN: "India",
+  INDIA: "India",
+  GB: "United Kingdom",
+  UK: "United Kingdom",
+  "UNITED KINGDOM": "United Kingdom",
+  AU: "Australia",
+  AUSTRALIA: "Australia",
+};
+
+function normalizeCountry(v: unknown) {
+  const s = decodeMaybe(v);
+  if (!s) return "";
+  const key = s.trim().toUpperCase();
+  return COUNTRY_MAP[key] || s;
+}
+
+function normalizeRegion(v: unknown) {
+  const s = decodeMaybe(v);
+  if (!s) return "";
+  if (/^\d+$/.test(s.trim())) return ""; // remove "14"
+  return s;
+}
+
+function normalizeCity(v: unknown) {
+  return decodeMaybe(v);
+}
+
 function toIsoSafe(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
@@ -47,6 +98,7 @@ type Metrics = {
 
   topModels: { key: string; count: number }[];
   topReferrers: { name: string; count: number }[];
+
   topCountries: { name: string; count: number }[];
   topRegions: { name: string; count: number }[];
   topCities: { name: string; count: number }[];
@@ -70,7 +122,6 @@ function computeMetrics(rows: SiteEventRow[]): Metrics {
   const windowAgo = now - realtimeWindowMs;
 
   const sessionsInLast5m = new Set<string>();
-
   const traffic = { direct: 0, organic: 0, paid: 0, referral: 0 };
 
   let pageViews = 0;
@@ -81,13 +132,15 @@ function computeMetrics(rows: SiteEventRow[]): Metrics {
   const refCounts = new Map<string, number>();
   const trafficOverTime = new Map<string, number>();
 
-  const campMap = new Map<string, { count: number; views: number; wa: number; calls: number }>();
+  const campMap = new Map<
+    string,
+    { count: number; views: number; wa: number; calls: number }
+  >();
 
   const countryCounts = new Map<string, number>();
   const regionCounts = new Map<string, number>();
   const cityCounts = new Map<string, number>();
 
-  // session-first attribution (campaign + traffic sticks to session)
   const sessionFirst = new Map<string, SiteEventRow>();
   for (const r of rows) {
     const sk = getSessionKey(r);
@@ -102,7 +155,7 @@ function computeMetrics(rows: SiteEventRow[]): Metrics {
     const a = inferAcquisitionFromFirstEvent(first);
     sessionMeta.set(sk, {
       traffic: a.traffic,
-      campaign: a.campaign || "Google Ads",
+      campaign: a.campaign || "—",
       refName: a.refName,
     });
   }
@@ -135,9 +188,10 @@ function computeMetrics(rows: SiteEventRow[]): Metrics {
       modelCounts.set(modelKey, (modelCounts.get(modelKey) || 0) + 1);
     }
 
-    const country = (r.country || "").trim() || "Unknown";
-    const region = (r.region || "").trim() || "Unknown";
-    const city = (r.city || "").trim() || "Unknown";
+    // ✅ normalized geo bucket keys
+    const country = normalizeCountry((r as any).country) || "Unknown";
+    const region = normalizeRegion((r as any).region) || "Unknown";
+    const city = normalizeCity((r as any).city) || "Unknown";
 
     countryCounts.set(country, (countryCounts.get(country) || 0) + 1);
     regionCounts.set(region, (regionCounts.get(region) || 0) + 1);
@@ -145,14 +199,19 @@ function computeMetrics(rows: SiteEventRow[]): Metrics {
 
     const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
     const campKey = meta?.campaign ? meta.campaign : "Direct";
-    const prev = campMap.get(campKey) || { count: 0, views: 0, wa: 0, calls: 0 };
+    const prev = campMap.get(campKey) || {
+      count: 0,
+      views: 0,
+      wa: 0,
+      calls: 0,
+    };
     prev.count += 1;
-    if (isCarDetail && (en === "page_view" || en === "site_load")) prev.views += 1;
+    if (isCarDetail && (en === "page_view" || en === "site_load"))
+      prev.views += 1;
     if (en === "whatsapp_click") prev.wa += 1;
     if (en === "phone_click") prev.calls += 1;
     campMap.set(campKey, prev);
 
-    // ensure props parse doesn't crash anywhere
     safeParseProps(r.props);
   }
 
@@ -225,17 +284,34 @@ export async function GET(req: Request) {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
-    if (!from || !to) return NextResponse.json({ ok: false, error: "Missing from/to" }, { status: 400 });
+    if (!from || !to) {
+      return NextResponse.json(
+        { ok: false, error: "Missing from/to" },
+        { status: 400 }
+      );
+    }
 
     const fromIso = toIsoSafe(from);
     const toIso = toIsoSafe(to);
-    if (!fromIso || !toIso) return NextResponse.json({ ok: false, error: "Invalid from/to" }, { status: 400 });
+    if (!fromIso || !toIso) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid from/to" },
+        { status: 400 }
+      );
+    }
 
     const rows = await fetchRows(fromIso, toIso);
     const current = computeMetrics(rows);
 
-    return NextResponse.json({ ok: true, range: { from: fromIso, to: toIso }, ...current });
+    return NextResponse.json({
+      ok: true,
+      range: { from: fromIso, to: toIso },
+      ...current,
+    });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }

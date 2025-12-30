@@ -10,8 +10,6 @@ export const metadata: Metadata = pageMetadata({
   index: false,
 });
 
-type Filters = { event: string; traffic: string; device: string; path: string };
-
 type SP = {
   range?: string;
   from?: string;
@@ -22,16 +20,31 @@ type SP = {
   path?: string;
 };
 
+type Filters = {
+  event: string;
+  traffic: string;
+  device: string;
+  path: string;
+};
+
 function toIsoStart(d: Date) {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
   return x.toISOString();
 }
-
 function toIsoEnd(d: Date) {
   const x = new Date(d);
   x.setHours(23, 59, 59, 999);
   return x.toISOString();
+}
+
+function clampToDateInput(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 function rangeToIso(rangeKey: string, from?: string, to?: string) {
@@ -68,8 +81,14 @@ function rangeToIso(rangeKey: string, from?: string, to?: string) {
   };
 }
 
-export default async function SiteEventsPage({ searchParams }: { searchParams: Promise<SP> }) {
+export default async function SiteEventsPage({
+  searchParams,
+}: {
+  searchParams: Promise<SP>;
+}) {
   const sp = await searchParams;
+
+  const { initialFrom, initialTo, rangeKey } = rangeToIso(sp.range || "24h", sp.from, sp.to);
 
   const initialFilters: Filters = {
     event: sp.event || "",
@@ -78,16 +97,12 @@ export default async function SiteEventsPage({ searchParams }: { searchParams: P
     path: sp.path || "",
   };
 
-  const { initialFrom, initialTo, rangeKey } = rangeToIso(sp.range || "24h", sp.from, sp.to);
+  const filterUiFrom = rangeKey === "custom" ? (sp.from || clampToDateInput(initialFrom)) : "";
+  const filterUiTo = rangeKey === "custom" ? (sp.to || clampToDateInput(initialTo)) : "";
 
   return (
     <div className="p-4 md:p-6 bg-gray-50 min-h-screen space-y-4">
-      <SiteEventsFilters
-        rangeKey={rangeKey}
-        from={sp.from || ""}
-        to={sp.to || ""}
-        filters={initialFilters}
-      />
+      <SiteEventsFilters rangeKey={rangeKey} from={filterUiFrom} to={filterUiTo} filters={initialFilters} />
 
       <SiteEventsClient
         initialFrom={initialFrom}

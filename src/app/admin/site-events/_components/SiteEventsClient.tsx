@@ -34,6 +34,124 @@ type Summary = {
   compare?: any;
 };
 
+const COUNTRY_CODE_TO_NAME: Record<string, string> = {
+  MY: "Malaysia",
+  SG: "Singapore",
+  US: "United States",
+  IN: "India",
+  ID: "Indonesia",
+};
+
+function decodeSafe(v: any) {
+  const raw = String(v ?? "").trim();
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, "%20")).trim();
+  } catch {
+    return raw;
+  }
+}
+
+function normalizeCountry(v: any) {
+  const s = decodeSafe(v);
+  if (!s) return "";
+
+  const upper = s.toUpperCase();
+  if (COUNTRY_CODE_TO_NAME[upper]) return COUNTRY_CODE_TO_NAME[upper];
+
+  // if already a country name
+  // normalize common casing
+  return s
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0]?.toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * region can be:
+ * - "14" (Kuala Lumpur state code from some geo sources)
+ * - "CA"
+ * - "Kuala Lumpur"
+ * - "Selangor"
+ * We will REMOVE numeric-only region tokens.
+ */
+function normalizeRegion(v: any) {
+  const s = decodeSafe(v);
+  if (!s) return "";
+
+  // remove pure numeric regions like "14"
+  if (/^\d+$/.test(s)) return "";
+
+  // Title Case, but keep short codes (CA, NY, etc)
+  if (/^[A-Z]{2,3}$/.test(s)) return s.toUpperCase();
+
+  return s
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0]?.toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * city can be:
+ * - "Kuala%20Lumpur"
+ * - "Santa Clara"
+ * - "Kuala Lumpur, 14, MY" (packed)
+ * We'll split packed strings and keep only the first segment as city.
+ */
+function normalizeCity(v: any) {
+  const s = decodeSafe(v);
+  if (!s) return "";
+
+  // If packed: "City, Region, Country"
+  const parts = s
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  const first = parts[0] || "";
+  if (!first) return "";
+
+  // Title Case
+  return first
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w[0]?.toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * Build ONE clean label and prevent duplicates:
+ * - drop empty
+ * - remove duplicates case-insensitively
+ * - avoid "Kuala Lumpur, Kuala Lumpur, Malaysia"
+ */
+function buildLocationLabel(cityRaw: any, regionRaw: any, countryRaw: any) {
+  const city = normalizeCity(cityRaw);
+  const region = normalizeRegion(regionRaw);
+  const country = normalizeCountry(countryRaw);
+
+  const pieces = [city, region, country].filter(Boolean);
+
+  // remove duplicates (case-insensitive)
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const p of pieces) {
+    const key = p.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    uniq.push(p);
+  }
+
+  // Special case: city == region, keep city only
+  if (uniq.length >= 2 && uniq[0].toLowerCase() === uniq[1].toLowerCase()) {
+    uniq.splice(1, 1);
+  }
+
+  return uniq.join(", ");
+}
+
 function fmtPct(p: number) {
   const v = Math.round(p * 100);
   if (!isFinite(v)) return "0%";
@@ -50,8 +168,15 @@ function DeltaPill({ cmp }: { cmp?: { delta: number; pct: number } }) {
   const d = cmp?.delta ?? 0;
   const p = cmp?.pct ?? 0;
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-black px-2 py-1 rounded-full border ${deltaTone(d)}`}>
-      <span>{d > 0 ? "+" : ""}{d}</span>
+    <span
+      className={`inline-flex items-center gap-1 text-[11px] font-black px-2 py-1 rounded-full border ${deltaTone(
+        d
+      )}`}
+    >
+      <span>
+        {d > 0 ? "+" : ""}
+        {d}
+      </span>
       <span className="opacity-70">({fmtPct(p)})</span>
     </span>
   );
@@ -79,7 +204,9 @@ function Kpi({
   return (
     <div className={`rounded-2xl border p-3 ${toneMap[tone]}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[11px] font-black uppercase opacity-80">{title}</div>
+        <div className="text-[11px] font-black uppercase opacity-80">
+          {title}
+        </div>
         <DeltaPill cmp={delta} />
       </div>
       <div className="text-2xl font-black mt-1">{value}</div>
@@ -88,7 +215,11 @@ function Kpi({
 }
 
 function Pill({ label }: { label: string }) {
-  return <span className="text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700">{label}</span>;
+  return (
+    <span className="text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700">
+      {label}
+    </span>
+  );
 }
 
 function MixRow({
@@ -139,7 +270,11 @@ function Bar({
   value: number;
 }) {
   const c =
-    tone === "indigo" ? "bg-indigo-500" : tone === "emerald" ? "bg-emerald-500" : "bg-rose-500";
+    tone === "indigo"
+      ? "bg-indigo-500"
+      : tone === "emerald"
+      ? "bg-emerald-500"
+      : "bg-rose-500";
 
   return (
     <div>
@@ -148,7 +283,10 @@ function Bar({
         <span className="font-black text-gray-800">{value}</span>
       </div>
       <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
-        <div className={`h-2 ${c}`} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+        <div
+          className={`h-2 ${c}`}
+          style={{ width: `${Math.max(0, Math.min(100, pct))}%` }}
+        />
       </div>
     </div>
   );
@@ -174,7 +312,12 @@ function Sparkline({ series }: { series: number[] }) {
   return (
     <div className="w-full overflow-x-auto">
       <svg width={w} height={h} className="block text-indigo-600">
-        <polyline fill="none" stroke="currentColor" strokeWidth="2" points={pts.join(" ")} />
+        <polyline
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          points={pts.join(" ")}
+        />
         <line x1="0" y1={h - 1} x2={w} y2={h - 1} stroke="#e5e7eb" />
       </svg>
       <div className="text-[11px] text-gray-500 mt-1">Updated every 5s</div>
@@ -192,16 +335,33 @@ function rowBorder(t: string) {
 
 function trafficPill(t: string) {
   const s = String(t || "").toLowerCase();
-  if (s === "paid") return "px-2 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-800 border border-amber-200";
-  if (s === "organic") return "px-2 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200";
-  if (s === "referral") return "px-2 py-1 rounded-full text-xs font-black bg-sky-50 text-sky-800 border border-sky-200";
+  if (s === "paid")
+    return "px-2 py-1 rounded-full text-xs font-black bg-amber-50 text-amber-800 border border-amber-200";
+  if (s === "organic")
+    return "px-2 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-800 border border-emerald-200";
+  if (s === "referral")
+    return "px-2 py-1 rounded-full text-xs font-black bg-sky-50 text-sky-800 border border-sky-200";
   return "px-2 py-1 rounded-full text-xs font-black bg-gray-100 text-gray-800 border border-gray-200";
 }
 
-function Card({ title, headerClass, children }: { title: string; headerClass?: string; children: any }) {
+function Card({
+  title,
+  headerClass,
+  children,
+}: {
+  title: string;
+  headerClass?: string;
+  children: any;
+}) {
   return (
     <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
-      <div className={`p-4 border-b font-semibold text-gray-900 ${headerClass || "bg-gray-50"}`}>{title}</div>
+      <div
+        className={`p-4 border-b font-semibold text-gray-900 ${
+          headerClass || "bg-gray-50"
+        }`}
+      >
+        {title}
+      </div>
       <div className="p-4">{children}</div>
     </div>
   );
@@ -238,7 +398,15 @@ export default function SiteEventsClient({
   useEffect(() => {
     const t = setTimeout(() => setReqTick((x) => x + 1), 150);
     return () => clearTimeout(t);
-  }, [fromIso, toIso, rangeKey, filters.event, filters.traffic, filters.device, filters.path]);
+  }, [
+    fromIso,
+    toIso,
+    rangeKey,
+    filters.event,
+    filters.traffic,
+    filters.device,
+    filters.path,
+  ]);
 
   useEffect(() => {
     const ac = new AbortController();
@@ -246,15 +414,25 @@ export default function SiteEventsClient({
     async function run() {
       setLoading(true);
       try {
-        const qs = new URLSearchParams({ from: fromIso, to: toIso, limit: "1200" });
+        const qs = new URLSearchParams({
+          from: fromIso,
+          to: toIso,
+          limit: "1200",
+        });
         if (filters.event) qs.set("event", filters.event);
         if (filters.traffic) qs.set("traffic", filters.traffic);
         if (filters.device) qs.set("device", filters.device);
         if (filters.path) qs.set("path", filters.path);
 
         const [a, b] = await Promise.all([
-          fetch(`/api/admin/site-events?${qs.toString()}`, { cache: "no-store", signal: ac.signal }),
-          fetch(`/api/admin/site-events/summary?${qs.toString()}`, { cache: "no-store", signal: ac.signal }),
+          fetch(`/api/admin/site-events?${qs.toString()}`, {
+            cache: "no-store",
+            signal: ac.signal,
+          }),
+          fetch(`/api/admin/site-events/summary?${qs.toString()}`, {
+            cache: "no-store",
+            signal: ac.signal,
+          }),
         ]);
 
         const aj = await a.json();
@@ -282,14 +460,24 @@ export default function SiteEventsClient({
         if (filters.device) qs.set("device", filters.device);
         if (filters.path) qs.set("path", filters.path);
 
-        const r = await fetch(`/api/admin/site-events/summary?${qs.toString()}`, { cache: "no-store" });
+        const r = await fetch(
+          `/api/admin/site-events/summary?${qs.toString()}`,
+          { cache: "no-store" }
+        );
         const j = await r.json();
         if (j?.ok) setSummary(j);
       } catch {}
     }, 5000);
 
     return () => clearInterval(t);
-  }, [fromIso, toIso, filters.event, filters.traffic, filters.device, filters.path]);
+  }, [
+    fromIso,
+    toIso,
+    filters.event,
+    filters.traffic,
+    filters.device,
+    filters.path,
+  ]);
 
   const s = summary;
 
@@ -316,9 +504,13 @@ export default function SiteEventsClient({
     <div className="space-y-6">
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
         <div className="p-4 border-b bg-linear-to-r from-indigo-50 via-sky-50 to-emerald-50 flex flex-col gap-2">
-          <div className="text-lg font-black text-gray-900">Site Events • GA Style</div>
+          <div className="text-lg font-black text-gray-900">
+            Site Events • GA Style
+          </div>
           <div className="text-xs text-gray-600">
-            Session-based attribution: first event decides acquisition. Geo derived from IP (runtime) + uses saved country/region/city when available.
+            Session-based attribution: first event decides acquisition. Geo
+            derived from IP (runtime) + uses saved country/region/city when
+            available.
           </div>
         </div>
 
@@ -363,25 +555,49 @@ export default function SiteEventsClient({
 
         <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="rounded-xl border p-3 bg-white">
-            <div className="text-xs font-semibold text-gray-700 mb-2">Traffic Mix</div>
+            <div className="text-xs font-semibold text-gray-700 mb-2">
+              Traffic Mix
+            </div>
 
             <div className="space-y-2">
-              <MixRow label="Direct" value={s?.traffic.direct || 0} total={trafficTotal} tone="slate" />
-              <MixRow label="Organic" value={s?.traffic.organic || 0} total={trafficTotal} tone="emerald" />
-              <MixRow label="Paid" value={s?.traffic.paid || 0} total={trafficTotal} tone="amber" />
-              <MixRow label="Referral" value={s?.traffic.referral || 0} total={trafficTotal} tone="sky" />
+              <MixRow
+                label="Direct"
+                value={s?.traffic.direct || 0}
+                total={trafficTotal}
+                tone="slate"
+              />
+              <MixRow
+                label="Organic"
+                value={s?.traffic.organic || 0}
+                total={trafficTotal}
+                tone="emerald"
+              />
+              <MixRow
+                label="Paid"
+                value={s?.traffic.paid || 0}
+                total={trafficTotal}
+                tone="amber"
+              />
+              <MixRow
+                label="Referral"
+                value={s?.traffic.referral || 0}
+                total={trafficTotal}
+                tone="sky"
+              />
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2">
-              <Pill label={`Direct ${(s?.traffic.direct || 0)}`} />
-              <Pill label={`Organic ${(s?.traffic.organic || 0)}`} />
-              <Pill label={`Paid ${(s?.traffic.paid || 0)}`} />
-              <Pill label={`Referral ${(s?.traffic.referral || 0)}`} />
+              <Pill label={`Direct ${s?.traffic.direct || 0}`} />
+              <Pill label={`Organic ${s?.traffic.organic || 0}`} />
+              <Pill label={`Paid ${s?.traffic.paid || 0}`} />
+              <Pill label={`Referral ${s?.traffic.referral || 0}`} />
             </div>
           </div>
 
           <div className="rounded-xl border p-3 bg-white lg:col-span-2">
-            <div className="text-xs font-semibold text-gray-700 mb-2">Traffic Over Time</div>
+            <div className="text-xs font-semibold text-gray-700 mb-2">
+              Traffic Over Time
+            </div>
             {s?.trafficSeries?.length ? (
               <Sparkline series={s.trafficSeries.map((x) => x.v)} />
             ) : (
@@ -392,32 +608,50 @@ export default function SiteEventsClient({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Top Campaigns Funnel (Views → WhatsApp → Calls)" headerClass="bg-gradient-to-r from-amber-50 via-rose-50 to-indigo-50">
+        <Card
+          title="Top Campaigns Funnel (Views → WhatsApp → Calls)"
+          headerClass="bg-gradient-to-r from-amber-50 via-rose-50 to-indigo-50"
+        >
           <div className="space-y-3">
             {(s?.campaigns || []).slice(0, 12).map((c, i) => {
-              const maxViews = Math.max(...(s?.campaigns || []).map((x) => x.views), 1);
+              const maxViews = Math.max(
+                ...(s?.campaigns || []).map((x) => x.views),
+                1
+              );
               const viewPct = Math.min(100, (c.views / maxViews) * 100);
-              const waPct = c.views > 0 ? Math.min(100, (c.whatsapp / c.views) * 100) : 0;
-              const callPct = c.views > 0 ? Math.min(100, (c.calls / c.views) * 100) : 0;
+              const waPct =
+                c.views > 0 ? Math.min(100, (c.whatsapp / c.views) * 100) : 0;
+              const callPct =
+                c.views > 0 ? Math.min(100, (c.calls / c.views) * 100) : 0;
 
               return (
-                <div key={`${c.campaign}-${i}`} className="rounded-xl border bg-white p-3">
+                <div
+                  key={`${c.campaign}-${i}`}
+                  className="rounded-xl border bg-white p-3"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="w-7 h-7 rounded-full bg-amber-50 text-amber-800 flex items-center justify-center text-xs font-black border border-amber-200">
                           {i + 1}
                         </span>
-                        <div className="font-semibold text-gray-900 truncate max-w-90">{c.campaign}</div>
+                        <div className="font-semibold text-gray-900 truncate max-w-90">
+                          {c.campaign}
+                        </div>
                       </div>
                       <div className="text-xs text-gray-600 mt-1">
-                        Views <b>{c.views}</b> • WhatsApp <b>{c.whatsapp}</b> • Calls <b>{c.calls}</b> • Events <b>{c.count}</b>
+                        Views <b>{c.views}</b> • WhatsApp <b>{c.whatsapp}</b> •
+                        Calls <b>{c.calls}</b> • Events <b>{c.count}</b>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <div className="text-sm font-black text-emerald-700">{c.conversions}</div>
-                      <div className="text-[11px] text-gray-500">conversions</div>
+                      <div className="text-sm font-black text-emerald-700">
+                        {c.conversions}
+                      </div>
+                      <div className="text-[11px] text-gray-500">
+                        conversions
+                      </div>
                       <div className="text-[11px] text-gray-500 mt-1">
                         WA rate: <b>{Math.round((c.rate || 0) * 100)}%</b>
                       </div>
@@ -425,22 +659,47 @@ export default function SiteEventsClient({
                   </div>
 
                   <div className="mt-3 space-y-2">
-                    <Bar label="Views" pct={viewPct} tone="indigo" value={c.views} />
-                    <Bar label="WhatsApp" pct={waPct} tone="emerald" value={c.whatsapp} />
-                    <Bar label="Calls" pct={callPct} tone="rose" value={c.calls} />
+                    <Bar
+                      label="Views"
+                      pct={viewPct}
+                      tone="indigo"
+                      value={c.views}
+                    />
+                    <Bar
+                      label="WhatsApp"
+                      pct={waPct}
+                      tone="emerald"
+                      value={c.whatsapp}
+                    />
+                    <Bar
+                      label="Calls"
+                      pct={callPct}
+                      tone="rose"
+                      value={c.calls}
+                    />
                   </div>
                 </div>
               );
             })}
 
-            {!s?.campaigns?.length && <div className="text-sm text-gray-400">No campaigns detected yet</div>}
+            {!s?.campaigns?.length && (
+              <div className="text-sm text-gray-400">
+                No campaigns detected yet
+              </div>
+            )}
           </div>
         </Card>
 
-        <Card title="Top Referrers" headerClass="bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50">
+        <Card
+          title="Top Referrers"
+          headerClass="bg-gradient-to-r from-emerald-50 via-sky-50 to-indigo-50"
+        >
           <div className="space-y-2">
             {(s?.topReferrers || []).slice(0, 15).map((r, i) => (
-              <div key={`${r.name}-${i}`} className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white">
+              <div
+                key={`${r.name}-${i}`}
+                className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white"
+              >
                 <div className="flex items-center gap-2">
                   <span className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-700 flex items-center justify-center text-xs font-black border border-indigo-200">
                     {i + 1}
@@ -450,7 +709,9 @@ export default function SiteEventsClient({
                 <span className="font-black text-gray-900">{r.count}</span>
               </div>
             ))}
-            {!s?.topReferrers?.length && <div className="text-sm text-gray-400">No referrers yet</div>}
+            {!s?.topReferrers?.length && (
+              <div className="text-sm text-gray-400">No referrers yet</div>
+            )}
           </div>
         </Card>
       </div>
@@ -460,11 +721,18 @@ export default function SiteEventsClient({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {(["paid", "organic", "direct", "referral"] as const).map((k) => (
               <div key={k} className="rounded-xl border bg-white p-3">
-                <div className="text-xs font-black uppercase text-gray-700 mb-2">{k}</div>
+                <div className="text-xs font-black uppercase text-gray-700 mb-2">
+                  {k}
+                </div>
                 <div className="space-y-2">
                   {(s?.topCountries?.[k] || []).slice(0, 6).map((x, idx) => (
-                    <div key={`${k}-${x.name}-${idx}`} className="flex items-center justify-between text-sm">
-                      <div className="font-semibold text-gray-900">{x.name}</div>
+                    <div
+                      key={`${k}-${x.name}-${idx}`}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <div className="font-semibold text-gray-900">
+                        {x.name}
+                      </div>
                       <div className="font-black text-gray-900">{x.count}</div>
                     </div>
                   ))}
@@ -480,12 +748,34 @@ export default function SiteEventsClient({
         <Card title="Top Cities / Regions" headerClass="bg-gray-50">
           <div className="space-y-2">
             {(s?.topCities || []).slice(0, 15).map((x, i) => (
-              <div key={`${x.name}-${i}`} className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white">
-                <div className="font-semibold text-gray-900">{x.name}</div>
+              <div
+                key={`${x.name}-${i}`}
+                className="flex items-center justify-between text-sm border rounded-xl p-3 bg-white"
+              >
+                <div className="font-semibold text-gray-900">
+                  {(() => {
+                    // Try to interpret the "name" bucket as a packed label
+                    const decoded = decodeSafe(x.name);
+                    const parts = decoded
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean);
+                    const city = parts[0] || "";
+                    const region = parts[1] || "";
+                    const country = parts[2] || parts[1] || ""; // fallback
+                    return (
+                      buildLocationLabel(city, region, country) ||
+                      decoded ||
+                      "Unknown"
+                    );
+                  })()}
+                </div>
                 <div className="font-black text-gray-900">{x.count}</div>
               </div>
             ))}
-            {!s?.topCities?.length && <div className="text-sm text-gray-400">No location data yet</div>}
+            {!s?.topCities?.length && (
+              <div className="text-sm text-gray-400">No location data yet</div>
+            )}
           </div>
         </Card>
       </div>
@@ -493,29 +783,48 @@ export default function SiteEventsClient({
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
         <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
           <div>
-            <div className="font-semibold text-gray-900">Page Views by Page Path</div>
-            <div className="text-xs text-gray-500">Counts only page_view events</div>
+            <div className="font-semibold text-gray-900">
+              Page Views by Page Path
+            </div>
+            <div className="text-xs text-gray-500">
+              Counts only page_view events
+            </div>
           </div>
-          <div className="text-xs text-gray-500">{loading ? "Loading…" : `${rows.length} rows`}</div>
+          <div className="text-xs text-gray-500">
+            {loading ? "Loading…" : `${rows.length} rows`}
+          </div>
         </div>
         <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
           {pagePathCounts.map((p) => (
-            <div key={p.path} className="border rounded-xl p-3 bg-white flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-900">{p.path}</div>
+            <div
+              key={p.path}
+              className="border rounded-xl p-3 bg-white flex items-center justify-between"
+            >
+              <div className="text-sm font-semibold text-gray-900">
+                {p.path}
+              </div>
               <div className="text-sm font-black text-gray-900">{p.count}</div>
             </div>
           ))}
-          {!pagePathCounts.length && <div className="text-sm text-gray-400">No page views yet</div>}
+          {!pagePathCounts.length && (
+            <div className="text-sm text-gray-400">No page views yet</div>
+          )}
         </div>
       </div>
 
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
         <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
           <div>
-            <div className="font-semibold text-gray-900">All Events (Filtered)</div>
-            <div className="text-xs text-gray-500">Everything here matches your filters</div>
+            <div className="font-semibold text-gray-900">
+              All Events (Filtered)
+            </div>
+            <div className="text-xs text-gray-500">
+              Everything here matches your filters
+            </div>
           </div>
-          <div className="text-xs text-gray-500">{loading ? "Loading…" : `${rows.length} rows`}</div>
+          <div className="text-xs text-gray-500">
+            {loading ? "Loading…" : `${rows.length} rows`}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -535,7 +844,10 @@ export default function SiteEventsClient({
             </thead>
             <tbody className="divide-y">
               {rows.map((r: any) => (
-                <tr key={r.id} className={rowBorder(r.trafficFixed) + " hover:bg-gray-50"}>
+                <tr
+                  key={r.id}
+                  className={rowBorder(r.trafficFixed) + " hover:bg-gray-50"}
+                >
                   <td className="px-4 py-3 whitespace-nowrap text-xs text-gray-600">
                     {new Date(r.created_at).toLocaleString()}
                   </td>
@@ -546,15 +858,23 @@ export default function SiteEventsClient({
                     </span>
                   </td>
 
-                  <td className="px-4 py-3 text-gray-800">{r.page_path || "—"}</td>
-
-                  <td className="px-4 py-3">
-                    <span className={trafficPill(r.trafficFixed)}>{r.trafficFixed}</span>
+                  <td className="px-4 py-3 text-gray-800">
+                    {r.page_path || "—"}
                   </td>
 
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-gray-900">{r.refName}</div>
-                    <div className="text-[11px] text-gray-500 truncate max-w-60">{r.referrer || "—"}</div>
+                    <span className={trafficPill(r.trafficFixed)}>
+                      {r.trafficFixed}
+                    </span>
+                  </td>
+
+                  <td className="px-4 py-3">
+                    <div className="font-semibold text-gray-900">
+                      {r.refName}
+                    </div>
+                    <div className="text-[11px] text-gray-500 truncate max-w-60">
+                      {r.referrer || "—"}
+                    </div>
                   </td>
 
                   <td className="px-4 py-3">
@@ -564,11 +884,14 @@ export default function SiteEventsClient({
                   </td>
 
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-gray-900">{r.modelKey}</div>
+                    <div className="font-semibold text-gray-900">
+                      {r.modelKey}
+                    </div>
                   </td>
 
                   <td className="px-4 py-3 text-xs text-gray-700">
-                    {[r.city, r.region, r.country].filter(Boolean).join(", ") || "Unknown"}
+                    {buildLocationLabel(r.city, r.region, r.country) ||
+                      "Unknown"}
                   </td>
 
                   <td className="px-4 py-3">

@@ -1,162 +1,170 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/requireAdmin";
 
-function cleanIp(ip?: string | null) {
-  if (!ip) return "";
-  const s = String(ip).trim();
+type SiteEventRowLite = {
+  id: string;
+  ip: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+};
+
+type Geo = { country: string; region: string; city: string };
+
+function cleanIp(raw?: string | null) {
+  if (!raw) return "";
+  const s = String(raw).trim();
   if (!s) return "";
-  if (s.includes(",")) return s.split(",")[0].trim();
-  return s;
+  const first = s.split(",")[0]?.trim() || "";
+  return first.replace(/:\d+$/, ""); // remove :port
 }
 
-function isPublicIp(ip: string) {
-  const x = String(ip || "").trim();
-  if (!x) return false;
-  if (x === "127.0.0.1" || x === "::1") return false;
-  if (x.startsWith("10.")) return false;
-  if (x.startsWith("192.168.")) return false;
-  if (x.startsWith("172.")) {
-    const p = Number(x.split(".")[1] || "0");
-    if (p >= 16 && p <= 31) return false;
+function isPrivateIp(ip: string) {
+  if (!ip) return true;
+  if (ip === "::1") return true;
+  if (ip.startsWith("127.")) return true;
+  if (ip.startsWith("10.")) return true;
+  if (ip.startsWith("192.168.")) return true;
+  if (ip.startsWith("172.")) {
+    const n = Number(ip.split(".")[1] || "0");
+    if (n >= 16 && n <= 31) return true;
   }
-  return true;
+  return false;
 }
 
-async function geoLookup(ip: string) {
-  const safe = cleanIp(ip);
-  if (!isPublicIp(safe)) return null;
+async function lookupIpInfo(ip: string, token: string) {
+  const url = `https://ipinfo.io/${encodeURIComponent(ip)}?token=${encodeURIComponent(
+    token
+  )}`;
+  const res = await fetch(url, { cache: "no-store" });
 
+  let json: any = null;
   try {
-    const r = await fetch(`https://ipwho.is/${encodeURIComponent(safe)}`, {
-      cache: "no-store",
-      headers: { "user-agent": "jrv-admin/1.0" },
-    });
-    const j: any = await r.json();
-    if (!j || j.success === false) return null;
+    json = await res.json();
+  } catch {}
 
-    return {
-      country: (j.country || null) as string | null,
-      region: (j.region || j.state || null) as string | null,
-      city: (j.city || null) as string | null,
-    };
-  } catch {
-    return null;
+  if (!res.ok) return { ok: false as const, status: res.status, json };
+
+  const city = String(json?.city || "").trim();
+  const region = String(json?.region || "").trim();
+  const country = String(json?.country || "").trim(); // e.g. MY, US
+
+  if (!city || !region || !country) {
+    return { ok: false as const, status: res.status, json };
   }
-}
 
-function mustAuth(req: Request) {
-  const url = new URL(req.url);
-  const token = url.searchParams.get("token") || "";
-  const expected = process.env.CRON_SECRET || "";
-  if (!expected) return true;
-  return token !== expected;
-}
-
-async function fetchMissing(limit: number) {
-  const { data, error } = await supabaseAdmin
-    .from("site_events")
-    .select("id, ip, country, region, city")
-    .or("country.is.null,region.is.null,city.is.null")
-    .not("ip", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-
-  if (error) throw new Error(error.message);
-  return (data || []) as {
-    id: string;
-    ip: string | null;
-    country: string | null;
-    region: string | null;
-    city: string | null;
-  }[];
-}
-
-async function updateRows(
-  updates: {
-    id: string;
-    country: string | null;
-    region: string | null;
-    city: string | null;
-  }[]
-) {
-  if (!updates.length) return 0;
-
-  const { error } = await supabaseAdmin
-    .from("site_events")
-    .upsert(updates, { onConflict: "id" });
-
-  if (error) throw new Error(error.message);
-  return updates.length;
+  return { ok: true as const, status: res.status, geo: { city, region, country } as Geo };
 }
 
 export async function GET(req: Request) {
-  try {
-    if (mustAuth(req)) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+  const guard = await requireAdmin();
+  if (!guard.ok) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
 
-    const url = new URL(req.url);
-    const limit = Math.min(
-      Math.max(Number(url.searchParams.get("limit") || "300"), 1),
-      1500
-    );
-
-    const rows = await fetchMissing(limit);
-
-    const ips = new Set<string>();
-    for (const r of rows) {
-      const ip = cleanIp(r.ip);
-      if (ip) ips.add(ip);
-      if (ips.size >= 400) break;
-    }
-
-    const ipGeo = new Map<
-      string,
-      { country: string | null; region: string | null; city: string | null }
-    >();
-
-    await Promise.all(
-      Array.from(ips).map(async (ip) => {
-        const g = await geoLookup(ip);
-        if (g) ipGeo.set(ip, g);
-      })
-    );
-
-    const updates: {
-      id: string;
-      country: string | null;
-      region: string | null;
-      city: string | null;
-    }[] = [];
-
-    for (const r of rows) {
-      const ip = cleanIp(r.ip);
-      const g = ipGeo.get(ip);
-
-      const country = r.country || g?.country || null;
-      const region = r.region || g?.region || null;
-      const city = r.city || g?.city || null;
-
-      if (country !== r.country || region !== r.region || city !== r.city) {
-        updates.push({ id: r.id, country, region, city });
-      }
-    }
-
-    const written = await updateRows(updates);
-
-    return NextResponse.json({
-      ok: true,
-      scanned: rows.length,
-      uniqueIps: ips.size,
-      updates: written,
-    });
-  } catch (e: any) {
+  const token = process.env.IPINFO_TOKEN || "";
+  if (!token) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Server error" },
+      { ok: false, error: "Missing IPINFO_TOKEN env var" },
       { status: 500 }
     );
   }
+
+  const url = new URL(req.url);
+  const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit") || 300)));
+  const dryRun = url.searchParams.get("dry") === "1";
+
+  // rows missing any geo fields
+  const { data, error } = await supabaseAdmin
+    .from("site_events")
+    .select("id, ip, country, region, city")
+    .or("country.is.null,country.eq.,region.is.null,region.eq.,city.is.null,city.eq.")
+    .not("ip", "is", null)
+    .neq("ip", "")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  const rows = (data || []) as SiteEventRowLite[];
+
+  // unique public IPs only
+  const ips = Array.from(
+    new Set(
+      rows
+        .map((r) => cleanIp(r.ip))
+        .filter((ip) => ip && !isPrivateIp(ip))
+    )
+  );
+
+  const geoCache = new Map<string, Geo | null>();
+
+  let updates = 0;
+  let lookupFailed = 0;
+  let updateFailed = 0;
+  let skippedNoGeo = 0;
+
+  const sampleFailures: any[] = [];
+
+  // lookup once per IP
+  for (const ip of ips) {
+    const r = await lookupIpInfo(ip, token);
+    if (!r.ok) {
+      geoCache.set(ip, null);
+      lookupFailed++;
+      if (sampleFailures.length < 5) {
+        sampleFailures.push({ ip, status: r.status, json: r.json });
+      }
+      continue;
+    }
+    geoCache.set(ip, r.geo);
+  }
+
+  if (!dryRun) {
+    for (const row of rows) {
+      const ip = cleanIp(row.ip);
+      if (!ip || isPrivateIp(ip)) continue;
+
+      const geo = geoCache.get(ip);
+      if (!geo) {
+        skippedNoGeo++;
+        continue;
+      }
+
+      const next = {
+        country: row.country?.trim() ? row.country : geo.country,
+        region: row.region?.trim() ? row.region : geo.region,
+        city: row.city?.trim() ? row.city : geo.city,
+      };
+
+      const { error: upErr } = await supabaseAdmin
+        .from("site_events")
+        .update(next)
+        .eq("id", row.id);
+
+      if (upErr) {
+        updateFailed++;
+        if (sampleFailures.length < 5) {
+          sampleFailures.push({ id: row.id, ip, updateError: upErr.message });
+        }
+      } else {
+        updates++;
+      }
+    }
+  }
+
+  return NextResponse.json({
+    ok: true,
+    scanned: rows.length,
+    uniqueIps: ips.length,
+    updates,
+    lookupFailed,
+    updateFailed,
+    skippedNoGeo,
+    dryRun,
+    sampleFailures,
+  });
 }
