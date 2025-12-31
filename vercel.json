@@ -5,7 +5,7 @@
       "schedule": "*/10 * * * *"
     },
     {
-      "path": "/api/admin/site-events/backfill-geo?limit=300",
+      "path": "/api/cron/backfill-geo?limit=300",
       "schedule": "*/30 * * * *"
     }
   ]

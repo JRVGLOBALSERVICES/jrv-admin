@@ -174,7 +174,7 @@ function pickCatalog(rel: any): { make?: any; model?: any } {
 /* ===========================
    KL timezone helpers (UTC instants)
    =========================== */
-const KL_OFFSET_MS = 6 * 60 * 60 * 1000;
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function startOfDayInKLToUTC(baseUtc: Date) {
@@ -187,6 +187,22 @@ function startOfDayInKLToUTC(baseUtc: Date) {
 
 function endOfDayInKLToUTC(baseUtc: Date) {
   const start = startOfDayInKLToUTC(baseUtc);
+  return new Date(start.getTime() + DAY_MS - 1);
+}
+
+
+function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+  let start = new Date(Date.UTC(y, m, d, hour, 0, 0, 0) - KL_OFFSET_MS);
+  if (kl.getUTCHours() < hour) start = new Date(start.getTime() - DAY_MS);
+  return start;
+}
+
+function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+  const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
   return new Date(start.getTime() + DAY_MS - 1);
 }
 
@@ -297,17 +313,28 @@ function normalizeCountryServer(input: any) {
 function cleanPart(v: any) {
   const s = decodeSafe(v);
   if (!s) return "";
-  return s.replace(/\s+/g, " ").trim();
+  return s
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
 }
 
 function normalizePackedLocationServer(name: any) {
   const decoded = decodeSafe(name);
   if (!decoded) return "";
 
+  const rawTrim = decoded.trim();
+  if (!rawTrim) return "";
+  if (/^\d+$/.test(rawTrim)) return "";
+
   const parts = decoded
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+
+  if (!parts.length) return "";
+  if (/^\d+$/.test(parts[0] || "")) return "";
 
   if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
     parts.splice(parts.length - 2, 1);
@@ -318,82 +345,103 @@ function normalizePackedLocationServer(name: any) {
   let c = normalizeCountryServer(parts[2] || "");
 
   if (!c && parts.length === 2) {
-    const maybeCountry = normalizeCountryServer(parts[1] || "");
-    if (maybeCountry && maybeCountry !== cleanPart(parts[1])) {
+    const maybeCountry = normalizeCountryServer(parts[1]);
+    if (maybeCountry && /^[A-Za-z]{2,}$/.test(String(parts[1] || "").trim())) {
       c = maybeCountry;
       b = "";
-    } else if (COUNTRY_CODE_TO_NAME[String(parts[1] || "").toUpperCase()]) {
-      c = normalizeCountryServer(parts[1] || "");
-      b = "";
-    } else if (COUNTRY_CODE_TO_NAME[String(parts[0] || "").toUpperCase()]) {
-      c = normalizeCountryServer(parts[0] || "");
     }
   }
 
   if (b && /^\d+$/.test(b)) b = "";
   if (a && b && a.toLowerCase() === b.toLowerCase()) b = "";
 
+  if (/^\d+$/.test(a)) return "";
+  if (b && /\d/.test(b)) b = "";
+
   return [a, b, c].filter(Boolean).join(", ");
 }
 
-function parseLocationParts(v: any) {
-  const decoded = decodeSafe(v);
-  if (!decoded) return [] as string[];
+function normalizeCityLabelServer(cityRaw: any, countryRaw: any) {
+  const decoded = decodeSafe(cityRaw);
+  if (!decoded) return "";
+
   const parts = decoded
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
-    parts.splice(parts.length - 2, 1);
-  }
-  return parts;
-}
 
-function normalizeRegionServer(input: any) {
-  const parts = parseLocationParts(input);
-  if (!parts.length) return "";
-  if (parts.length === 1) return cleanPart(parts[0]);
+  const city = cleanPart(parts[0] || "");
+  if (!city || /^\d+$/.test(city)) return "";
 
-  const last = parts[parts.length - 1];
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
   const lastNorm = normalizeCountryServer(last);
-  const isLastCountry =
-    lastNorm && (lastNorm !== cleanPart(last) || isOnlyCountryLabel(lastNorm));
+  const country = lastNorm || normalizeCountryServer(countryRaw);
+  if (!country) return city;
 
-  if (isLastCountry) {
-    if (parts.length >= 3) return cleanPart(parts[1]);
-    return cleanPart(parts[0]);
+  return `${city}, ${country}`;
+}
+
+function normalizeRegionLabelServer(regionRaw: any, countryRaw: any) {
+  const decoded = decodeSafe(regionRaw);
+  if (!decoded) return "";
+  const rawTrim = decoded.trim();
+  if (!rawTrim) return "";
+  if (/^\d+$/.test(rawTrim)) return "";
+  if (rawTrim.length <= 1) return "";
+
+  const parts = rawTrim
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (!parts.length) return "";
+
+  if (parts.length === 2) {
+    const maybeCountry = normalizeCountryServer(parts[1]);
+    if (maybeCountry) return cleanPart(parts[0]);
   }
 
-  return cleanPart(parts[0]);
+  const candidate = cleanPart(parts[0] || rawTrim);
+  if (!candidate) return "";
+  if (/^\d+$/.test(candidate)) return "";
+  if (/\d/.test(candidate)) return "";
+
+  const ctry = normalizeCountryServer(countryRaw);
+  if (ctry && candidate.toLowerCase() === ctry.toLowerCase()) return "";
+  return candidate;
 }
 
-function normalizeCityServer(input: any) {
-  const parts = parseLocationParts(input);
-  if (!parts.length) return "";
-  const city = cleanPart(parts[0]);
-  const last = parts[parts.length - 1];
-  const country = normalizeCountryServer(last);
-  const countryOk = country && isOnlyCountryLabel(country);
-  if (countryOk) return [city, country].filter(Boolean).join(", ");
-  return city;
+function deriveRegionFromCityServer(cityRaw: any) {
+  const decoded = decodeSafe(cityRaw);
+  if (!decoded) return "";
+  const parts = decoded
+    .split(",")
+    .map((x) => cleanPart(x))
+    .filter(Boolean);
+  if (parts.length < 3) return "";
+  const maybeRegion = cleanPart(parts[parts.length - 2]);
+  if (!maybeRegion) return "";
+  if (/^\d+$/.test(maybeRegion)) return "";
+  if (/\d/.test(maybeRegion)) return "";
+  if (/^(my|jk)$/i.test(maybeRegion)) return "";
+  return maybeRegion;
 }
 
-function isJunkGeoLabel(v: string) {
-  const s = String(v || "").trim();
-  if (!s) return true;
-  if (/^\d+$/.test(s)) return true;
-  if (s.length <= 2 && !COUNTRY_CODE_TO_NAME[s.toUpperCase()]) return true;
-  return false;
+function normalizeKey(v: string) {
+  return cleanPart(v).toLowerCase();
 }
 
-function isOnlyCountryLabel(v: string) {
-  const s = String(v || "").trim();
-  if (!s) return false;
-  if (s.includes(",")) return false;
-  const upper = s.toUpperCase();
-  if (COUNTRY_CODE_TO_NAME[upper]) return true;
-  const vals = new Set(Object.values(COUNTRY_CODE_TO_NAME));
-  return vals.has(s);
+function collapseCounts(map: Map<string, number>) {
+  const agg = new Map<string, { name: string; count: number }>();
+  for (const [k, v] of map.entries()) {
+    const name = cleanPart(k);
+    if (!name || name === "Unknown") continue;
+    const key = normalizeKey(name);
+    const prev = agg.get(key);
+    if (prev) prev.count += v;
+    else agg.set(key, { name, count: v });
+  }
+  return Array.from(agg.values());
 }
 
 // ✅ safe for null page_url
@@ -516,8 +564,8 @@ export default async function AdminDashboard({
   const ky = klNow.getUTCFullYear();
   const km = klNow.getUTCMonth();
   const kd = klNow.getUTCDate();
-  let windowStartKlMs = Date.UTC(ky, km, kd, 8, 0, 0, 0);
-  if (klNow.getUTCHours() < 8) windowStartKlMs -= DAY_MS;
+  let windowStartKlMs = Date.UTC(ky, km, kd, 6, 0, 0, 0);
+  if (klNow.getUTCHours() < 6) windowStartKlMs -= DAY_MS;
   const windowEndKlMs = windowStartKlMs + DAY_MS;
   const windowStartUtc = new Date(windowStartKlMs - KL_OFFSET_MS);
   const windowEndUtc = new Date(windowEndKlMs - KL_OFFSET_MS);
@@ -609,23 +657,28 @@ export default async function AdminDashboard({
     const regRaw = e.region;
     const ctyRaw = e.city;
 
-    const ctryNorm = normalizeCountryServer(ctryRaw);
-    const regNorm = normalizeRegionServer(regRaw) || normalizeCountryServer(regRaw);
-    const ctyNorm = normalizeCityServer(ctyRaw) || normalizeCountryServer(ctyRaw);
+    const ctry = normalizeCountryServer(ctryRaw) || "Unknown";
+    let reg =
+      normalizeRegionLabelServer(regRaw, ctryRaw) ||
+      deriveRegionFromCityServer(ctyRaw) ||
+      "";
+    if (!reg) reg = "Unknown";
+    const cty = normalizeCityLabelServer(ctyRaw, ctryRaw) || "Unknown";
 
-    const ctry = !isJunkGeoLabel(ctryNorm) ? ctryNorm : "Unknown";
-    const reg =
-      !isJunkGeoLabel(regNorm) && !isOnlyCountryLabel(regNorm)
-        ? regNorm
-        : "Unknown";
-    const cty =
-      !isJunkGeoLabel(ctyNorm) && !isOnlyCountryLabel(ctyNorm)
-        ? ctyNorm
-        : "Unknown";
+    const ctryLabel = cleanPart(ctry);
+    if (ctryLabel && ctryLabel !== "Unknown") {
+      countryCounts.set(ctryLabel, (countryCounts.get(ctryLabel) || 0) + 1);
+    }
 
-    countryCounts.set(ctry, (countryCounts.get(ctry) || 0) + 1);
-    if (reg !== "Unknown") regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
-    if (cty !== "Unknown") cityCounts.set(cty, (cityCounts.get(cty) || 0) + 1);
+    const regLabel = cleanPart(reg);
+    if (regLabel && regLabel !== "Unknown") {
+      regionCounts.set(regLabel, (regionCounts.get(regLabel) || 0) + 1);
+    }
+
+    const ctyLabel = cleanPart(cty);
+    if (ctyLabel && ctyLabel !== "Unknown") {
+      cityCounts.set(ctyLabel, (cityCounts.get(ctyLabel) || 0) + 1);
+    }
 
     const looksLikeCarDetail = !!inferCarFromPath(e.page_path);
 
@@ -679,21 +732,15 @@ export default async function AdminDashboard({
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
-  const topCountries24h = Array.from(countryCounts.entries())
-    .filter(([name]) => name !== "Unknown")
-    .map(([name, count]) => ({ name, count }))
+  const topCountries24h = collapseCounts(countryCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
-  const topRegions24h = Array.from(regionCounts.entries())
-    .filter(([name]) => name !== "Unknown")
-    .map(([name, count]) => ({ name, count }))
+  const topRegions24h = collapseCounts(regionCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
-  const topCities24h = Array.from(cityCounts.entries())
-    .filter(([name]) => name !== "Unknown")
-    .map(([name, count]) => ({ name, count }))
+  const topCities24h = collapseCounts(cityCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
 
@@ -842,8 +889,8 @@ export default async function AdminDashboard({
   // -------------------------
   const now = new Date();
 
-  const todayStartUTC = startOfDayInKLToUTC(now);
-  const todayEndUTC = endOfDayInKLToUTC(now);
+  const todayStartUTC = startOfBusinessDayInKLToUTC(now, 7);
+  const todayEndUTC = endOfBusinessDayInKLToUTC(now, 7);
 
   const { data: expiringToday } = await supabase
     .from("agreements")
@@ -918,9 +965,8 @@ export default async function AdminDashboard({
       };
     }) ?? [];
 
-  const tomorrowBase = addDaysKL(now, 1);
-  const tomorrowStartUTC = startOfDayInKLToUTC(tomorrowBase);
-  const tomorrowEndUTC = endOfDayInKLToUTC(tomorrowBase);
+  const tomorrowStartUTC = new Date(todayStartUTC.getTime() + DAY_MS);
+  const tomorrowEndUTC = new Date(tomorrowStartUTC.getTime() + DAY_MS - 1);
 
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;

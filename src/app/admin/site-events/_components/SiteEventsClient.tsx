@@ -105,11 +105,26 @@ function cleanPart(v: any) {
  * - a packed string "Kuala%20Lumpur, 14, MY"
  */
 function buildLocationLabel(cityRaw: any, regionRaw: any, countryRaw: any) {
-  const city = cleanPart(cityRaw);
-  const region = cleanPart(regionRaw);
+  let city = cleanPart(cityRaw);
+  let region = cleanPart(regionRaw);
+  let country = normalizeCountry(countryRaw);
 
-  // Country: normalize MY -> Malaysia
-  const country = normalizeCountry(countryRaw);
+  if (city && city.includes(",")) {
+    const parts = city
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+
+    if (parts.length >= 2) {
+      const maybeCountry = normalizeCountry(parts[parts.length - 1]);
+      const maybeRegion = parts.length >= 3 ? cleanPart(parts[parts.length - 2]) : "";
+
+      if (!country && maybeCountry) country = maybeCountry;
+      if (!region && maybeRegion && !/^\d+$/.test(maybeRegion)) region = maybeRegion;
+
+      city = cleanPart(parts[0] || city);
+    }
+  }
 
   // remove numeric-only region segments (like "14")
   const regionIsNumeric = region && /^\d+$/.test(region);
@@ -146,6 +161,11 @@ function normalizePackedLocation(name: any) {
   // remove numeric middle parts e.g. [Kuala Lumpur, 14, MY]
   if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
     parts.splice(parts.length - 2, 1);
+  }
+
+  if (parts.length === 2) {
+    const maybeCountry = normalizeCountry(parts[1]);
+    if (maybeCountry) return buildLocationLabel(parts[0] || "", "", maybeCountry) || decoded;
   }
 
   const city = parts[0] || "";
@@ -414,9 +434,6 @@ export default function SiteEventsClient({
   const [filters, setFilters] = useState<Filters>(initialFilters);
 
   const [rows, setRows] = useState<any[]>([]);
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
-  const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [reqTick, setReqTick] = useState(0);
@@ -426,7 +443,6 @@ export default function SiteEventsClient({
     setToIso(initialTo);
     setRangeKey(initialRange);
     setFilters(initialFilters);
-    setPage(1);
   }, [initialFrom, initialTo, initialRange, initialFilters]);
 
   // debounce fetch a bit
@@ -441,8 +457,6 @@ export default function SiteEventsClient({
     filters.traffic,
     filters.device,
     filters.path,
-    page,
-    limit,
   ]);
 
   // main fetch (rows + summary)
@@ -455,8 +469,7 @@ export default function SiteEventsClient({
         const qs = new URLSearchParams({
           from: fromIso,
           to: toIso,
-          page: String(page),
-          limit: String(limit),
+          limit: "1200",
         });
         if (filters.event) qs.set("event", filters.event);
         if (filters.traffic) qs.set("traffic", filters.traffic);
@@ -479,7 +492,6 @@ export default function SiteEventsClient({
 
         if (!ac.signal.aborted) {
           setRows(aj?.ok ? aj.rows || [] : []);
-          setTotal(aj?.ok ? Number(aj.total || 0) : 0);
           setSummary(bj?.ok ? bj : null);
         }
       } finally {
@@ -490,10 +502,6 @@ export default function SiteEventsClient({
     run();
     return () => ac.abort();
   }, [reqTick]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [fromIso, toIso, filters.event, filters.traffic, filters.device, filters.path]);
 
   // refresh only summary every 5s (light)
   useEffect(() => {
@@ -544,8 +552,6 @@ export default function SiteEventsClient({
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
   }, [rows]);
-
-  const totalPages = Math.max(1, Math.ceil((total || 0) / Math.max(1, limit)));
 
   return (
     <div className="space-y-6">
@@ -783,43 +789,7 @@ export default function SiteEventsClient({
             </div>
           </div>
           <div className="text-xs text-gray-500">
-            <div className="flex items-center gap-2">
-              <select
-                value={limit}
-                onChange={(e) => setLimit(Number(e.target.value) || 50)}
-                className="border rounded-lg px-2 py-1 text-xs bg-white"
-              >
-                <option value={25}>25</option>
-                <option value={50}>50</option>
-                <option value={100}>100</option>
-              </select>
-
-              <button
-                className="border rounded-lg px-2 py-1 text-xs bg-white disabled:opacity-50"
-                disabled={loading || page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-              >
-                Prev
-              </button>
-
-              <div className="tabular-nums">
-                {page} / {totalPages}
-              </div>
-
-              <button
-                className="border rounded-lg px-2 py-1 text-xs bg-white disabled:opacity-50"
-                disabled={loading || page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              >
-                Next
-              </button>
-
-              <div className="tabular-nums">
-                {loading
-                  ? "Loading…"
-                  : `Showing ${rows.length} of ${total.toLocaleString()}`}
-              </div>
-            </div>
+            {loading ? "Loading…" : `${rows.length} rows`}
           </div>
         </div>
 

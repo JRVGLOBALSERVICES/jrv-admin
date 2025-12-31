@@ -83,7 +83,8 @@ async function syncCarsFromAgreementsNow(nowIso: string) {
     .update({ status: "available", updated_at: nowIso })
     .eq("status", "rented");
 
-  if (rentedCarIds.length > 0) q = q.not("id", "in", `(${rentedCarIds.join(",")})`);
+  if (rentedCarIds.length > 0)
+    q = q.not("id", "in", `(${rentedCarIds.join(",")})`);
 
   const { error: setAvailErr } = await q;
   if (setAvailErr) console.error("setAvailErr:", setAvailErr);
@@ -143,12 +144,14 @@ export async function GET() {
 
       await sendSlackMessage(REMINDER_WEBHOOK, text);
 
-      const { error: insErr } = await supabase.from("notification_logs").insert({
-        agreement_id: ag.id,
-        plate_number: ag.plate_number,
-        car_model: ag.car_type,
-        reminder_type: check.label,
-      });
+      const { error: insErr } = await supabase
+        .from("notification_logs")
+        .insert({
+          agreement_id: ag.id,
+          plate_number: ag.plate_number,
+          car_model: ag.car_type,
+          reminder_type: check.label,
+        });
 
       if (insErr) console.error("notification_logs insert error:", insErr);
 

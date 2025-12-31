@@ -8,6 +8,104 @@ import {
   getModelKey,
 } from "@/lib/site-events";
 
+function cleanLabel(v: any) {
+  return String(v ?? "")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*,\s*/g, ", ")
+    .trim();
+}
+
+const COUNTRY_ALIASES: Record<string, string> = {
+  MY: "Malaysia",
+  MALAYSIA: "Malaysia",
+  SG: "Singapore",
+  SINGAPORE: "Singapore",
+  US: "United States",
+  USA: "United States",
+  "UNITED STATES": "United States",
+  ID: "Indonesia",
+  INDONESIA: "Indonesia",
+  IN: "India",
+  INDIA: "India",
+  AE: "United Arab Emirates",
+  UAE: "United Arab Emirates",
+  "UNITED ARAB EMIRATES": "United Arab Emirates",
+  DE: "Germany",
+  GERMANY: "Germany",
+};
+
+function normalizeCountry(raw: any) {
+  const s = cleanLabel(raw);
+  if (!s) return "";
+  const key = s.toUpperCase();
+  return COUNTRY_ALIASES[key] || s;
+}
+
+function isJunkToken(s: string) {
+  const x = cleanLabel(s);
+  if (!x) return true;
+  if (x.length <= 1) return true;
+  if (/^\d+$/.test(x)) return true;
+  if (/^[\d\s.,:_-]+$/.test(x)) return true;
+  if (/^(unknown|undefined|null|na|n\/a)$/i.test(x)) return true;
+  if (/^(my|jk)$/i.test(x)) return true;
+  return false;
+}
+
+function normalizeCityKey(cityRaw: any, regionRaw: any, countryRaw: any) {
+  const city0 = cleanLabel(cityRaw);
+  const region0 = cleanLabel(regionRaw);
+  const country0 = cleanLabel(countryRaw);
+
+  const packed = city0.split(",").map((p) => cleanLabel(p)).filter(Boolean);
+  if (packed.length >= 2) {
+    const city = packed[0];
+    const last = normalizeCountry(packed[packed.length - 1]);
+    if (!city || isJunkToken(city)) return "";
+    if (!last || isJunkToken(last)) return "";
+    return cleanLabel(`${city}, ${last}`);
+  }
+
+  const city = city0;
+  const country = normalizeCountry(country0);
+  if (!city || isJunkToken(city)) return "";
+  if (!country || isJunkToken(country)) return "";
+  return cleanLabel(`${city}, ${country}`);
+}
+
+function normalizeRegionKey(regionRaw: any, cityRaw: any, countryRaw: any) {
+  const region0 = cleanLabel(regionRaw);
+  if (region0 && !isJunkToken(region0) && !/\d/.test(region0)) return region0;
+
+  const city0 = cleanLabel(cityRaw);
+  const parts = city0.split(",").map((p) => cleanLabel(p)).filter(Boolean);
+  if (parts.length >= 3) {
+    const maybeRegion = parts[parts.length - 2];
+    const maybeCountry = normalizeCountry(parts[parts.length - 1]);
+    if (maybeRegion && !isJunkToken(maybeRegion) && maybeCountry) return maybeRegion;
+  }
+
+  const country = normalizeCountry(countryRaw);
+  if (country && !isJunkToken(country)) return "";
+  return "";
+}
+
+function incCanonical(map: Map<string, { name: string; count: number }>, label: string) {
+  const clean = cleanLabel(label);
+  if (!clean || isJunkToken(clean)) return;
+  const key = clean.toLowerCase();
+  const prev = map.get(key);
+  if (prev) prev.count += 1;
+  else map.set(key, { name: clean, count: 1 });
+}
+
+function topFromCanonical(map: Map<string, { name: string; count: number }>, limit: number) {
+  return Array.from(map.values())
+    .sort((a, b) => b.count - a.count)
+    .slice(0, limit);
+}
+
 function toIsoSafe(s: string) {
   const d = new Date(s);
   if (isNaN(d.getTime())) return null;
@@ -245,7 +343,8 @@ function computeMetrics(
     referral: new Map<string, number>(),
   };
 
-  const cityCounts = new Map<string, number>();
+  const cityCanonical = new Map<string, { name: string; count: number }>();
+  const regionCanonical = new Map<string, { name: string; count: number }>();
 
   for (const r of rowsInRange) {
     const sk = getSessionKey(r);
@@ -308,15 +407,17 @@ function computeMetrics(
     if (en === "phone_click") prev.calls += 1;
     campMap.set(campaignKey, prev);
 
-    const country = (r.country || "").trim() || "Unknown";
-    const region = (r.region || "").trim();
-    const city = (r.city || "").trim();
+    const country = normalizeCountry(r.country) || "Unknown";
+    const region = normalizeRegionKey(r.region, r.city, r.country) || "";
+    const cityKey = normalizeCityKey(r.city, r.region, r.country) || "";
 
     const bucket = trafficFixed as "paid" | "organic" | "direct" | "referral";
-    countryByTraffic[bucket].set(country, (countryByTraffic[bucket].get(country) || 0) + 1);
+    if (country !== "Unknown" && !isJunkToken(country)) {
+      countryByTraffic[bucket].set(country, (countryByTraffic[bucket].get(country) || 0) + 1);
+    }
 
-    const cityKey = [city, region, country].filter(Boolean).join(", ") || "Unknown";
-    cityCounts.set(cityKey, (cityCounts.get(cityKey) || 0) + 1);
+    if (cityKey) incCanonical(cityCanonical, cityKey);
+    if (region) incCanonical(regionCanonical, region);
   }
 
   const topModels = Array.from(modelCounts.entries())
@@ -364,10 +465,9 @@ function computeMetrics(
     referral: toTop(countryByTraffic.referral),
   };
 
-  const topCities = Array.from(cityCounts.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 15);
+  const topCities = topFromCanonical(cityCanonical, 15);
+
+  const topRegions = topFromCanonical(regionCanonical, 10);
 
   return {
     activeUsersRealtime,
@@ -381,6 +481,7 @@ function computeMetrics(
     campaigns,
     topCountries,
     topCities,
+    topRegions,
   };
 }
 
