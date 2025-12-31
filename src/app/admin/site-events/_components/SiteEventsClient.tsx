@@ -747,7 +747,7 @@ export default function SiteEventsClient({
       </div>
 
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
-        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-gradient-to-r from-slate-50 via-indigo-50 to-emerald-50">
+        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-linear-to-r from-slate-50 via-indigo-50 to-emerald-50">
           <div>
             <div className="font-semibold text-gray-900">
               Page Views by Page Path
@@ -779,7 +779,7 @@ export default function SiteEventsClient({
       </div>
 
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
-        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-gradient-to-r from-slate-50 via-indigo-50 to-emerald-50">
+        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-linear-to-r from-slate-50 via-indigo-50 to-emerald-50">
           <div>
             <div className="font-semibold text-gray-900">
               All Events (Filtered)
