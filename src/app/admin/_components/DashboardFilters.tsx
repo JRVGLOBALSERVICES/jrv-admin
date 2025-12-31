@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useCallback, useState, useEffect } from "react";
-import { Button } from "@/components/ui/Button"; // ✅ Import
+import { useCallback, useState, useEffect, useTransition } from "react";
+import { Button } from "@/components/ui/Button";
 
 type Period =
   | "daily"
@@ -23,6 +23,7 @@ export default function DashboardFilters({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [isPending, startTransition] = useTransition();
 
   const currentPeriod = (searchParams.get("period") as Period) ?? "daily";
   const model = searchParams.get("model") ?? "";
@@ -35,6 +36,7 @@ export default function DashboardFilters({
 
   const activePeriod = fromParam && toParam ? "custom" : currentPeriod;
 
+  // Sync state with URL params
   useEffect(() => {
     setCustomStart(fromParam);
     setCustomEnd(toParam);
@@ -47,12 +49,20 @@ export default function DashboardFilters({
         if (val) sp.set(key, val);
         else sp.delete(key);
       });
-      router.push(`${pathname}?${sp.toString()}`);
+
+      const queryString = sp.toString();
+      const url = `${pathname}?${queryString}`;
+
+      startTransition(() => {
+        // scroll: false prevents jumping to top on filter change
+        router.push(url, { scroll: false });
+      });
     },
     [router, pathname, searchParams]
   );
 
   const handlePeriodClick = (p: Period) => {
+    // When switching preset, clear custom dates
     updateParams({ period: p, from: null, to: null });
   };
 
@@ -63,11 +73,17 @@ export default function DashboardFilters({
   };
 
   const clearAll = () => {
-    router.push(pathname);
+    startTransition(() => {
+      router.push(pathname, { scroll: false });
+    });
   };
 
   return (
-    <div className="bg-white p-3 md:p-4 rounded-xl border shadow-sm w-full">
+    <div
+      className={`bg-white p-3 md:p-4 rounded-xl border shadow-sm w-full transition-opacity ${
+        isPending ? "opacity-50 pointer-events-none" : ""
+      }`}
+    >
       <div className="flex flex-col gap-3">
         {/* Row 1: Period Presets */}
         <div className="flex items-center gap-3 overflow-hidden">
@@ -84,6 +100,7 @@ export default function DashboardFilters({
             ).map((p) => (
               <Button
                 key={p}
+                // @ts-ignore - custom prop
                 sound="on"
                 onClick={() => handlePeriodClick(p)}
                 variant={activePeriod === p ? "primary" : "secondary"}
@@ -177,6 +194,7 @@ export default function DashboardFilters({
             disabled={!customStart || !customEnd}
             size="sm"
             className="w-full md:w-auto font-bold uppercase tracking-wide"
+            // @ts-ignore
             sound="on"
           >
             Apply
@@ -187,6 +205,7 @@ export default function DashboardFilters({
               onClick={clearAll}
               variant="danger"
               size="sm"
+              // @ts-ignore
               sound="on"
               className="md:hidden w-full bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 hover:text-red-700 shadow-none"
             >

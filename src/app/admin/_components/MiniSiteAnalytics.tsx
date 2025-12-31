@@ -44,15 +44,12 @@ function normalizeCountry(input: any) {
   const s = decodeSafe(input);
   if (!s) return "";
   const upper = s.toUpperCase();
-
   if (COUNTRY_CODE_TO_NAME[upper]) return COUNTRY_CODE_TO_NAME[upper];
-
   if (upper === "MALAYSIA") return "Malaysia";
   if (upper === "SINGAPORE") return "Singapore";
   if (upper === "UNITED STATES" || upper === "USA") return "United States";
   if (upper === "UNITED KINGDOM" || upper === "GREAT BRITAIN")
     return "United Kingdom";
-
   return s;
 }
 
@@ -62,12 +59,6 @@ function cleanPart(v: any) {
   return s.replace(/\s+/g, " ").trim();
 }
 
-/**
- * Turns these into a clean label:
- * - "Santa%20Clara, CA, US" -> "Santa Clara, CA, United States"
- * - "Kuala%20Lumpur, 14, MY" -> "Kuala Lumpur, Malaysia"
- * - Prevents: "Kuala Lumpur, Kuala Lumpur, MY" duplication
- */
 function normalizePackedLocation(name: any) {
   const decoded = decodeSafe(name);
   if (!decoded) return "";
@@ -86,36 +77,131 @@ function normalizePackedLocation(name: any) {
   let region = cleanPart(parts[1] || "");
   const country = normalizeCountry(parts[2] || "");
 
-  // If region is numeric leftover, drop it
   if (region && /^\d+$/.test(region)) region = "";
-
-  // Prevent duplication: city === region
-  if (city && region && city.toLowerCase() === region.toLowerCase()) {
+  if (city && region && city.toLowerCase() === region.toLowerCase())
     region = "";
-  }
-
-  // If it's just "MY" etc, normalize
   if (!city && !region && country) return country;
 
   return [city, region, country].filter(Boolean).join(", ");
 }
 
 /* =========================
-   UI colors
+   UI Components
    ========================= */
 
+// ✅ Vibrant Rank Badges
 const RANK_BADGES = [
-  "bg-indigo-50 text-indigo-700 border-indigo-200",
-  "bg-emerald-50 text-emerald-700 border-emerald-200",
-  "bg-amber-50 text-amber-700 border-amber-200",
-  "bg-rose-50 text-rose-700 border-rose-200",
-  "bg-sky-50 text-sky-700 border-sky-200",
-  "bg-violet-50 text-violet-700 border-violet-200",
+  "bg-indigo-500 text-white shadow-indigo-200",
+  "bg-emerald-500 text-white shadow-emerald-200",
+  "bg-amber-500 text-white shadow-amber-200",
+  "bg-rose-500 text-white shadow-rose-200",
+  "bg-sky-500 text-white shadow-sky-200",
+  "bg-violet-500 text-white shadow-violet-200",
 ];
 
 function rankBadge(i: number) {
-  return RANK_BADGES[i % RANK_BADGES.length];
+  return RANK_BADGES[i % RANK_BADGES.length] + " shadow-md";
 }
+
+// ✅ Glossy KPI Card
+function GlossyKpi({
+  title,
+  value,
+  color = "blue",
+}: {
+  title: string;
+  value: number;
+  color?: "blue" | "green" | "purple" | "orange" | "pink" | "indigo";
+}) {
+  const gradients = {
+    blue: "from-cyan-500 to-blue-600 shadow-blue-200",
+    green: "from-emerald-400 to-green-600 shadow-green-200",
+    purple: "from-violet-400 to-purple-600 shadow-purple-200",
+    orange: "from-amber-400 to-orange-600 shadow-orange-200",
+    pink: "from-rose-400 to-red-600 shadow-rose-200",
+    indigo: "from-indigo-400 to-blue-800 shadow-indigo-200",
+  };
+
+  const selectedGradient = gradients[color] || gradients.blue;
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl p-4 text-white shadow-lg bg-linear-to-br ${selectedGradient} group hover:scale-[1.02] transition-transform duration-300`}
+    >
+      {/* Glass Shine */}
+      <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
+
+      <div className="relative z-10 flex flex-col h-full justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">
+          {title}
+        </span>
+        <div className="text-3xl font-black mt-2 tracking-tight drop-shadow-sm">
+          {value.toLocaleString()}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ✅ Glossy Mix Bar
+function MixRow({
+  label,
+  value,
+  total,
+  color,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  color: "slate" | "emerald" | "amber" | "sky";
+}) {
+  const pct = Math.round((value / Math.max(1, total)) * 100);
+
+  const gradients = {
+    emerald: "from-emerald-400 to-green-500",
+    amber: "from-amber-400 to-orange-500",
+    sky: "from-sky-400 to-blue-500",
+    slate: "from-slate-400 to-slate-600",
+  };
+
+  return (
+    <div className="group">
+      <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
+        <span className="font-bold text-gray-700 group-hover:text-black transition-colors">
+          {label}
+        </span>
+        <span className="font-mono text-[10px] text-gray-500">
+          <span className="font-bold text-gray-900">{value}</span> ({pct}%)
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-gray-100/80 overflow-hidden shadow-inner">
+        <div
+          className={`h-full rounded-full bg-linear-to-r ${gradients[color]} shadow-sm transition-all duration-500 relative overflow-hidden`}
+          style={{ width: `${pct}%` }}
+        >
+          <div className="absolute inset-x-0 top-0 h-1/2 bg-white/30" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Card({ title, children }: { title: string; children: any }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 shadow-sm bg-white overflow-hidden flex flex-col h-full">
+      <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/30">
+        <div className="font-bold text-gray-800 text-xs uppercase tracking-wide">
+          {title}
+        </div>
+      </div>
+      <div className="p-4 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/* =========================
+   MAIN COMPONENT
+   ========================= */
 
 export default function MiniSiteAnalytics({
   activeUsers,
@@ -138,130 +224,153 @@ export default function MiniSiteAnalytics({
   topRegions: TopLoc[];
   topCities: TopLoc[];
 }) {
-  return (
-    <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
-      <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
-        <div>
-          <div className="font-semibold text-gray-900">
-            Website Analytics (6am→6am)
-          </div>
-          <div className="text-xs text-gray-500">
-            Mini view • Click “View details” for full GA-style page
-          </div>
-        </div>
+  const trafficTotal =
+    (traffic.direct || 0) +
+      (traffic.organic || 0) +
+      (traffic.paid || 0) +
+      (traffic.referral || 0) || 1;
 
+  return (
+    <div className="space-y-6">
+      {/* 1. Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">Website Analytics</h2>
+          <p className="text-xs text-gray-500">Live snapshot (Last 24h)</p>
+        </div>
         <Link
           href="/admin/site-events"
-          className="text-xs font-semibold px-3 py-2 rounded border bg-white hover:bg-gray-50"
+          className="text-xs font-bold text-indigo-600 bg-indigo-50 px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors"
         >
-          View details →
+          Full Report →
         </Link>
       </div>
 
-      <div className="p-4 grid grid-cols-2 md:grid-cols-6 gap-3">
-        <Kpi title="Active Users (5m)" value={activeUsers} tone="indigo" />
-        <Kpi title="WhatsApp Clicks" value={whatsappClicks} tone="emerald" />
-        <Kpi title="Call Clicks" value={phoneClicks} tone="rose" />
-        <Kpi title="Organic" value={traffic.organic} tone="emerald" />
-        <Kpi title="Direct" value={traffic.direct} tone="amber" />
-        <Kpi title="Paid" value={traffic.paid} tone="sky" />
+      {/* 2. KPI Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <GlossyKpi title="Active Users" value={activeUsers} color="indigo" />
+        <GlossyKpi title="WhatsApp" value={whatsappClicks} color="green" />
+        <GlossyKpi title="Calls" value={phoneClicks} color="pink" />
+        <GlossyKpi title="Organic" value={traffic.organic} color="green" />
+        <GlossyKpi title="Direct" value={traffic.direct} color="orange" />
+        <GlossyKpi title="Paid" value={traffic.paid} color="blue" />
       </div>
 
-      <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="border rounded-lg p-3 bg-gray-50">
-          <div className="text-xs font-semibold text-gray-600 mb-2">
-            Traffic Mix
+      {/* 3. Traffic & Lists */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Traffic Mix */}
+        <Card title="Traffic Mix">
+          <div className="space-y-4">
+            <MixRow
+              label="Direct"
+              value={traffic.direct}
+              total={trafficTotal}
+              color="slate"
+            />
+            <MixRow
+              label="Organic"
+              value={traffic.organic}
+              total={trafficTotal}
+              color="emerald"
+            />
+            <MixRow
+              label="Paid"
+              value={traffic.paid}
+              total={trafficTotal}
+              color="amber"
+            />
+            <MixRow
+              label="Referral"
+              value={traffic.referral}
+              total={trafficTotal}
+              color="sky"
+            />
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Pill label={`Direct ${traffic.direct}`} />
-            <Pill label={`Organic ${traffic.organic}`} />
-            <Pill label={`Paid ${traffic.paid}`} />
-            <Pill label={`Referral ${traffic.referral}`} />
-          </div>
-        </div>
+        </Card>
 
-        <div className="border rounded-lg p-3 bg-white">
-          <div className="text-xs font-semibold text-gray-600 mb-2">
-            Top Models
-          </div>
-          <div className="space-y-2">
+        {/* Top Models */}
+        <Card title="Top Models">
+          <div className="space-y-3">
             {topModels.length ? (
               topModels.slice(0, 5).map((m, i) => (
                 <div
                   key={m.key}
-                  className="flex items-center justify-between text-sm"
+                  className="flex items-center justify-between text-sm group"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <span
-                      className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black ${rankBadge(
+                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${rankBadge(
                         i
                       )}`}
                     >
                       {i + 1}
                     </span>
-                    <span className="font-semibold text-gray-900 truncate">
+                    <span className="font-semibold text-gray-700 group-hover:text-black truncate">
                       {m.key}
                     </span>
                   </div>
-                  <span className="font-black text-gray-900">{m.count}</span>
+                  <span className="font-bold text-gray-900">{m.count}</span>
                 </div>
               ))
             ) : (
-              <div className="text-sm text-gray-400">No model activity yet</div>
+              <div className="text-xs text-gray-400 italic">
+                No model activity yet
+              </div>
             )}
           </div>
-        </div>
+        </Card>
 
-        <div className="border rounded-lg p-3 bg-white">
-          <div className="text-xs font-semibold text-gray-600 mb-2">
-            Top Referrers
-          </div>
-          <div className="space-y-2">
+        {/* Top Referrers */}
+        <Card title="Top Referrers">
+          <div className="space-y-3">
             {topReferrers.length ? (
               topReferrers.slice(0, 5).map((r, i) => (
                 <div
                   key={r.name}
-                  className="flex items-center justify-between text-sm"
+                  className="flex items-center justify-between text-sm group"
                 >
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0">
                     <span
-                      className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black ${rankBadge(
+                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${rankBadge(
                         i
                       )}`}
                     >
                       {i + 1}
                     </span>
-                    <span className="font-semibold text-gray-900 truncate">
+                    <span className="font-semibold text-gray-700 group-hover:text-black truncate">
                       {r.name}
                     </span>
                   </div>
-                  <span className="font-black text-gray-900">{r.count}</span>
+                  <span className="font-bold text-gray-900">{r.count}</span>
                 </div>
               ))
             ) : (
-              <div className="text-sm text-gray-400">No referrers yet</div>
+              <div className="text-xs text-gray-400 italic">
+                No referrers yet
+              </div>
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
-      <div className="p-4 pt-0 grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* 4. Geography */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <LocCard
           title="Top Countries"
           rows={topCountries}
-          empty="No resolved countries yet"
+          empty="No countries yet"
           mode="country"
         />
         <LocCard
           title="Top Regions"
           rows={topRegions}
-          empty="No resolved regions yet"
+          empty="No regions yet"
           mode="packed"
         />
         <LocCard
           title="Top Cities"
           rows={topCities}
-          empty="No resolved cities yet"
+          empty="No cities yet"
           mode="packed"
         />
       </div>
@@ -281,9 +390,8 @@ function LocCard({
   mode: "country" | "packed";
 }) {
   return (
-    <div className="border rounded-lg p-3 bg-white">
-      <div className="text-xs font-semibold text-gray-600 mb-2">{title}</div>
-      <div className="space-y-2">
+    <Card title={title}>
+      <div className="space-y-3">
         {rows?.length ? (
           rows.slice(0, 5).map((r, i) => {
             const label =
@@ -294,63 +402,28 @@ function LocCard({
             return (
               <div
                 key={`${title}-${r.name}-${i}`}
-                className="flex items-center justify-between text-sm"
+                className="flex items-center justify-between text-sm group"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-3 min-w-0">
                   <span
-                    className={`w-6 h-6 rounded-full border flex items-center justify-center text-[11px] font-black ${rankBadge(
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${rankBadge(
                       i
                     )}`}
                   >
                     {i + 1}
                   </span>
-                  <span className="font-semibold text-gray-900 truncate">
+                  <span className="font-semibold text-gray-700 group-hover:text-black truncate max-w-40">
                     {label}
                   </span>
                 </div>
-                <span className="font-black text-gray-900">{r.count}</span>
+                <span className="font-bold text-gray-900">{r.count}</span>
               </div>
             );
           })
         ) : (
-          <div className="text-sm text-gray-400">{empty}</div>
+          <div className="text-xs text-gray-400 italic">{empty}</div>
         )}
       </div>
-    </div>
-  );
-}
-
-function Pill({ label }: { label: string }) {
-  return (
-    <span className="text-xs px-2 py-1 rounded-full border bg-gray-50 text-gray-700">
-      {label}
-    </span>
-  );
-}
-
-function Kpi({
-  title,
-  value,
-  tone,
-}: {
-  title: string;
-  value: number;
-  tone: "emerald" | "rose" | "amber" | "sky" | "indigo";
-}) {
-  const toneMap: Record<string, string> = {
-    emerald: "bg-emerald-50 border-emerald-200 text-emerald-700",
-    rose: "bg-rose-50 border-rose-200 text-rose-700",
-    amber: "bg-amber-50 border-amber-200 text-amber-700",
-    sky: "bg-sky-50 border-sky-200 text-sky-700",
-    indigo: "bg-indigo-50 border-indigo-200 text-indigo-700",
-  };
-
-  return (
-    <div className={`rounded-xl border p-3 ${toneMap[tone]}`}>
-      <div className="text-[11px] font-semibold uppercase opacity-80">
-        {title}
-      </div>
-      <div className="text-xl font-black mt-1">{value}</div>
-    </div>
+    </Card>
   );
 }

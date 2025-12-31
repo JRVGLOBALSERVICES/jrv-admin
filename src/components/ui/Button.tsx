@@ -3,7 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils/cn";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+type ButtonVariant = "primary" | "secondary" | "tertiary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 // Updated: "auto" now effectively behaves like "on"
@@ -85,6 +85,8 @@ const variants: Record<ButtonVariant, string> = {
     "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer",
   secondary:
     "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10 cursor-pointer",
+  tertiary:
+    "bg-violet-50 text-violet-700 border border-violet-100 hover:bg-black/5 active:bg-black/10 cursor-pointer",
   ghost:
     "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
   danger:

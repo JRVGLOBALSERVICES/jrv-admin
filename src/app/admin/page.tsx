@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
 import AvailableNow from "../admin/_components/AvailableNow";
@@ -59,31 +60,72 @@ type MiniSummary = {
 };
 
 /* ===========================
-   Date Helpers
+   UI Helpers (Glossy)
    =========================== */
+function GlossyKpi({
+  title,
+  value,
+  sub,
+  color = "blue",
+}: {
+  title: string;
+  value: string | number;
+  sub: string;
+  color?: "blue" | "green" | "purple" | "orange";
+}) {
+  const gradients = {
+    blue: "from-cyan-500 to-blue-600 shadow-blue-200",
+    green: "from-emerald-400 to-green-600 shadow-green-200",
+    purple: "from-violet-400 to-purple-600 shadow-purple-200",
+    orange: "from-amber-400 to-orange-600 shadow-orange-200",
+  };
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${gradients[color]} group hover:scale-[1.02] transition-transform duration-300`}
+    >
+      <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
+      <div className="relative z-10">
+        <div className="text-[10px] font-bold uppercase tracking-widest opacity-80">
+          {title}
+        </div>
+        <div className="text-3xl font-black mt-2 tracking-tight drop-shadow-sm">
+          {value}
+        </div>
+        <div className="text-xs font-medium mt-1 opacity-90 flex items-center gap-1">
+          <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
+            {sub}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const RANK_BADGES = [
+  "bg-indigo-500 text-white shadow-indigo-200",
+  "bg-emerald-500 text-white shadow-emerald-200",
+  "bg-amber-500 text-white shadow-amber-200",
+  "bg-rose-500 text-white shadow-rose-200",
+  "bg-sky-500 text-white shadow-sky-200",
+  "bg-violet-500 text-white shadow-violet-200",
+];
+
+function rankBadge(i: number) {
+  return RANK_BADGES[i % RANK_BADGES.length] + " shadow-md";
+}
+
+/* ===========================
+   Date Helpers (KL Time)
+   =========================== */
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function isValidDate(d: any): d is Date {
   return d instanceof Date && !isNaN(d.getTime());
 }
 function safeISO(d: Date) {
   return isValidDate(d) ? d.toISOString() : new Date().toISOString();
-}
-function startOfWeekMonday(d: Date) {
-  const day = d.getDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  const monday = new Date(d);
-  monday.setDate(d.getDate() + diff);
-  monday.setHours(0, 0, 0, 0);
-  return monday;
-}
-function startOfMonth(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), 1, 0, 0, 0, 0);
-}
-function startOfQuarter(d: Date) {
-  const q = Math.floor(d.getMonth() / 3) * 3;
-  return new Date(d.getFullYear(), q, 1, 0, 0, 0, 0);
-}
-function startOfYear(d: Date) {
-  return new Date(d.getFullYear(), 0, 1, 0, 0, 0, 0);
 }
 function fmtMoney(v?: number | null) {
   return `RM ${Number(v ?? 0).toLocaleString("en-MY", {
@@ -96,7 +138,86 @@ function diffDays(start: string | null, end: string | null) {
   const a = new Date(start).getTime();
   const b = new Date(end).getTime();
   if (isNaN(a) || isNaN(b)) return 0;
-  return Math.max(1, Math.ceil((b - a) / (1000 * 60 * 60 * 24)));
+  return Math.max(1, Math.ceil((b - a) / DAY_MS));
+}
+
+function startOfDayInKLToUTC(baseUtc: Date) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+  let start = new Date(Date.UTC(y, m, d, hour, 0, 0, 0) - KL_OFFSET_MS);
+  return start;
+}
+
+function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+  const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
+  return new Date(start.getTime() + DAY_MS - 1);
+}
+
+function parseKLMidnightToUTC(dateYYYYMMDD: string) {
+  const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
+  if (!y || !m || !d) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0) - KL_OFFSET_MS);
+  return isValidDate(dt) ? dt : null;
+}
+
+function parseKLEndOfDayToUTC(dateYYYYMMDD: string) {
+  const s = parseKLMidnightToUTC(dateYYYYMMDD);
+  if (!s) return null;
+  return new Date(s.getTime() + DAY_MS - 1);
+}
+
+/* ===========================
+   Range logic (Rolling Windows)
+   =========================== */
+function getRange(
+  period: Period,
+  fromParam: string,
+  toParam: string,
+  now = new Date()
+) {
+  if (period === "custom" && fromParam && toParam) {
+    const s = parseKLMidnightToUTC(fromParam);
+    const e = parseKLEndOfDayToUTC(toParam);
+    if (s && e) return { start: s, end: e };
+  }
+
+  if (period === "all") return { start: new Date(0), end: now };
+
+  let start: Date;
+
+  if (period === "daily") {
+    start = startOfDayInKLToUTC(now);
+  } else if (period === "weekly") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 7);
+    start = startOfDayInKLToUTC(d);
+  } else if (period === "monthly") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 30);
+    start = startOfDayInKLToUTC(d);
+  } else if (period === "quarterly") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 90);
+    start = startOfDayInKLToUTC(d);
+  } else if (period === "yearly") {
+    const d = new Date(now);
+    d.setDate(d.getDate() - 365);
+    start = startOfDayInKLToUTC(d);
+  } else {
+    start = startOfDayInKLToUTC(now);
+  }
+
+  return { start, end: now };
 }
 
 /* ===========================
@@ -135,130 +256,15 @@ function getBrand(model: string) {
 }
 
 /* ===========================
-   Range logic
-   =========================== */
-function getRange(
-  period: Period,
-  fromParam: string,
-  toParam: string,
-  now = new Date()
-) {
-  if (period === "custom" && fromParam && toParam) {
-    const s = parseKLMidnightToUTC(fromParam);
-    const e = parseKLEndOfDayToUTC(toParam);
-    if (s && e) return { start: s, end: e };
-  }
-
-  if (period === "all") return { start: new Date(0), end: now };
-
-  let start: Date;
-  if (period === "daily") start = startOfDayInKLToUTC(now);
-  else if (period === "weekly") start = startOfWeekMondayKLToUTC(now);
-  else if (period === "monthly") start = startOfMonthKLToUTC(now);
-  else if (period === "quarterly") start = startOfQuarterKLToUTC(now);
-  else if (period === "yearly") start = startOfYearKLToUTC(now);
-  else start = startOfDayInKLToUTC(now);
-
-  return { start, end: now };
-}
-
-/* ===========================
    Supabase relation helper
    =========================== */
-function pickCatalog(rel: any): { make?: any; model?: any } {
-  if (!rel) return {};
-  if (Array.isArray(rel)) return rel[0] ?? {};
-  return rel;
+function getCatalogItem(rel: any) {
+  if (Array.isArray(rel)) return rel[0] || {};
+  return rel || {};
 }
 
 /* ===========================
-   KL timezone helpers (UTC instants)
-   =========================== */
-const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function startOfDayInKLToUTC(baseUtc: Date) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  const m = kl.getUTCMonth();
-  const d = kl.getUTCDate();
-  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
-}
-
-function endOfDayInKLToUTC(baseUtc: Date) {
-  const start = startOfDayInKLToUTC(baseUtc);
-  return new Date(start.getTime() + DAY_MS - 1);
-}
-
-
-function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  const m = kl.getUTCMonth();
-  const d = kl.getUTCDate();
-  let start = new Date(Date.UTC(y, m, d, hour, 0, 0, 0) - KL_OFFSET_MS);
-  if (kl.getUTCHours() < hour) start = new Date(start.getTime() - DAY_MS);
-  return start;
-}
-
-function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
-  const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
-  return new Date(start.getTime() + DAY_MS - 1);
-}
-
-function addDaysKL(baseUtc: Date, days: number) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  kl.setUTCDate(kl.getUTCDate() + days);
-  return new Date(kl.getTime() - KL_OFFSET_MS);
-}
-
-function parseKLMidnightToUTC(dateYYYYMMDD: string) {
-  const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
-  if (!y || !m || !d) return null;
-  const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0) - KL_OFFSET_MS);
-  return isValidDate(dt) ? dt : null;
-}
-
-function parseKLEndOfDayToUTC(dateYYYYMMDD: string) {
-  const s = parseKLMidnightToUTC(dateYYYYMMDD);
-  if (!s) return null;
-  return new Date(s.getTime() + DAY_MS - 1);
-}
-
-function startOfWeekMondayKLToUTC(baseUtc: Date) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const day = kl.getUTCDay();
-  const diff = (day === 0 ? -6 : 1) - day;
-  const mondayKl = new Date(kl.getTime());
-  mondayKl.setUTCDate(mondayKl.getUTCDate() + diff);
-  const y = mondayKl.getUTCFullYear();
-  const m = mondayKl.getUTCMonth();
-  const d = mondayKl.getUTCDate();
-  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
-}
-
-function startOfMonthKLToUTC(baseUtc: Date) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  const m = kl.getUTCMonth();
-  return new Date(Date.UTC(y, m, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
-}
-
-function startOfQuarterKLToUTC(baseUtc: Date) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  const q = Math.floor(kl.getUTCMonth() / 3) * 3;
-  return new Date(Date.UTC(y, q, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
-}
-
-function startOfYearKLToUTC(baseUtc: Date) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  return new Date(Date.UTC(y, 0, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
-}
-
-/* ===========================
-   Site events helpers (gad_campaignid only)
+   Site events helpers
    =========================== */
 function safeJson(v: any) {
   try {
@@ -270,7 +276,6 @@ function safeJson(v: any) {
     return {};
   }
 }
-
 const COUNTRY_CODE_TO_NAME: Record<string, string> = {
   MY: "Malaysia",
   SG: "Singapore",
@@ -291,7 +296,6 @@ const COUNTRY_CODE_TO_NAME: Record<string, string> = {
   PH: "Philippines",
   TW: "Taiwan",
 };
-
 function decodeSafe(v: any) {
   const raw = String(v || "").trim();
   if (!raw) return "";
@@ -301,7 +305,6 @@ function decodeSafe(v: any) {
     return raw;
   }
 }
-
 function normalizeCountryServer(input: any) {
   const s = decodeSafe(input);
   if (!s) return "";
@@ -309,7 +312,6 @@ function normalizeCountryServer(input: any) {
   if (COUNTRY_CODE_TO_NAME[upper]) return COUNTRY_CODE_TO_NAME[upper];
   return s;
 }
-
 function cleanPart(v: any) {
   const s = decodeSafe(v);
   if (!s) return "";
@@ -319,98 +321,41 @@ function cleanPart(v: any) {
     .replace(/\s*,\s*/g, ", ")
     .trim();
 }
-
-function normalizePackedLocationServer(name: any) {
-  const decoded = decodeSafe(name);
-  if (!decoded) return "";
-
-  const rawTrim = decoded.trim();
-  if (!rawTrim) return "";
-  if (/^\d+$/.test(rawTrim)) return "";
-
-  const parts = decoded
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  if (!parts.length) return "";
-  if (/^\d+$/.test(parts[0] || "")) return "";
-
-  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
-    parts.splice(parts.length - 2, 1);
-  }
-
-  const a = cleanPart(parts[0] || "");
-  let b = cleanPart(parts[1] || "");
-  let c = normalizeCountryServer(parts[2] || "");
-
-  if (!c && parts.length === 2) {
-    const maybeCountry = normalizeCountryServer(parts[1]);
-    if (maybeCountry && /^[A-Za-z]{2,}$/.test(String(parts[1] || "").trim())) {
-      c = maybeCountry;
-      b = "";
-    }
-  }
-
-  if (b && /^\d+$/.test(b)) b = "";
-  if (a && b && a.toLowerCase() === b.toLowerCase()) b = "";
-
-  if (/^\d+$/.test(a)) return "";
-  if (b && /\d/.test(b)) b = "";
-
-  return [a, b, c].filter(Boolean).join(", ");
-}
-
-function normalizeCityLabelServer(cityRaw: any, countryRaw: any) {
-  const decoded = decodeSafe(cityRaw);
-  if (!decoded) return "";
-
-  const parts = decoded
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  const city = cleanPart(parts[0] || "");
-  if (!city || /^\d+$/.test(city)) return "";
-
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  const lastNorm = normalizeCountryServer(last);
-  const country = lastNorm || normalizeCountryServer(countryRaw);
-  if (!country) return city;
-
-  return `${city}, ${country}`;
-}
-
 function normalizeRegionLabelServer(regionRaw: any, countryRaw: any) {
   const decoded = decodeSafe(regionRaw);
   if (!decoded) return "";
   const rawTrim = decoded.trim();
-  if (!rawTrim) return "";
-  if (/^\d+$/.test(rawTrim)) return "";
-  if (rawTrim.length <= 1) return "";
-
+  if (!rawTrim || /^\d+$/.test(rawTrim) || rawTrim.length <= 1) return "";
   const parts = rawTrim
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-
   if (!parts.length) return "";
-
   if (parts.length === 2) {
     const maybeCountry = normalizeCountryServer(parts[1]);
     if (maybeCountry) return cleanPart(parts[0]);
   }
-
   const candidate = cleanPart(parts[0] || rawTrim);
-  if (!candidate) return "";
-  if (/^\d+$/.test(candidate)) return "";
-  if (/\d/.test(candidate)) return "";
-
+  if (!candidate || /^\d+$/.test(candidate)) return "";
   const ctry = normalizeCountryServer(countryRaw);
   if (ctry && candidate.toLowerCase() === ctry.toLowerCase()) return "";
   return candidate;
 }
-
+function normalizeCityLabelServer(cityRaw: any, countryRaw: any) {
+  const decoded = decodeSafe(cityRaw);
+  if (!decoded) return "";
+  const parts = decoded
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  const city = cleanPart(parts[0] || "");
+  if (!city || /^\d+$/.test(city)) return "";
+  const last = parts.length > 1 ? parts[parts.length - 1] : "";
+  const lastNorm = normalizeCountryServer(last);
+  const country = lastNorm || normalizeCountryServer(countryRaw);
+  if (!country) return city;
+  return `${city}, ${country}`;
+}
 function deriveRegionFromCityServer(cityRaw: any) {
   const decoded = decodeSafe(cityRaw);
   if (!decoded) return "";
@@ -420,17 +365,17 @@ function deriveRegionFromCityServer(cityRaw: any) {
     .filter(Boolean);
   if (parts.length < 3) return "";
   const maybeRegion = cleanPart(parts[parts.length - 2]);
-  if (!maybeRegion) return "";
-  if (/^\d+$/.test(maybeRegion)) return "";
-  if (/\d/.test(maybeRegion)) return "";
-  if (/^(my|jk)$/i.test(maybeRegion)) return "";
+  if (
+    !maybeRegion ||
+    /^\d+$/.test(maybeRegion) ||
+    /^(my|jk)$/i.test(maybeRegion)
+  )
+    return "";
   return maybeRegion;
 }
-
 function normalizeKey(v: string) {
   return cleanPart(v).toLowerCase();
 }
-
 function collapseCounts(map: Map<string, number>) {
   const agg = new Map<string, { name: string; count: number }>();
   for (const [k, v] of map.entries()) {
@@ -443,8 +388,6 @@ function collapseCounts(map: Map<string, number>) {
   }
   return Array.from(agg.values());
 }
-
-// ✅ safe for null page_url
 function parseUrlParamsSafe(pageUrl: string | null | undefined) {
   const out: Record<string, string> = {};
   if (!pageUrl) return out;
@@ -455,26 +398,13 @@ function parseUrlParamsSafe(pageUrl: string | null | undefined) {
     });
     return out;
   } catch {
-    // handle relative URLs like "/?gad_campaignid=..."
-    try {
-      const u = new URL(pageUrl, "https://example.com");
-      u.searchParams.forEach((val, key) => {
-        out[key] = val;
-      });
-      return out;
-    } catch {
-      return out;
-    }
+    return out;
   }
 }
-
 function isGoogleRef(referrer: string | null | undefined) {
   if (!referrer) return false;
-  const r = referrer.toLowerCase();
-  return r.includes("google.");
+  return referrer.toLowerCase().includes("google.");
 }
-
-// ✅ your request: prefer utm_campaign else gad_campaignid (only)
 function getCampaignKeyFromUrlParams(p: Record<string, string>) {
   const utm = (p["utm_campaign"] || "").trim();
   if (utm) return `utm:${utm}`;
@@ -482,19 +412,13 @@ function getCampaignKeyFromUrlParams(p: Record<string, string>) {
   if (gad) return `gad:${gad}`;
   return "—";
 }
-
-// ✅ Split referrer label: Google Ads vs Google Organic
 function referrerLabelGadOnly(
   referrer: string | null | undefined,
   pageUrl: string | null | undefined
 ) {
   const p = parseUrlParamsSafe(pageUrl);
   const hasGad = !!(p["gad_campaignid"] || "").trim();
-
-  if (isGoogleRef(referrer)) {
-    return hasGad ? "Google Ads" : "Google (Organic)";
-  }
-
+  if (isGoogleRef(referrer)) return hasGad ? "Google Ads" : "Google (Organic)";
   if (!referrer) return "Direct / None";
   try {
     const u = new URL(referrer);
@@ -508,7 +432,6 @@ function referrerLabelGadOnly(
     );
   }
 }
-
 function inferTrafficTypeGadOnly(
   referrer: string | null | undefined,
   pageUrl: string | null | undefined
@@ -520,7 +443,6 @@ function inferTrafficTypeGadOnly(
   if (!referrer) return "direct" as const;
   return "referral" as const;
 }
-
 function inferCarFromPath(page_path: string | null) {
   if (!page_path) return null;
   const m = page_path.match(/^\/cars\/([^/]+)\/?$/i);
@@ -556,7 +478,7 @@ export default async function AdminDashboard({
   const supabase = await createSupabaseServer();
 
   // -------------------------
-  // ✅ MINI SITE ANALYTICS (last 24h rolling)
+  // MINI SITE ANALYTICS (last 24h rolling)
   // -------------------------
   const now2 = new Date();
   const last5m = new Date(now2.getTime() - 5 * 60 * 1000);
@@ -582,28 +504,25 @@ export default async function AdminDashboard({
 
   const events = (siteEvents24h ?? []) as any[];
 
+  // Analytics Processing Logic (same as before)
   const active5mSet = new Set<string>();
   let whatsappClicks24h = 0;
   let phoneClicks24h = 0;
-
   const trafficCounts = { direct: 0, organic: 0, paid: 0, referral: 0 };
   const modelCounts = new Map<string, number>();
   const refCounts = new Map<string, number>();
   const countryCounts = new Map<string, number>();
   const regionCounts = new Map<string, number>();
   const cityCounts = new Map<string, number>();
-
   const campaignAgg = new Map<
     string,
     { count: number; views: number; wa: number; calls: number }
   >();
-
   const sessionFirst = new Map<string, any>();
   for (const e of events) {
     const sid = e.session_id || e.anon_id || "unknown";
     if (!sessionFirst.has(sid)) sessionFirst.set(sid, e);
   }
-
   const sessionMeta = new Map<
     string,
     {
@@ -612,14 +531,11 @@ export default async function AdminDashboard({
       campaignKey: string;
     }
   >();
-
   for (const [sid, first] of sessionFirst.entries()) {
     const firstParams = parseUrlParamsSafe(first.page_url);
     const firstCampaignKey = getCampaignKeyFromUrlParams(firstParams);
-
     const traffic = inferTrafficTypeGadOnly(first.referrer, first.page_url);
     const refLabel = referrerLabelGadOnly(first.referrer, first.page_url);
-
     const campaignKey =
       traffic === "paid"
         ? firstCampaignKey === "—"
@@ -630,62 +546,43 @@ export default async function AdminDashboard({
         : traffic === "direct"
         ? "Direct"
         : refLabel || "Referral";
-
     sessionMeta.set(sid, { traffic, refLabel, campaignKey });
   }
-
   for (const e of events) {
     const sid = e.session_id || e.anon_id || "unknown";
     const meta = sessionMeta.get(sid);
-
     const createdAt = new Date(e.created_at).getTime();
     if (!Number.isNaN(createdAt) && createdAt >= last5m.getTime()) {
       active5mSet.add(sid);
     }
-
     const en = String(e.event_name || "").toLowerCase();
     if (en === "whatsapp_click") whatsappClicks24h++;
     if (en === "phone_click") phoneClicks24h++;
-
     const t = (meta?.traffic || "direct") as keyof typeof trafficCounts;
     trafficCounts[t] += 1;
-
     const rLabel = meta?.refLabel || "Direct / None";
     refCounts.set(rLabel, (refCounts.get(rLabel) || 0) + 1);
-
     const ctryRaw = e.country;
-    const regRaw = e.region;
-    const ctyRaw = e.city;
-
     const ctry = normalizeCountryServer(ctryRaw) || "Unknown";
+    const ctryLabel = cleanPart(ctry);
+    if (ctryLabel && ctryLabel !== "Unknown") {
+      countryCounts.set(ctryLabel, (countryCounts.get(ctryLabel) || 0) + 1);
+    }
+    const ctyRaw = e.city;
+    const regRaw = e.region;
     let reg =
       normalizeRegionLabelServer(regRaw, ctryRaw) ||
       deriveRegionFromCityServer(ctyRaw) ||
       "";
     if (!reg) reg = "Unknown";
     const cty = normalizeCityLabelServer(ctyRaw, ctryRaw) || "Unknown";
-
-    const ctryLabel = cleanPart(ctry);
-    if (ctryLabel && ctryLabel !== "Unknown") {
-      countryCounts.set(ctryLabel, (countryCounts.get(ctryLabel) || 0) + 1);
-    }
-
-    const regLabel = cleanPart(reg);
-    if (regLabel && regLabel !== "Unknown") {
-      regionCounts.set(regLabel, (regionCounts.get(regLabel) || 0) + 1);
-    }
-
-    const ctyLabel = cleanPart(cty);
-    if (ctyLabel && ctyLabel !== "Unknown") {
-      cityCounts.set(ctyLabel, (cityCounts.get(ctyLabel) || 0) + 1);
-    }
-
+    if (reg !== "Unknown")
+      regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
+    if (cty !== "Unknown") cityCounts.set(cty, (cityCounts.get(cty) || 0) + 1);
     const looksLikeCarDetail = !!inferCarFromPath(e.page_path);
-
     const props = safeJson(e.props);
     let make = String(props?.make || "").trim();
     let model = String(props?.model || "").trim();
-
     if (!model) {
       const inferred = inferCarFromPath(e.page_path);
       if (inferred?.model) {
@@ -693,18 +590,15 @@ export default async function AdminDashboard({
         model = inferred.model;
       }
     }
-
     const shouldCountModel =
       en === "model_click" ||
       en === "whatsapp_click" ||
       en === "phone_click" ||
       ((en === "page_view" || en === "site_load") && looksLikeCarDetail);
-
     if (shouldCountModel && model) {
       const key = `${make ? make + " " : ""}${model}`.trim();
       modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
     }
-
     const campaignKey = meta?.campaignKey || "Direct";
     const prev = campaignAgg.get(campaignKey) || {
       count: 0,
@@ -712,13 +606,11 @@ export default async function AdminDashboard({
       wa: 0,
       calls: 0,
     };
-
     prev.count += 1;
     if (looksLikeCarDetail && (en === "page_view" || en === "site_load"))
       prev.views += 1;
     if (en === "whatsapp_click") prev.wa += 1;
     if (en === "phone_click") prev.calls += 1;
-
     campaignAgg.set(campaignKey, prev);
   }
 
@@ -726,24 +618,19 @@ export default async function AdminDashboard({
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
-
   const topReferrers24h = Array.from(refCounts.entries())
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
-
   const topCountries24h = collapseCounts(countryCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
-
   const topRegions24h = collapseCounts(regionCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
-
   const topCities24h = collapseCounts(cityCounts)
     .sort((a, b) => b.count - a.count)
     .slice(0, 8);
-
   const campaigns24h = Array.from(campaignAgg.entries())
     .map(([campaign, v]) => {
       const conversions = v.wa + v.calls;
@@ -774,9 +661,6 @@ export default async function AdminDashboard({
     campaigns: campaigns24h,
   };
 
-  // -------------------------
-  // Filters dropdown data (based on agreements history)
-  // -------------------------
   const { data: allAgreements } = await supabase
     .from("agreements")
     .select("car_type, plate_number")
@@ -789,23 +673,17 @@ export default async function AdminDashboard({
         .filter(Boolean)
     )
   ) as string[];
-
   const uniquePlates = Array.from(
     new Set((allAgreements ?? []).map((a) => a.plate_number).filter(Boolean))
   ) as string[];
-
   uniqueModels.sort();
   uniquePlates.sort();
 
-  // -------------------------
-  // Revenue query
-  // -------------------------
   let query = supabase
     .from("agreements")
     .select(
       "id, customer_name, car_type, plate_number, mobile, status, date_start, date_end, total_price"
     )
-    .neq("status", "Cancelled")
     .neq("status", "Deleted")
     .order("date_start", { ascending: false });
 
@@ -824,12 +702,8 @@ export default async function AdminDashboard({
   if (filterModel)
     rows = rows.filter((r) => normalizeModel(r.car_type) === filterModel);
 
-  // -------------------------
-  // Analytics (Revenue)
-  // -------------------------
   let totalRevenue = 0;
   let totalDaysRented = 0;
-
   const byModel = new Map<
     string,
     { count: number; revenue: number; days: number }
@@ -841,6 +715,7 @@ export default async function AdminDashboard({
   const byBrand = new Map<string, { revenue: number }>();
 
   for (const r of rows) {
+    if (r.status === "Cancelled") continue;
     const rev = Number(r.total_price) || 0;
     const days = diffDays(r.date_start, r.date_end);
     const model = normalizeModel(r.car_type);
@@ -879,7 +754,7 @@ export default async function AdminDashboard({
     .map(([k, v]) => ({ key: k, ...v }))
     .sort((a, b) => b.revenue - a.revenue);
 
-  const bookingCount = rows.length;
+  const bookingCount = rows.filter((r) => r.status !== "Cancelled").length;
   const avgDailyRate = totalDaysRented > 0 ? totalRevenue / totalDaysRented : 0;
   const avgLength = bookingCount > 0 ? totalDaysRented / bookingCount : 0;
   const maxModelRev = breakdownModel[0]?.revenue || 1;
@@ -888,7 +763,6 @@ export default async function AdminDashboard({
   // Cards data
   // -------------------------
   const now = new Date();
-
   const todayStartUTC = startOfBusinessDayInKLToUTC(now, 7);
   const todayEndUTC = endOfBusinessDayInKLToUTC(now, 7);
 
@@ -934,7 +808,7 @@ export default async function AdminDashboard({
         (c: any) => c?.status === "available" && c?.id && !busyCarIds.has(c.id)
       )
       .map((c: any) => {
-        const cat = pickCatalog(c?.catalog_rel);
+        const cat = getCatalogItem(c?.catalog_rel);
         const make = String(cat?.make ?? "").trim();
         const model = String(cat?.model ?? "").trim();
         return {
@@ -948,10 +822,9 @@ export default async function AdminDashboard({
   const currentlyRentedRows =
     (activeNow ?? []).map((ag: any) => {
       const car = (carsBase ?? []).find((c: any) => c?.id === ag.car_id);
-      const cat = pickCatalog(car?.catalog_rel);
+      const cat = getCatalogItem(car?.catalog_rel);
       const make = String(cat?.make ?? "").trim();
       const model = String(cat?.model ?? "").trim();
-
       return {
         agreement_id: ag.id,
         car_id: ag.car_id,
@@ -990,10 +863,9 @@ export default async function AdminDashboard({
               ? "All Time"
               : period === "custom"
               ? "Custom Range"
-              : `This ${period.charAt(0).toUpperCase() + period.slice(1)}`}
+              : `Last ${diffDays(start.toISOString(), end.toISOString())} Days`}
           </div>
         </div>
-
         <Suspense
           fallback={
             <div className="h-20 bg-white rounded-xl border animate-pulse" />
@@ -1003,72 +875,73 @@ export default async function AdminDashboard({
         </Suspense>
       </div>
 
-      {/* KPI GRID */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white p-4 rounded-xl border shadow-sm">
-          <div className="text-xs font-semibold text-gray-400 uppercase">
-            Revenue
-          </div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">
-            {fmtMoney(totalRevenue)}
-          </div>
-          <div className="text-xs text-green-600 mt-1 font-medium">
-            {bookingCount} bookings
-          </div>
+      {/* ✅ NEW SECTION HEADER FOR FINANCIALS */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900">
+            Financial Overview
+          </h2>
+          <p className="text-xs text-gray-500">
+            Key performance indicators for {period}
+          </p>
         </div>
-
-        <div className="bg-white p-4 rounded-xl border shadow-sm">
-          <div className="text-xs font-semibold text-gray-400 uppercase">
-            Days Rented
-          </div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">
-            {totalDaysRented}
-          </div>
-          <div className="text-xs text-gray-500 mt-1 font-medium">
-            days total
-          </div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border shadow-sm">
-          <div className="text-xs font-semibold text-gray-400 uppercase">
-            Avg Daily Rate
-          </div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">
-            {fmtMoney(avgDailyRate)}
-          </div>
-          <div className="text-xs text-gray-500 mt-1 font-medium">per day</div>
-        </div>
-
-        <div className="bg-white p-4 rounded-xl border shadow-sm">
-          <div className="text-xs font-semibold text-gray-400 uppercase">
-            Avg Length
-          </div>
-          <div className="text-2xl font-bold text-gray-900 mt-1">
-            {avgLength.toFixed(1)}
-          </div>
-          <div className="text-xs text-gray-500 mt-1 font-medium">
-            days / trip
-          </div>
-        </div>
+        <Link
+          href="/admin/revenue"
+          className="text-xs font-bold text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-100 hover:bg-emerald-100 transition-colors"
+        >
+          Full Report →
+        </Link>
       </div>
 
-      {/* ✅ Bottom */}
+      {/* GLOSSY KPI GRID */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <GlossyKpi
+          title="Revenue"
+          value={fmtMoney(totalRevenue)}
+          sub={`${bookingCount} bookings`}
+          color="green"
+        />
+        <GlossyKpi
+          title="Days Rented"
+          value={totalDaysRented}
+          sub="days total"
+          color="blue"
+        />
+        <GlossyKpi
+          title="Avg Daily Rate"
+          value={fmtMoney(avgDailyRate)}
+          sub="per day"
+          color="purple"
+        />
+        <GlossyKpi
+          title="Avg Length"
+          value={avgLength.toFixed(1)}
+          sub="days / trip"
+          color="orange"
+        />
+      </div>
+
+      {/* ANALYSIS TABLES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
             <h3 className="font-semibold text-gray-800">Top Performing Cars</h3>
             <span className="text-xs bg-black text-white px-2 py-1 rounded">
               By Plate
             </span>
           </div>
-          <div className="divide-y">
+          <div className="divide-y overflow-y-auto max-h-96">
             {breakdownPlate.map((p, i) => (
               <div
                 key={p.key}
                 className="p-3 flex items-center justify-between hover:bg-gray-50 text-sm"
               >
                 <div className="flex items-center gap-3">
-                  <span className="w-5 h-5 flex items-center justify-center bg-gray-100 text-gray-500 text-xs font-bold rounded-full">
+                  <span
+                    className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                      i
+                    )}`}
+                  >
                     {i + 1}
                   </span>
                   <div>
@@ -1111,7 +984,6 @@ export default async function AdminDashboard({
               <h3 className="font-semibold text-gray-800">Revenue by Model</h3>
               <div className="text-xs text-gray-500">Includes ADR</div>
             </div>
-
             <div className="overflow-x-auto">
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 font-medium border-b">
@@ -1132,11 +1004,13 @@ export default async function AdminDashboard({
                           {b.key}
                         </td>
                         <td className="px-4 py-3 w-1/4 align-middle">
-                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden shadow-inner">
                             <div
-                              className="bg-emerald-500 h-2 rounded-full"
+                              className="h-full rounded-full bg-linear-to-r from-emerald-400 to-green-500 relative overflow-hidden"
                               style={{ width: `${percent}%` }}
-                            />
+                            >
+                              <div className="absolute inset-x-0 top-0 h-1/2 bg-white/30" />
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-right font-bold text-emerald-700">
@@ -1151,7 +1025,6 @@ export default async function AdminDashboard({
                       </tr>
                     );
                   })}
-
                   {breakdownModel.length === 0 && (
                     <tr>
                       <td colSpan={5} className="p-8 text-center text-gray-400">
@@ -1166,7 +1039,7 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      {/* ✅ NOW summary is real */}
+      {/* Mini Site Analytics */}
       <MiniSiteAnalytics
         activeUsers={summary.activeUsersRealtime}
         whatsappClicks={summary.whatsappClicks}
@@ -1179,28 +1052,24 @@ export default async function AdminDashboard({
         topCities={summary.topCities}
       />
 
-      {/* ✅ ROW 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ExpiringSoon
           title="Expiring Today ⏳"
           subtitle="All agreements ending today"
           rows={(expiringToday ?? []) as any}
         />
-
         <AvailableNow
           title="Available Now ✅"
           rows={availableNowRows as any}
           availableCount={availableCount}
           rentedCount={rentedCount}
         />
-
         <AvailableTomorrow
           title="Available Tomorrow 📅"
           rows={availableTomorrowRows as any}
         />
       </div>
 
-      {/* ✅ ROW 2 */}
       <div className="grid grid-cols-1">
         <CurrentlyRented
           title="Currently Rented 🚗"

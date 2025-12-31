@@ -11,50 +11,66 @@ type Row = {
   date_end: string | null;
   updated_at: string | null;
   total_price: number;
-
   status: string | null;
   car_id: string | null;
-
   plate: string | null;
   make: string | null;
   model: string | null;
 };
 
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-function startOfWeek(d: Date) {
-  // Monday start
-  const x = startOfDay(d);
-  const day = x.getDay(); // 0..6
-  const diff = (day === 0 ? -6 : 1) - day;
-  x.setDate(x.getDate() + diff);
-  return x;
-}
-function startOfMonth(d: Date) {
-  const x = startOfDay(d);
-  x.setDate(1);
-  return x;
-}
-function startOfQuarter(d: Date) {
-  const x = startOfDay(d);
-  const m = x.getMonth();
-  const qStart = Math.floor(m / 3) * 3;
-  x.setMonth(qStart, 1);
-  return x;
-}
-function startOfYear(d: Date) {
-  const x = startOfDay(d);
-  x.setMonth(0, 1);
-  return x;
+// --- KL Timezone Helpers (UTC+8) ---
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
+
+function toKL(date: Date) {
+  return new Date(date.getTime() + KL_OFFSET_MS);
 }
 
-function toKey(d: Date) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
+function startOfDayKL(now: Date) {
+  const kl = toKL(now);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+  // Return UTC timestamp representing 00:00 KL time
+  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfWeekKL(now: Date) {
+  const kl = toKL(now);
+  const day = kl.getUTCDay(); // 0=Sun, 1=Mon
+  const diff = (day === 0 ? -6 : 1) - day; // Monday start
+  const monday = new Date(kl);
+  monday.setUTCDate(kl.getUTCDate() + diff);
+  monday.setUTCHours(0, 0, 0, 0);
+  return new Date(monday.getTime() - KL_OFFSET_MS);
+}
+
+function startOfMonthKL(now: Date) {
+  const kl = toKL(now);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  return new Date(Date.UTC(y, m, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfQuarterKL(now: Date) {
+  const kl = toKL(now);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const qStart = Math.floor(m / 3) * 3;
+  return new Date(Date.UTC(y, qStart, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfYearKL(now: Date) {
+  const kl = toKL(now);
+  const y = kl.getUTCFullYear();
+  return new Date(Date.UTC(y, 0, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+// Group key based on KL date
+function toKeyKL(d: Date) {
+  const kl = toKL(d);
+  const y = kl.getUTCFullYear();
+  const m = String(kl.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(kl.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
 
@@ -79,7 +95,8 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("agreements")
-    .select(`
+    .select(
+      `
       id,
       date_start,
       date_end,
@@ -95,7 +112,10 @@ export async function GET() {
           model
         )
       )
-    `);
+    `
+    )
+    .neq("status", "Cancelled")
+    .neq("status", "Deleted"); // Exclude cancelled from totals
 
   if (error) return jsonError(error.message, 500);
 
@@ -118,33 +138,24 @@ export async function GET() {
       };
     }) ?? [];
 
-  // ✅ Sort by date_start desc, fallback updated_at desc
+  // Sort by date_start desc
   rows.sort((a, b) => {
-    const da = parseDate(a.date_start)?.getTime() ?? parseDate(a.updated_at)?.getTime() ?? 0;
-    const db = parseDate(b.date_start)?.getTime() ?? parseDate(b.updated_at)?.getTime() ?? 0;
+    const da = parseDate(a.date_start)?.getTime() ?? 0;
+    const db = parseDate(b.date_start)?.getTime() ?? 0;
     return db - da;
   });
 
-  // ===== Debug =====
-  const debug = {
-    total_agreements: rows.length,
-    missing_date_start: rows.filter((r) => !r.date_start).length,
-    missing_date_end: rows.filter((r) => !r.date_end).length,
-    missing_car_id: rows.filter((r) => !r.car_id).length,
-    join_missing_car: rows.filter((r) => r.car_id && !r.plate).length,
-    join_missing_catalog: rows.filter((r) => r.plate && (!r.make || !r.model)).length,
-  };
-
   const now = new Date();
 
-  // ✅ For analytics, use date_start only
+  // Valid rows for revenue calc (must have start date)
   const valid = rows.filter((r) => parseDate(r.date_start));
 
-  const dayStart = startOfDay(now);
-  const weekStart = startOfWeek(now);
-  const monthStart = startOfMonth(now);
-  const quarterStart = startOfQuarter(now);
-  const yearStart = startOfYear(now);
+  // Time boundaries (KL Time)
+  const dayStart = startOfDayKL(now);
+  const weekStart = startOfWeekKL(now);
+  const monthStart = startOfMonthKL(now);
+  const quarterStart = startOfQuarterKL(now);
+  const yearStart = startOfYearKL(now);
 
   const sumSince = (since: Date) =>
     valid
@@ -160,7 +171,7 @@ export async function GET() {
     all_time: valid.reduce((acc, r) => acc + (Number(r.total_price) || 0), 0),
   };
 
-  // ✅ Active rentals now: date_start <= now <= date_end
+  // Active rentals now: date_start <= now <= date_end
   const active_now = rows.filter((r) => {
     const s = parseDate(r.date_start);
     const e = parseDate(r.date_end);
@@ -168,35 +179,46 @@ export async function GET() {
     return s <= now && now <= e;
   }).length;
 
-  // Grouped totals (based on date_start)
+  // Grouped totals (Booked Revenue)
   const byPlate = groupSum(valid, (r) => r.plate ?? "UNKNOWN");
   const byMake = groupSum(valid, (r) => r.make ?? "UNKNOWN");
-  const byModel = groupSum(valid, (r) => (r.make && r.model ? `${r.make} ${r.model}` : "UNKNOWN"));
+  const byModel = groupSum(valid, (r) =>
+    r.make && r.model ? `${r.make} ${r.model}` : "UNKNOWN"
+  );
 
-  // Trend: last 30 days by date_start
-  const last30Start = new Date(dayStart);
-  last30Start.setDate(last30Start.getDate() - 29);
-
+  // Trend: last 30 days by date_start (KL Time buckets)
+  // We want to show the last 30 "KL days"
   const trendMap = new Map<string, number>();
-  for (let i = 0; i < 30; i++) {
-    const d = new Date(last30Start);
-    d.setDate(last30Start.getDate() + i);
-    trendMap.set(toKey(d), 0);
+
+  // Initialize last 30 days with 0
+  const todayKL = startOfDayKL(now);
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(todayKL);
+    d.setDate(d.getDate() - i); // Subtract days from KL midnight
+    trendMap.set(toKeyKL(d), 0);
   }
 
+  // Populate data
   for (const r of valid) {
     const dt = parseDate(r.date_start)!;
-    if (dt >= last30Start && dt <= now) {
-      const k = toKey(startOfDay(dt));
-      trendMap.set(k, (trendMap.get(k) ?? 0) + (Number(r.total_price) || 0));
+    // Check if within last 30 days window
+    const diffTime = now.getTime() - dt.getTime();
+    const diffDays = diffTime / (1000 * 3600 * 24);
+
+    if (diffDays <= 31 && diffDays >= -1) {
+      const k = toKeyKL(dt);
+      if (trendMap.has(k)) {
+        trendMap.set(k, (trendMap.get(k) ?? 0) + r.total_price);
+      }
     }
   }
 
-  const trend = [...trendMap.entries()].map(([date, total]) => ({ date, total }));
+  const trend = [...trendMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, total]) => ({ date, total }));
 
   return NextResponse.json({
     ok: true,
-    debug,
     totals,
     active_now,
     top: {

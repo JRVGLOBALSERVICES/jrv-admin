@@ -14,6 +14,7 @@ type Row = {
   status: string | null;
 };
 
+// ... Icons (WhatsAppIcon) ...
 function WhatsAppIcon() {
   return (
     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -31,19 +32,22 @@ function Pill({
   value: number;
   tone?: "dark" | "green" | "blue";
 }) {
-  const cls =
-    tone === "green"
-      ? "bg-emerald-100 text-emerald-900 border-emerald-200"
-      : tone === "blue"
-      ? "bg-blue-100 text-blue-900 border-blue-200"
-      : "bg-gray-100 text-gray-900 border-gray-200";
+  const gradients = {
+    green: "from-emerald-400 to-green-500 shadow-emerald-200",
+    blue: "from-blue-400 to-indigo-500 shadow-blue-200",
+    dark: "from-gray-700 to-gray-800 shadow-gray-300",
+  };
 
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-1 rounded-full border ${cls}`}
+      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full text-white shadow-md bg-linear-to-r ${
+        gradients[tone] || gradients.dark
+      }`}
     >
-      <span className="opacity-70">{label}</span>
-      <span className="tabular-nums">{value}</span>
+      <span className="opacity-90">{label}</span>
+      <span className="bg-white/20 px-1.5 rounded-md tabular-nums">
+        {value}
+      </span>
     </span>
   );
 }
@@ -78,7 +82,6 @@ export default function CurrentlyRented({
   availableCount: number;
   rentedCount: number;
 }) {
-  // ✅ real ticking value that forces re-render
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -93,34 +96,44 @@ export default function CurrentlyRented({
   }, [rows, nowMs]);
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-blue-50">
+    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-xl shadow-gray-200/50 flex flex-col h-full">
+      <div className="px-5 py-4 border-b border-blue-100 bg-linear-to-r from-blue-50 via-indigo-50 to-white flex items-center justify-between">
         <div className="min-w-0">
-          <div className="font-bold text-blue-900">{title}</div>
-          <div className="text-xs text-blue-700 opacity-80">
-            Active agreements right now
+          <div className="font-black text-blue-900 text-sm uppercase tracking-wide">
+            {title}
+          </div>
+          <div className="text-[10px] text-blue-600 font-medium mt-0.5">
+            Active on the road
           </div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
           <Pill label="Rented" value={rentedCount} tone="blue" />
-          <Pill label="Available" value={availableCount} tone="green" />
-
+          <Pill label="Free" value={availableCount} tone="green" />
           <Link
-            className="text-xs font-semibold text-blue-800 hover:underline ml-1"
+            className="w-6 h-6 flex items-center justify-center rounded-full bg-white border border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm ml-1"
             href="/admin/agreements"
           >
-            View
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
           </Link>
         </div>
       </div>
 
       {!sorted.length ? (
-        <div className="p-6 text-sm opacity-60 text-center">
+        <div className="p-8 text-sm text-gray-400 text-center italic">
           No active rentals right now.
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-gray-50">
           {sorted.map((r) => {
             const ms = remainingMs(r.date_end, nowMs);
             const client =
@@ -131,25 +144,24 @@ export default function CurrentlyRented({
             return (
               <div
                 key={r.agreement_id}
-                className="p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between hover:bg-gray-50 transition"
+                className="p-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between hover:bg-blue-50/30 transition-colors text-sm group"
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="font-bold text-gray-900">
                       {r.plate_number}
                     </div>
-                    <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
+                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-medium border border-gray-200">
                       {r.car_label}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    Client:{" "}
-                    <span className="font-medium text-gray-800">{client}</span>
+                  <div className="text-[11px] text-gray-400 font-medium">
+                    Client: <span className="text-gray-700">{client}</span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 justify-end">
-                  <div className="px-3 py-1.5 rounded-md text-xs font-bold tabular-nums border bg-blue-100 text-blue-900 border-blue-200">
+                <div className="flex items-center gap-3 justify-end">
+                  <div className="px-3 py-1 rounded-md text-xs font-bold tabular-nums bg-blue-50 text-blue-700 border border-blue-100 shadow-sm min-w-17.5 text-center">
                     {formatCountdown(ms)}
                   </div>
 
@@ -157,9 +169,9 @@ export default function CurrentlyRented({
                     href={whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`p-2 rounded-full border transition ${
+                    className={`p-2 rounded-full border transition-all shadow-sm ${
                       mobileRaw
-                        ? "bg-green-50 text-green-600 hover:bg-green-100 border-green-200"
+                        ? "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-500 hover:text-white"
                         : "bg-gray-50 text-gray-300 border-gray-200 pointer-events-none"
                     }`}
                     title="WhatsApp"
@@ -169,7 +181,7 @@ export default function CurrentlyRented({
 
                   <Link
                     href={`/admin/agreements/${r.agreement_id}`}
-                    className="px-3 py-2 rounded-full text-xs font-bold border border-blue-200 bg-white text-blue-700 hover:bg-blue-50 transition"
+                    className="px-3 py-1.5 rounded-full text-[10px] font-bold border border-blue-200 bg-white text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm uppercase tracking-wide"
                   >
                     Open
                   </Link>

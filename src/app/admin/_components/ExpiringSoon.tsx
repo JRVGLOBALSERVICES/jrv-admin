@@ -15,7 +15,7 @@ type Row = {
   customer_name: string | null;
 };
 
-// Icons
+// ... Icons ...
 function WhatsAppIcon() {
   return (
     <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
@@ -26,7 +26,12 @@ function WhatsAppIcon() {
 
 function PhoneIcon() {
   return (
-    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <svg
+      className="w-4 h-4"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+    >
       <path
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -39,13 +44,11 @@ function PhoneIcon() {
 
 function formatCountdown(ms: number) {
   if (ms <= 0) return "EXPIRED";
-
   const totalSec = Math.floor(ms / 1000);
   const s = totalSec % 60;
   const m = Math.floor(totalSec / 60) % 60;
   const h = Math.floor(totalSec / 3600) % 24;
   const d = Math.floor(totalSec / 86400);
-
   const pad = (n: number) => String(n).padStart(2, "0");
   if (d > 0) return `${d}d ${pad(h)}h`;
   return `${pad(h)}:${pad(m)}:${pad(s)}`;
@@ -62,7 +65,6 @@ export default function ExpiringSoon({
   rows: Row[];
   error?: string | null;
 }) {
-  // ✅ This guarantees re-render ticks on the client
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -76,30 +78,43 @@ export default function ExpiringSoon({
       const end = new Date(endIso).getTime();
       return end - nowMs;
     };
-
-    return [...rows].sort((a, b) => remaining(a.date_end) - remaining(b.date_end));
+    return [...rows].sort(
+      (a, b) => remaining(a.date_end) - remaining(b.date_end)
+    );
   }, [rows, nowMs]);
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-red-50">
+    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-xl shadow-gray-200/50 flex flex-col h-full">
+      <div className="px-5 py-4 border-b border-red-100 bg-linear-to-r from-red-50 via-rose-50 to-white flex items-center justify-between">
         <div>
-          <div className="font-bold text-red-900">{title}</div>
-          {subtitle ? (
-            <div className="text-xs text-red-700 opacity-80">{subtitle}</div>
-          ) : null}
+          <div className="font-black text-red-900 text-sm uppercase tracking-wide flex items-center gap-2">
+            {title}
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-red-300 shadow-sm" />
+          </div>
+          {subtitle && (
+            <div className="text-[10px] text-red-700 font-medium mt-0.5">
+              {subtitle}
+            </div>
+          )}
         </div>
-        <Link className="text-xs font-semibold text-red-800 hover:underline" href="/admin/agreements">
+        <Link
+          className="text-[10px] font-bold bg-white/80 text-red-700 border border-red-200 px-2 py-1 rounded-md hover:bg-red-600 hover:text-white transition-colors shadow-sm"
+          href="/admin/agreements"
+        >
           View All
         </Link>
       </div>
 
-      {error && <div className="p-4 text-sm text-red-600">{error}</div>}
+      {error && (
+        <div className="p-4 text-sm text-red-600 bg-red-50">{error}</div>
+      )}
 
       {!sorted.length ? (
-        <div className="p-6 text-sm opacity-60 text-center">No agreements expiring soon.</div>
+        <div className="p-8 text-sm text-gray-400 text-center italic">
+          No agreements expiring soon.
+        </div>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-gray-50">
           {sorted.map((r) => {
             const endMs = r.date_end ? new Date(r.date_end).getTime() : 0;
             const ms = Math.max(0, endMs - nowMs);
@@ -114,31 +129,36 @@ export default function ExpiringSoon({
             return (
               <div
                 key={r.id}
-                className={`p-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-gray-50 transition ${
-                  isUrgent ? "bg-red-50/50" : ""
+                className={`p-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-red-50/20 transition-colors text-sm group ${
+                  isUrgent ? "bg-red-50/40" : ""
                 }`}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="font-bold text-gray-900">{r.plate_number || "—"}</div>
-                    <span className="text-xs bg-gray-200 px-1.5 py-0.5 rounded text-gray-600">
+                    <div className="font-bold text-gray-900">
+                      {r.plate_number || "—"}
+                    </div>
+                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-medium border border-gray-200">
                       {r.car_type || "—"}
                     </span>
                   </div>
-                  <div className="text-xs text-gray-500">
-                    Client: <span className="font-medium text-gray-800">{r.customer_name || "—"}</span>
+                  <div className="text-[11px] text-gray-400 font-medium">
+                    Client:{" "}
+                    <span className="text-gray-700">
+                      {r.customer_name || "—"}
+                    </span>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 justify-end">
                   <div
                     className={[
-                      "px-3 py-1.5 rounded-md text-xs font-bold tabular-nums border",
+                      "px-3 py-1 rounded-md text-xs font-bold tabular-nums border shadow-sm min-w-17.5 text-center",
                       isExpired
                         ? "bg-gray-100 text-gray-500 border-gray-200"
                         : isUrgent
-                        ? "animate-pulse bg-red-600 text-white border-red-600 shadow-md"
-                        : "bg-amber-100 text-amber-800 border-amber-200",
+                        ? "animate-pulse bg-linear-to-r from-red-500 to-rose-600 text-white border-red-600 shadow-red-200"
+                        : "bg-amber-50 text-amber-700 border-amber-200",
                     ].join(" ")}
                   >
                     {formatCountdown(endMs - nowMs)}
@@ -149,21 +169,13 @@ export default function ExpiringSoon({
                       href={whatsappLink}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="p-2 rounded-full bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 transition"
-                      title="WhatsApp Now"
-                      onClick={(e) => {
-                        if (!mobileRaw) e.preventDefault();
-                      }}
+                      className="p-1.5 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-500 hover:text-white border border-emerald-100 transition shadow-sm"
                     >
                       <WhatsAppIcon />
                     </a>
                     <a
                       href={callLink}
-                      className="p-2 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-200 transition"
-                      title="Call Now"
-                      onClick={(e) => {
-                        if (!mobileRaw) e.preventDefault();
-                      }}
+                      className="p-1.5 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-500 hover:text-white border border-blue-100 transition shadow-sm"
                     >
                       <PhoneIcon />
                     </a>

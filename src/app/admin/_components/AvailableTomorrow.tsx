@@ -41,52 +41,59 @@ export default function AvailableTomorrow({
   }, [rows]);
 
   return (
-    <div className="rounded-xl border bg-white overflow-hidden shadow-sm">
-      <div className="px-4 py-3 border-b flex items-center justify-between bg-amber-50">
+    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-xl shadow-gray-200/50 flex flex-col h-full">
+      <div className="px-5 py-4 border-b border-amber-100 bg-linear-to-r from-amber-50 via-orange-50 to-white flex items-center justify-between">
         <div>
-          <div className="font-bold text-amber-900">{title}</div>
-          <div className="text-xs text-amber-700 opacity-80">
-            Only cars currently rented that end tomorrow
+          <div className="font-black text-amber-900 text-sm uppercase tracking-wide">
+            {title}
+          </div>
+          <div className="text-[10px] text-amber-700 font-medium mt-0.5">
+            Returning tomorrow
           </div>
         </div>
         <Link
-          className="text-xs font-semibold text-amber-800 hover:underline"
+          className="text-[10px] font-bold bg-white/80 text-amber-700 border border-amber-200 px-2 py-1 rounded-md hover:bg-amber-600 hover:text-white transition-colors shadow-sm"
           href="/admin/agreements"
         >
-          View
+          View All
         </Link>
       </div>
 
       {!sorted.length ? (
-        <div className="p-6 text-sm opacity-60 text-center">
-          No cars becoming available tomorrow.
+        <div className="p-8 text-sm text-gray-400 text-center italic">
+          No returns scheduled for tomorrow.
         </div>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-gray-50">
           {sorted.map((r) => {
             const client =
               (r.customer_name && r.customer_name.trim()) || r.mobile || "—";
             return (
               <div
                 key={r.agreement_id}
-                className="p-3 flex items-center justify-between hover:bg-gray-50 text-sm"
+                className="p-3 flex items-center justify-between hover:bg-amber-50/30 transition-colors text-sm group"
               >
                 <div className="min-w-0">
-                  <div className="font-bold text-gray-900">{r.plate_number}</div>
-                  <div className="text-xs text-gray-500 truncate">{r.car_label}</div>
-                  <div className="text-[11px] text-gray-500">
-                    Client: <span className="font-medium text-gray-800">{client}</span>
+                  <div className="font-bold text-gray-900 group-hover:text-amber-800 transition-colors">
+                    {r.plate_number}
+                  </div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {r.car_label}
+                  </div>
+                  <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+                    Client:{" "}
+                    <span className="font-medium text-gray-600">{client}</span>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-xs font-bold text-amber-800">
-                    Frees at {fmtTime(r.date_end)}
+                  <div className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
+                    {fmtTime(r.date_end)}
                   </div>
                   <Link
                     href={`/admin/agreements/${r.agreement_id}`}
-                    className="text-xs font-semibold text-amber-700 hover:underline"
+                    className="text-[10px] font-semibold text-gray-400 hover:text-amber-600 hover:underline mt-1 block opacity-0 group-hover:opacity-100 transition-opacity"
                   >
-                    Open
+                    View Details
                   </Link>
                 </div>
               </div>
