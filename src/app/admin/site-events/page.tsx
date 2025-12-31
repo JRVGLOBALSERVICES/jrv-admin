@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import SiteEventsClient from "./_components/SiteEventsClient";
 import SiteEventsFilters from "./_components/SiteEventsFilters";
 
@@ -121,6 +122,18 @@ function normalizeCustomRange(from?: string, to?: string) {
 function rangeToIso(rangeKey: string, from?: string, to?: string) {
   const now = new Date();
 
+  const KL_OFFSET_MS = 6 * 60 * 60 * 1000;
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  function windowStart6amKlUtc(nowUtc: Date) {
+    const klNow = new Date(nowUtc.getTime() + KL_OFFSET_MS);
+    const y = klNow.getUTCFullYear();
+    const m = klNow.getUTCMonth();
+    const d = klNow.getUTCDate();
+    let startKlMs = Date.UTC(y, m, d, 6, 0, 0, 0);
+    if (klNow.getUTCHours() < 6) startKlMs -= DAY_MS;
+    return new Date(startKlMs - KL_OFFSET_MS);
+  }
+
   if (rangeKey === "custom") {
     const custom = normalizeCustomRange(from, to);
     if (custom) return custom;
@@ -142,9 +155,11 @@ function rangeToIso(rangeKey: string, from?: string, to?: string) {
     };
   }
 
+  const start = windowStart6amKlUtc(now);
+  const end = new Date(start.getTime() + DAY_MS);
   return {
-    initialFrom: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
-    initialTo: now.toISOString(),
+    initialFrom: start.toISOString(),
+    initialTo: end.toISOString(),
     rangeKey: "24h" as const,
   };
 }
@@ -155,6 +170,19 @@ export default async function SiteEventsPage({
   searchParams: Promise<SP>;
 }) {
   const sp = await searchParams;
+
+  const supabase = await createSupabaseServer();
+  const { data: evRows } = await supabase
+    .from("site_events")
+    .select("event_name")
+    .limit(5000);
+  const eventOptions = Array.from(
+    new Set(
+      (evRows || [])
+        .map((r: any) => String(r.event_name || "").trim())
+        .filter(Boolean)
+    )
+  ).sort();
 
   const { initialFrom, initialTo, rangeKey } = rangeToIso(
     sp.range || "24h",
@@ -193,6 +221,7 @@ export default async function SiteEventsPage({
         from={filterUiFrom}
         to={filterUiTo}
         filters={initialFilters}
+        eventOptions={eventOptions}
       />
 
       <SiteEventsClient

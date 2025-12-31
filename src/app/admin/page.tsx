@@ -174,7 +174,7 @@ function pickCatalog(rel: any): { make?: any; model?: any } {
 /* ===========================
    KL timezone helpers (UTC instants)
    =========================== */
-const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
+const KL_OFFSET_MS = 6 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function startOfDayInKLToUTC(baseUtc: Date) {
@@ -187,22 +187,6 @@ function startOfDayInKLToUTC(baseUtc: Date) {
 
 function endOfDayInKLToUTC(baseUtc: Date) {
   const start = startOfDayInKLToUTC(baseUtc);
-  return new Date(start.getTime() + DAY_MS - 1);
-}
-
-
-function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  const m = kl.getUTCMonth();
-  const d = kl.getUTCDate();
-  let start = new Date(Date.UTC(y, m, d, hour, 0, 0, 0) - KL_OFFSET_MS);
-  if (kl.getUTCHours() < hour) start = new Date(start.getTime() - DAY_MS);
-  return start;
-}
-
-function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
-  const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
   return new Date(start.getTime() + DAY_MS - 1);
 }
 
@@ -331,12 +315,85 @@ function normalizePackedLocationServer(name: any) {
 
   const a = cleanPart(parts[0] || "");
   let b = cleanPart(parts[1] || "");
-  const c = normalizeCountryServer(parts[2] || "");
+  let c = normalizeCountryServer(parts[2] || "");
+
+  if (!c && parts.length === 2) {
+    const maybeCountry = normalizeCountryServer(parts[1] || "");
+    if (maybeCountry && maybeCountry !== cleanPart(parts[1])) {
+      c = maybeCountry;
+      b = "";
+    } else if (COUNTRY_CODE_TO_NAME[String(parts[1] || "").toUpperCase()]) {
+      c = normalizeCountryServer(parts[1] || "");
+      b = "";
+    } else if (COUNTRY_CODE_TO_NAME[String(parts[0] || "").toUpperCase()]) {
+      c = normalizeCountryServer(parts[0] || "");
+    }
+  }
 
   if (b && /^\d+$/.test(b)) b = "";
   if (a && b && a.toLowerCase() === b.toLowerCase()) b = "";
 
   return [a, b, c].filter(Boolean).join(", ");
+}
+
+function parseLocationParts(v: any) {
+  const decoded = decodeSafe(v);
+  if (!decoded) return [] as string[];
+  const parts = decoded
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
+    parts.splice(parts.length - 2, 1);
+  }
+  return parts;
+}
+
+function normalizeRegionServer(input: any) {
+  const parts = parseLocationParts(input);
+  if (!parts.length) return "";
+  if (parts.length === 1) return cleanPart(parts[0]);
+
+  const last = parts[parts.length - 1];
+  const lastNorm = normalizeCountryServer(last);
+  const isLastCountry =
+    lastNorm && (lastNorm !== cleanPart(last) || isOnlyCountryLabel(lastNorm));
+
+  if (isLastCountry) {
+    if (parts.length >= 3) return cleanPart(parts[1]);
+    return cleanPart(parts[0]);
+  }
+
+  return cleanPart(parts[0]);
+}
+
+function normalizeCityServer(input: any) {
+  const parts = parseLocationParts(input);
+  if (!parts.length) return "";
+  const city = cleanPart(parts[0]);
+  const last = parts[parts.length - 1];
+  const country = normalizeCountryServer(last);
+  const countryOk = country && isOnlyCountryLabel(country);
+  if (countryOk) return [city, country].filter(Boolean).join(", ");
+  return city;
+}
+
+function isJunkGeoLabel(v: string) {
+  const s = String(v || "").trim();
+  if (!s) return true;
+  if (/^\d+$/.test(s)) return true;
+  if (s.length <= 2 && !COUNTRY_CODE_TO_NAME[s.toUpperCase()]) return true;
+  return false;
+}
+
+function isOnlyCountryLabel(v: string) {
+  const s = String(v || "").trim();
+  if (!s) return false;
+  if (s.includes(",")) return false;
+  const upper = s.toUpperCase();
+  if (COUNTRY_CODE_TO_NAME[upper]) return true;
+  const vals = new Set(Object.values(COUNTRY_CODE_TO_NAME));
+  return vals.has(s);
 }
 
 // ✅ safe for null page_url
@@ -552,13 +609,23 @@ export default async function AdminDashboard({
     const regRaw = e.region;
     const ctyRaw = e.city;
 
-    const ctry = normalizeCountryServer(ctryRaw) || "Unknown";
-    const reg = normalizePackedLocationServer(regRaw) || normalizeCountryServer(regRaw) || "Unknown";
-    const cty = normalizePackedLocationServer(ctyRaw) || normalizeCountryServer(ctyRaw) || "Unknown";
+    const ctryNorm = normalizeCountryServer(ctryRaw);
+    const regNorm = normalizeRegionServer(regRaw) || normalizeCountryServer(regRaw);
+    const ctyNorm = normalizeCityServer(ctyRaw) || normalizeCountryServer(ctyRaw);
+
+    const ctry = !isJunkGeoLabel(ctryNorm) ? ctryNorm : "Unknown";
+    const reg =
+      !isJunkGeoLabel(regNorm) && !isOnlyCountryLabel(regNorm)
+        ? regNorm
+        : "Unknown";
+    const cty =
+      !isJunkGeoLabel(ctyNorm) && !isOnlyCountryLabel(ctyNorm)
+        ? ctyNorm
+        : "Unknown";
 
     countryCounts.set(ctry, (countryCounts.get(ctry) || 0) + 1);
-    regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
-    cityCounts.set(cty, (cityCounts.get(cty) || 0) + 1);
+    if (reg !== "Unknown") regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
+    if (cty !== "Unknown") cityCounts.set(cty, (cityCounts.get(cty) || 0) + 1);
 
     const looksLikeCarDetail = !!inferCarFromPath(e.page_path);
 
@@ -775,8 +842,8 @@ export default async function AdminDashboard({
   // -------------------------
   const now = new Date();
 
-  const todayStartUTC = startOfBusinessDayInKLToUTC(now, 7);
-  const todayEndUTC = endOfBusinessDayInKLToUTC(now, 7);
+  const todayStartUTC = startOfDayInKLToUTC(now);
+  const todayEndUTC = endOfDayInKLToUTC(now);
 
   const { data: expiringToday } = await supabase
     .from("agreements")
@@ -851,8 +918,9 @@ export default async function AdminDashboard({
       };
     }) ?? [];
 
-  const tomorrowStartUTC = new Date(todayStartUTC.getTime() + DAY_MS);
-  const tomorrowEndUTC = new Date(tomorrowStartUTC.getTime() + DAY_MS - 1);
+  const tomorrowBase = addDaysKL(now, 1);
+  const tomorrowStartUTC = startOfDayInKLToUTC(tomorrowBase);
+  const tomorrowEndUTC = endOfDayInKLToUTC(tomorrowBase);
 
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;

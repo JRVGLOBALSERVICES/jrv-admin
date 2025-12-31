@@ -76,11 +76,13 @@ export default function SiteEventsFilters({
   from,
   to,
   filters,
+  eventOptions,
 }: {
   rangeKey: string;
   from: string;
   to: string;
   filters: Filters;
+  eventOptions: string[];
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -246,12 +248,18 @@ export default function SiteEventsFilters({
 
         <div className="md:col-span-2">
           <div className="text-xs font-semibold text-gray-600 mb-1">Event</div>
-          <input
+          <select
             value={local.event}
             onChange={(e) => setLocal((p) => ({ ...p, event: e.target.value }))}
-            placeholder="e.g. whatsapp_click"
             className="w-full border rounded-lg px-3 py-2 text-sm"
-          />
+          >
+            <option value="">All</option>
+            {eventOptions.map((ev) => (
+              <option key={ev} value={ev}>
+                {ev}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="md:col-span-2">
