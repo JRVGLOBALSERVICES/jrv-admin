@@ -144,23 +144,20 @@ function getRange(
   now = new Date()
 ) {
   if (period === "custom" && fromParam && toParam) {
-    const s = new Date(fromParam);
-    const e = new Date(toParam);
-    if (isValidDate(s) && isValidDate(e)) {
-      e.setHours(23, 59, 59, 999);
-      return { start: s, end: e };
-    }
+    const s = parseKLMidnightToUTC(fromParam);
+    const e = parseKLEndOfDayToUTC(toParam);
+    if (s && e) return { start: s, end: e };
   }
 
   if (period === "all") return { start: new Date(0), end: now };
 
   let start: Date;
-  if (period === "daily") start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-  else if (period === "weekly") start = startOfWeekMonday(now);
-  else if (period === "monthly") start = startOfMonth(now);
-  else if (period === "quarterly") start = startOfQuarter(now);
-  else if (period === "yearly") start = startOfYear(now);
-  else start = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (period === "daily") start = startOfDayInKLToUTC(now);
+  else if (period === "weekly") start = startOfWeekMondayKLToUTC(now);
+  else if (period === "monthly") start = startOfMonthKLToUTC(now);
+  else if (period === "quarterly") start = startOfQuarterKLToUTC(now);
+  else if (period === "yearly") start = startOfYearKLToUTC(now);
+  else start = startOfDayInKLToUTC(now);
 
   return { start, end: now };
 }
@@ -178,28 +175,86 @@ function pickCatalog(rel: any): { make?: any; model?: any } {
    KL timezone helpers (UTC instants)
    =========================== */
 const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function startOfDayInKLToUTC(baseUtc: Date) {
   const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const klMidnight = new Date(
-    kl.getFullYear(),
-    kl.getMonth(),
-    kl.getDate(),
-    0,
-    0,
-    0,
-    0
-  );
-  return new Date(klMidnight.getTime() - KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
 }
+
 function endOfDayInKLToUTC(baseUtc: Date) {
   const start = startOfDayInKLToUTC(baseUtc);
-  return new Date(start.getTime() + 24 * 60 * 60 * 1000 - 1);
+  return new Date(start.getTime() + DAY_MS - 1);
 }
+
+
+function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+  let start = new Date(Date.UTC(y, m, d, hour, 0, 0, 0) - KL_OFFSET_MS);
+  if (kl.getUTCHours() < hour) start = new Date(start.getTime() - DAY_MS);
+  return start;
+}
+
+function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+  const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
+  return new Date(start.getTime() + DAY_MS - 1);
+}
+
 function addDaysKL(baseUtc: Date, days: number) {
   const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  kl.setDate(kl.getDate() + days);
+  kl.setUTCDate(kl.getUTCDate() + days);
   return new Date(kl.getTime() - KL_OFFSET_MS);
+}
+
+function parseKLMidnightToUTC(dateYYYYMMDD: string) {
+  const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
+  if (!y || !m || !d) return null;
+  const dt = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0) - KL_OFFSET_MS);
+  return isValidDate(dt) ? dt : null;
+}
+
+function parseKLEndOfDayToUTC(dateYYYYMMDD: string) {
+  const s = parseKLMidnightToUTC(dateYYYYMMDD);
+  if (!s) return null;
+  return new Date(s.getTime() + DAY_MS - 1);
+}
+
+function startOfWeekMondayKLToUTC(baseUtc: Date) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const day = kl.getUTCDay();
+  const diff = (day === 0 ? -6 : 1) - day;
+  const mondayKl = new Date(kl.getTime());
+  mondayKl.setUTCDate(mondayKl.getUTCDate() + diff);
+  const y = mondayKl.getUTCFullYear();
+  const m = mondayKl.getUTCMonth();
+  const d = mondayKl.getUTCDate();
+  return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfMonthKLToUTC(baseUtc: Date) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  return new Date(Date.UTC(y, m, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfQuarterKLToUTC(baseUtc: Date) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  const q = Math.floor(kl.getUTCMonth() / 3) * 3;
+  return new Date(Date.UTC(y, q, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
+}
+
+function startOfYearKLToUTC(baseUtc: Date) {
+  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
+  const y = kl.getUTCFullYear();
+  return new Date(Date.UTC(y, 0, 1, 0, 0, 0, 0) - KL_OFFSET_MS);
 }
 
 /* ===========================
@@ -214,6 +269,74 @@ function safeJson(v: any) {
   } catch {
     return {};
   }
+}
+
+const COUNTRY_CODE_TO_NAME: Record<string, string> = {
+  MY: "Malaysia",
+  SG: "Singapore",
+  US: "United States",
+  USA: "United States",
+  UK: "United Kingdom",
+  GB: "United Kingdom",
+  ID: "Indonesia",
+  IN: "India",
+  AU: "Australia",
+  CA: "Canada",
+  CN: "China",
+  HK: "Hong Kong",
+  JP: "Japan",
+  KR: "South Korea",
+  TH: "Thailand",
+  VN: "Vietnam",
+  PH: "Philippines",
+  TW: "Taiwan",
+};
+
+function decodeSafe(v: any) {
+  const raw = String(v || "").trim();
+  if (!raw) return "";
+  try {
+    return decodeURIComponent(raw.replace(/\+/g, "%20")).trim();
+  } catch {
+    return raw;
+  }
+}
+
+function normalizeCountryServer(input: any) {
+  const s = decodeSafe(input);
+  if (!s) return "";
+  const upper = s.toUpperCase();
+  if (COUNTRY_CODE_TO_NAME[upper]) return COUNTRY_CODE_TO_NAME[upper];
+  return s;
+}
+
+function cleanPart(v: any) {
+  const s = decodeSafe(v);
+  if (!s) return "";
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function normalizePackedLocationServer(name: any) {
+  const decoded = decodeSafe(name);
+  if (!decoded) return "";
+
+  const parts = decoded
+    .split(",")
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2])) {
+    parts.splice(parts.length - 2, 1);
+  }
+
+  const a = cleanPart(parts[0] || "");
+  let b = cleanPart(parts[1] || "");
+  const c = normalizeCountryServer(parts[2] || "");
+
+  if (b && /^\d+$/.test(b)) b = "";
+  if (a && b && a.toLowerCase() === b.toLowerCase()) b = "";
+
+  return [a, b, c].filter(Boolean).join(", ");
 }
 
 // ✅ safe for null page_url
@@ -331,16 +454,24 @@ export default async function AdminDashboard({
   // ✅ MINI SITE ANALYTICS (last 24h rolling)
   // -------------------------
   const now2 = new Date();
-  const last24h = new Date(now2.getTime() - 24 * 60 * 60 * 1000);
   const last5m = new Date(now2.getTime() - 5 * 60 * 1000);
+  const klNow = new Date(now2.getTime() + KL_OFFSET_MS);
+  const ky = klNow.getUTCFullYear();
+  const km = klNow.getUTCMonth();
+  const kd = klNow.getUTCDate();
+  let windowStartKlMs = Date.UTC(ky, km, kd, 8, 0, 0, 0);
+  if (klNow.getUTCHours() < 8) windowStartKlMs -= DAY_MS;
+  const windowEndKlMs = windowStartKlMs + DAY_MS;
+  const windowStartUtc = new Date(windowStartKlMs - KL_OFFSET_MS);
+  const windowEndUtc = new Date(windowEndKlMs - KL_OFFSET_MS);
 
   const { data: siteEvents24h } = await supabase
     .from("site_events")
     .select(
       "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer, ip, country, region, city"
     )
-    .gte("created_at", last24h.toISOString())
-    .lte("created_at", now2.toISOString())
+    .gte("created_at", windowStartUtc.toISOString())
+    .lt("created_at", windowEndUtc.toISOString())
     .order("created_at", { ascending: true })
     .limit(5000);
 
@@ -417,9 +548,13 @@ export default async function AdminDashboard({
     const rLabel = meta?.refLabel || "Direct / None";
     refCounts.set(rLabel, (refCounts.get(rLabel) || 0) + 1);
 
-    const ctry = String(e.country || "").trim() || "Unknown";
-    const reg = String(e.region || "").trim() || "Unknown";
-    const cty = String(e.city || "").trim() || "Unknown";
+    const ctryRaw = e.country;
+    const regRaw = e.region;
+    const ctyRaw = e.city;
+
+    const ctry = normalizeCountryServer(ctryRaw) || "Unknown";
+    const reg = normalizePackedLocationServer(regRaw) || normalizeCountryServer(regRaw) || "Unknown";
+    const cty = normalizePackedLocationServer(ctyRaw) || normalizeCountryServer(ctyRaw) || "Unknown";
 
     countryCounts.set(ctry, (countryCounts.get(ctry) || 0) + 1);
     regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
@@ -640,8 +775,8 @@ export default async function AdminDashboard({
   // -------------------------
   const now = new Date();
 
-  const todayStartUTC = startOfDayInKLToUTC(now);
-  const todayEndUTC = endOfDayInKLToUTC(now);
+  const todayStartUTC = startOfBusinessDayInKLToUTC(now, 7);
+  const todayEndUTC = endOfBusinessDayInKLToUTC(now, 7);
 
   const { data: expiringToday } = await supabase
     .from("agreements")
@@ -716,9 +851,8 @@ export default async function AdminDashboard({
       };
     }) ?? [];
 
-  const tomorrowBase = addDaysKL(now, 1);
-  const tomorrowStartUTC = startOfDayInKLToUTC(tomorrowBase);
-  const tomorrowEndUTC = endOfDayInKLToUTC(tomorrowBase);
+  const tomorrowStartUTC = new Date(todayStartUTC.getTime() + DAY_MS);
+  const tomorrowEndUTC = new Date(tomorrowStartUTC.getTime() + DAY_MS - 1);
 
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;

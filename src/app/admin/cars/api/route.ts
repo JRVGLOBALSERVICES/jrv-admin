@@ -49,6 +49,7 @@ export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);
   const mode = String(url.searchParams.get("mode") ?? "");
+  const includeId = String(url.searchParams.get("include") ?? "").trim();
 
   if (mode !== "dropdown") {
     return jsonError("Invalid mode", 400);
@@ -56,7 +57,7 @@ export async function GET(req: Request) {
 
   // ✅ Only return cars that can be selected for NEW agreements:
   //    status=available AND has catalog_id
-  const { data, error } = await supabase
+  let query = supabase
     .from("cars")
     .select(
       `
@@ -72,10 +73,15 @@ export async function GET(req: Request) {
       catalog:catalog_id ( make, model )
     `
     )
-    .eq("status", "available")
     .not("catalog_id", "is", null)
     .order("plate_number", { ascending: true })
     .limit(5000);
+
+  query = includeId
+    ? query.or(`status.eq.available,id.eq.${includeId}`)
+    : query.eq("status", "available");
+
+  const { data, error } = await query;
 
   if (error) return jsonError(error.message, 500);
 

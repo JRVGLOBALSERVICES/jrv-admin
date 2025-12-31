@@ -216,9 +216,11 @@ export function AgreementForm({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/admin/cars/api?mode=dropdown", {
-          cache: "no-store",
-        });
+        const url = new URL("/admin/cars/api", window.location.origin);
+        url.searchParams.set("mode", "dropdown");
+        if (isEdit && initial?.car_id)
+          url.searchParams.set("include", initial.car_id);
+        const res = await fetch(url.toString(), { cache: "no-store" });
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load cars");
         setCars(Array.isArray(json?.rows) ? json.rows : []);
@@ -227,7 +229,7 @@ export function AgreementForm({
         setCars([]);
       }
     })();
-  }, []);
+  }, [isEdit, initial?.car_id]);
 
   const plate = (selectedCar?.plate_number ?? "").trim();
   const carLabel = (selectedCar?.car_label ?? "").trim();
