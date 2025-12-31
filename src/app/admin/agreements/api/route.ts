@@ -30,12 +30,15 @@ function toMoneyString(v: any) {
 function fmtHuman(dtIso: string) {
   const d = new Date(dtIso);
   if (Number.isNaN(d.getTime())) return dtIso;
+
   return d.toLocaleString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
     year: "numeric",
     month: "short",
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: true,
   });
 }
 
@@ -83,11 +86,13 @@ export async function GET(req: Request) {
   if (id) {
     const { data: row, error } = await supabase
       .from("agreements")
-      .select(`
+      .select(
+        `
         id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
         total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id,
         cars:car_id ( id, plate_number, catalog_id, car_catalog:catalog_id ( make, model ) )
-      `)
+      `
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -110,7 +115,10 @@ export async function GET(req: Request) {
 
   // --- LIST FETCH ---
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
-  const limit = Math.min(50, Math.max(5, Number(url.searchParams.get("limit") ?? 20)));
+  const limit = Math.min(
+    50,
+    Math.max(5, Number(url.searchParams.get("limit") ?? 20))
+  );
   const from = (page - 1) * limit;
   const to = from + limit - 1;
 
@@ -132,18 +140,38 @@ export async function GET(req: Request) {
 
   if (carsErr) return jsonError(carsErr.message, 500);
 
-  const plates: FilterOption[] = Array.from(new Set((carsRows ?? []).map((c: any) => asStr(c.plate_number)).filter(Boolean))).sort().map(p => ({ value: p, label: p }));
-  const models: FilterOption[] = Array.from(new Set((carsRows ?? []).map((c: any) => buildCarLabel(c?.car_catalog?.make, c?.car_catalog?.model)).filter(Boolean))).sort().map(m => ({ value: m, label: m }));
-  if (filtersOnly) return NextResponse.json({ ok: true, filters: { plates, models } });
+  const plates: FilterOption[] = Array.from(
+    new Set(
+      (carsRows ?? []).map((c: any) => asStr(c.plate_number)).filter(Boolean)
+    )
+  )
+    .sort()
+    .map((p) => ({ value: p, label: p }));
+  const models: FilterOption[] = Array.from(
+    new Set(
+      (carsRows ?? [])
+        .map((c: any) =>
+          buildCarLabel(c?.car_catalog?.make, c?.car_catalog?.model)
+        )
+        .filter(Boolean)
+    )
+  )
+    .sort()
+    .map((m) => ({ value: m, label: m }));
+  if (filtersOnly)
+    return NextResponse.json({ ok: true, filters: { plates, models } });
 
   // Query
   let query = supabase
     .from("agreements")
-    .select(`
+    .select(
+      `
       id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
       total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id,
       cars:car_id ( id, plate_number, car_catalog:catalog_id ( make, model ) )
-    `, { count: "exact" })
+    `,
+      { count: "exact" }
+    )
     .order("date_start", { ascending: false })
     .order("updated_at", { ascending: false })
     .range(from, to);
@@ -156,21 +184,37 @@ export async function GET(req: Request) {
   }
 
   if (dateParam) {
-    query = query.gte("date_start", `${dateParam}T00:00:00`).lte("date_start", `${dateParam}T23:59:59`);
+    query = query
+      .gte("date_start", `${dateParam}T00:00:00`)
+      .lte("date_start", `${dateParam}T23:59:59`);
   }
   if (endDateParam) {
     query = query.gte("date_end", `${endDateParam}T00:00:00`);
   }
 
   if (plate) {
-    const ids = (carsRows ?? []).filter((c: any) => asStr(c.plate_number).toLowerCase().includes(plate.toLowerCase())).map((c: any) => c.id);
+    const ids = (carsRows ?? [])
+      .filter((c: any) =>
+        asStr(c.plate_number).toLowerCase().includes(plate.toLowerCase())
+      )
+      .map((c: any) => c.id);
     if (ids.length) query = query.in("car_id", ids);
-    else return NextResponse.json({ ok: true, page, limit, total: 0, rows: [], filters: { plates, models } });
+    else
+      return NextResponse.json({
+        ok: true,
+        page,
+        limit,
+        total: 0,
+        rows: [],
+        filters: { plates, models },
+      });
   }
 
   if (q) {
     const like = `%${q}%`;
-    query = query.or(`customer_name.ilike.${like},id_number.ilike.${like},mobile.ilike.${like},status.ilike.${like}`);
+    query = query.or(
+      `customer_name.ilike.${like},id_number.ilike.${like},mobile.ilike.${like},status.ilike.${like}`
+    );
   }
 
   const { data, error, count } = await query;
@@ -179,20 +223,30 @@ export async function GET(req: Request) {
   let rows = (data ?? []).map((a: any) => {
     const car = a.cars ?? null;
     const cat = car?.car_catalog ?? null;
-    return { 
-      ...a, 
-      plate_number: asStr(car?.plate_number) || "—", 
-      car_label: buildCarLabel(cat?.make, cat?.model) || "Unknown" 
+    return {
+      ...a,
+      plate_number: asStr(car?.plate_number) || "—",
+      car_label: buildCarLabel(cat?.make, cat?.model) || "Unknown",
     };
   });
 
   if (actor) {
-    const { data: logRows } = await supabase.from("agreement_logs").select("agreement_id").ilike("actor_email", `%${actor}%`);
+    const { data: logRows } = await supabase
+      .from("agreement_logs")
+      .select("agreement_id")
+      .ilike("actor_email", `%${actor}%`);
     const ids = new Set((logRows || []).map((l: any) => l.agreement_id));
     rows = rows.filter((r: any) => ids.has(r.id));
   }
 
-  return NextResponse.json({ ok: true, page, limit, total: count ?? rows.length, rows, filters: { plates, models } });
+  return NextResponse.json({
+    ok: true,
+    page,
+    limit,
+    total: count ?? rows.length,
+    rows,
+    filters: { plates, models },
+  });
 }
 
 // ==============================================================================
@@ -222,7 +276,8 @@ export async function POST(req: Request) {
 
     // --- SMART DELETE ---
     if (action === "delete") {
-      if (actorRole !== "superadmin") return jsonError("Forbidden: Superadmin only", 403);
+      if (actorRole !== "superadmin")
+        return jsonError("Forbidden: Superadmin only", 403);
       const id = asStr(body?.id);
       if (!id) throw new Error("Missing agreement id");
 
@@ -241,8 +296,11 @@ export async function POST(req: Request) {
           .from("agreements")
           .update({ status: "Cancelled" })
           .eq("id", id);
-          
-        if (err2) throw new Error("Could not delete or cancel. DB Error: " + err2.message);
+
+        if (err2)
+          throw new Error(
+            "Could not delete or cancel. DB Error: " + err2.message
+          );
       }
 
       // ✅ FIX: Log the EXACT status that was applied
@@ -265,19 +323,28 @@ export async function POST(req: Request) {
         logo_url: "https://jrv-admin.vercel.app/logo.png",
         customer_name: must(payload.customer_name, "Name required"),
         id_number: must(payload.id_number, "IC required"),
-        mobile: normalizePhoneInternational(must(payload.mobile, "Mobile required")),
+        mobile: normalizePhoneInternational(
+          must(payload.mobile, "Mobile required")
+        ),
         plate_number: must(payload.plate_number, "Plate required"),
         car_type: must(payload.car_type, "Model required"),
-        date_start: fmtHuman(must(payload.date_start_iso, "Start date required")),
+        date_start: fmtHuman(
+          must(payload.date_start_iso, "Start date required")
+        ),
         date_end: fmtHuman(must(payload.date_end_iso, "End date required")),
         total_price: toMoneyString(must(payload.total_price, "Price required")),
         deposit_price: toMoneyString(payload.deposit_price),
         agent_email: asStr(payload.agent_email),
       };
 
-      const pdfBuffer = await renderToBuffer(createElement(AgreementPdf as any, { data }) as any);
-      const publicId = `PREVIEW_${data.mobile.replace("+","")}_${Date.now()}`;
-      const up = await uploadPdfBufferToCloudinary({ buffer: Buffer.from(pdfBuffer), publicId });
+      const pdfBuffer = await renderToBuffer(
+        createElement(AgreementPdf as any, { data }) as any
+      );
+      const publicId = `PREVIEW_${data.mobile.replace("+", "")}_${Date.now()}`;
+      const up = await uploadPdfBufferToCloudinary({
+        buffer: Buffer.from(pdfBuffer),
+        publicId,
+      });
 
       return NextResponse.json({ ok: true, preview_url: up.secure_url });
     }
@@ -290,7 +357,9 @@ export async function POST(req: Request) {
       const dbData: any = {
         customer_name: must(payload.customer_name, "Name required"),
         id_number: must(payload.id_number, "IC required"),
-        mobile: normalizePhoneInternational(must(payload.mobile, "Mobile required")).replace("+", ""),
+        mobile: normalizePhoneInternational(
+          must(payload.mobile, "Mobile required")
+        ).replace("+", ""),
         car_id: must(payload.car_id, "Car required"),
         catalog_id: payload.catalog_id || null,
         plate_number: must(payload.plate_number, "Plate required"),
@@ -304,7 +373,7 @@ export async function POST(req: Request) {
         creator_email: isEdit ? undefined : actorEmail,
         updated_at: new Date().toISOString(),
       };
-      
+
       if (!isEdit) dbData.created_at = new Date().toISOString();
 
       const pdfData = {
@@ -316,18 +385,37 @@ export async function POST(req: Request) {
         agent_email: asStr(payload.agent_email) || actorEmail,
       };
 
-      const pdfBuffer = await renderToBuffer(createElement(AgreementPdf as any, { data: pdfData }) as any);
-      const publicId = `${pdfData.mobile.replace("+","")}_${dbData.id_number}_${dbData.plate_number}_${Date.now()}`;
-      const up = await uploadPdfBufferToCloudinary({ buffer: Buffer.from(pdfBuffer), publicId });
-      
+      const pdfBuffer = await renderToBuffer(
+        createElement(AgreementPdf as any, { data: pdfData }) as any
+      );
+      const publicId = `${pdfData.mobile.replace("+", "")}_${
+        dbData.id_number
+      }_${dbData.plate_number}_${Date.now()}`;
+      const up = await uploadPdfBufferToCloudinary({
+        buffer: Buffer.from(pdfBuffer),
+        publicId,
+      });
+
       dbData.agreement_url = up.secure_url;
-      dbData.whatsapp_url = buildWhatsAppUrl(pdfData.mobile, `Your rental agreement: ${up.secure_url}`);
+      dbData.whatsapp_url = buildWhatsAppUrl(
+        pdfData.mobile,
+        `Your rental agreement: ${up.secure_url}`
+      );
 
       let res;
       if (isEdit) {
-        res = await supabase.from("agreements").update(dbData).eq("id", id).select("id").single();
+        res = await supabase
+          .from("agreements")
+          .update(dbData)
+          .eq("id", id)
+          .select("id")
+          .single();
       } else {
-        res = await supabase.from("agreements").insert(dbData).select("id").single();
+        res = await supabase
+          .from("agreements")
+          .insert(dbData)
+          .select("id")
+          .single();
       }
 
       if (res.error) throw new Error(res.error.message);
@@ -338,14 +426,18 @@ export async function POST(req: Request) {
         actor_email: actorEmail,
         actor_id: actorId,
         action: isEdit ? "updated_regenerated" : "created",
-        after: dbData
+        after: dbData,
       });
 
-      return NextResponse.json({ ok: true, id: res.data.id, agreement_url: dbData.agreement_url, whatsapp_url: dbData.whatsapp_url });
+      return NextResponse.json({
+        ok: true,
+        id: res.data.id,
+        agreement_url: dbData.agreement_url,
+        whatsapp_url: dbData.whatsapp_url,
+      });
     }
 
     return jsonError("Unknown action", 400);
-
   } catch (e: any) {
     console.error("API Error:", e);
     return jsonError(e.message || "Server Error", 500);
