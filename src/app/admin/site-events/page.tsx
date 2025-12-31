@@ -122,15 +122,18 @@ function normalizeCustomRange(from?: string, to?: string) {
 function rangeToIso(rangeKey: string, from?: string, to?: string) {
   const now = new Date();
 
-  const KL_OFFSET_MS = 6 * 60 * 60 * 1000;
+  const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
   const DAY_MS = 24 * 60 * 60 * 1000;
+  const BUSINESS_START_HOUR = 6;
+
   function windowStart6amKlUtc(nowUtc: Date) {
-    const klNow = new Date(nowUtc.getTime() + KL_OFFSET_MS);
+    const klNowMs = nowUtc.getTime() + KL_OFFSET_MS;
+    const klNow = new Date(klNowMs);
     const y = klNow.getUTCFullYear();
     const m = klNow.getUTCMonth();
     const d = klNow.getUTCDate();
-    let startKlMs = Date.UTC(y, m, d, 6, 0, 0, 0);
-    if (klNow.getUTCHours() < 6) startKlMs -= DAY_MS;
+    let startKlMs = Date.UTC(y, m, d, BUSINESS_START_HOUR, 0, 0, 0);
+    if (klNowMs < startKlMs) startKlMs -= DAY_MS;
     return new Date(startKlMs - KL_OFFSET_MS);
   }
 

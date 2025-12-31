@@ -414,6 +414,9 @@ export default function SiteEventsClient({
   const [filters, setFilters] = useState<Filters>(initialFilters);
 
   const [rows, setRows] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(50);
+  const [total, setTotal] = useState(0);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [reqTick, setReqTick] = useState(0);
@@ -423,6 +426,7 @@ export default function SiteEventsClient({
     setToIso(initialTo);
     setRangeKey(initialRange);
     setFilters(initialFilters);
+    setPage(1);
   }, [initialFrom, initialTo, initialRange, initialFilters]);
 
   // debounce fetch a bit
@@ -437,6 +441,8 @@ export default function SiteEventsClient({
     filters.traffic,
     filters.device,
     filters.path,
+    page,
+    limit,
   ]);
 
   // main fetch (rows + summary)
@@ -449,7 +455,8 @@ export default function SiteEventsClient({
         const qs = new URLSearchParams({
           from: fromIso,
           to: toIso,
-          limit: "1200",
+          page: String(page),
+          limit: String(limit),
         });
         if (filters.event) qs.set("event", filters.event);
         if (filters.traffic) qs.set("traffic", filters.traffic);
@@ -472,6 +479,7 @@ export default function SiteEventsClient({
 
         if (!ac.signal.aborted) {
           setRows(aj?.ok ? aj.rows || [] : []);
+          setTotal(aj?.ok ? Number(aj.total || 0) : 0);
           setSummary(bj?.ok ? bj : null);
         }
       } finally {
@@ -482,6 +490,10 @@ export default function SiteEventsClient({
     run();
     return () => ac.abort();
   }, [reqTick]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [fromIso, toIso, filters.event, filters.traffic, filters.device, filters.path]);
 
   // refresh only summary every 5s (light)
   useEffect(() => {
@@ -532,6 +544,8 @@ export default function SiteEventsClient({
       .sort((a, b) => b.count - a.count)
       .slice(0, 20);
   }, [rows]);
+
+  const totalPages = Math.max(1, Math.ceil((total || 0) / Math.max(1, limit)));
 
   return (
     <div className="space-y-6">
@@ -727,7 +741,7 @@ export default function SiteEventsClient({
       </div>
 
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
-        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-linear-to-r from-slate-50 via-indigo-50 to-emerald-50">
+        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-gradient-to-r from-slate-50 via-indigo-50 to-emerald-50">
           <div>
             <div className="font-semibold text-gray-900">
               Page Views by Page Path
@@ -759,7 +773,7 @@ export default function SiteEventsClient({
       </div>
 
       <div className="rounded-2xl border shadow-sm overflow-hidden bg-white">
-        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-linear-to-r from-slate-50 via-indigo-50 to-emerald-50">
+        <div className="p-4 border-b bg-gray-50 flex items-center justify-between bg-gradient-to-r from-slate-50 via-indigo-50 to-emerald-50">
           <div>
             <div className="font-semibold text-gray-900">
               All Events (Filtered)
@@ -769,7 +783,43 @@ export default function SiteEventsClient({
             </div>
           </div>
           <div className="text-xs text-gray-500">
-            {loading ? "Loading…" : `${rows.length} rows`}
+            <div className="flex items-center gap-2">
+              <select
+                value={limit}
+                onChange={(e) => setLimit(Number(e.target.value) || 50)}
+                className="border rounded-lg px-2 py-1 text-xs bg-white"
+              >
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+
+              <button
+                className="border rounded-lg px-2 py-1 text-xs bg-white disabled:opacity-50"
+                disabled={loading || page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+              >
+                Prev
+              </button>
+
+              <div className="tabular-nums">
+                {page} / {totalPages}
+              </div>
+
+              <button
+                className="border rounded-lg px-2 py-1 text-xs bg-white disabled:opacity-50"
+                disabled={loading || page >= totalPages}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              >
+                Next
+              </button>
+
+              <div className="tabular-nums">
+                {loading
+                  ? "Loading…"
+                  : `Showing ${rows.length} of ${total.toLocaleString()}`}
+              </div>
+            </div>
           </div>
         </div>
 

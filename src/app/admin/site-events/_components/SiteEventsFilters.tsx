@@ -48,7 +48,7 @@ function localDayStartISO(dateOnly: string) {
     base.getFullYear(),
     base.getMonth(),
     base.getDate(),
-    0,
+    6,
     0,
     0,
     0
@@ -59,16 +59,16 @@ function localDayStartISO(dateOnly: string) {
 function localDayEndISO(dateOnly: string) {
   const base = dateInputToLocalDate(dateOnly);
   if (!base) return "";
-  const d = new Date(
+  const start = new Date(
     base.getFullYear(),
     base.getMonth(),
     base.getDate(),
-    23,
-    59,
-    59,
-    999
+    6,
+    0,
+    0,
+    0
   );
-  return d.toISOString();
+  return new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
 export default function SiteEventsFilters({

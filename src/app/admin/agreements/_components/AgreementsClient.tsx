@@ -35,11 +35,9 @@ function StatusBadge({ status }: { status: string }) {
   let color = "bg-gray-100 text-gray-600";
   const s = (status || "").toLowerCase();
   if (s === "new") color = "bg-blue-100 text-blue-700";
-  else if (s === "confirmed") color = "bg-green-100 text-green-700";
   else if (s === "editted") color = "bg-amber-100 text-amber-700";
   else if (s === "cancelled" || s === "deleted") color = "bg-red-100 text-red-700";
-  else if (s === "active") color = "bg-emerald-100 text-emerald-800";
-  else if (s === "completed") color = "bg-gray-800 text-white";
+  else if (s === "completed") color = "bg-green-100 text-green-700";
   return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${color}`}>{status || "Unknown"}</span>;
 }
 
@@ -152,7 +150,7 @@ export default function AgreementsClient() {
             <label className="text-xs font-semibold text-gray-500 mb-1 block">Status</label>
             <select className="w-full border rounded-lg px-3 py-2 text-sm h-10 bg-white" value={status} onChange={(e) => updateFilter("status", e.target.value)}>
               <option value="">All Statuses</option>
-              {["Active", "New", "Confirmed", "Editted", "Cancelled", "Completed"].map((s) => (<option key={s} value={s}>{s}</option>))}
+              {["New", "Editted", "Cancelled", "Completed"].map((s) => (<option key={s} value={s}>{s}</option>))}
             </select>
           </div>
           <div>

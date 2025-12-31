@@ -480,7 +480,7 @@ export function AgreementForm({
   };
 
   const statusOptions = isSuperadmin
-    ? ["New", "Confirmed", "Editted", "Cancelled", "Deleted", "Completed"]
+    ? ["New", "Editted", "Cancelled", "Deleted", "Completed"]
     : ["Cancelled"];
 
   return (

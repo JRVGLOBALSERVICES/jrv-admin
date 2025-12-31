@@ -85,27 +85,32 @@ async function fetchRows(
   fromIso: string,
   toIso: string,
   filters: Filters,
+  page: number,
   limit: number
 ) {
+  const fromIdx = (Math.max(1, page) - 1) * limit;
+  const toIdx = fromIdx + limit - 1;
+
   let q = supabaseAdmin
     .from("site_events")
     .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city"
+      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city",
+      { count: "exact" }
     )
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .range(fromIdx, toIdx);
 
   if (filters.event) q = q.eq("event_name", filters.event);
   if (filters.traffic) q = q.eq("traffic_type", filters.traffic);
   if (filters.device) q = q.eq("device_type", filters.device);
   if (filters.path) q = q.ilike("page_path", `%${filters.path}%`);
 
-  const { data, error } = await q;
+  const { data, error, count } = await q;
   if (error) throw new Error(error.message);
 
-  return (data || []) as SiteEventRow[];
+  return { rows: (data || []) as SiteEventRow[], total: count || 0 };
 }
 
 export async function GET(req: Request) {
@@ -132,9 +137,10 @@ export async function GET(req: Request) {
       );
     }
 
+    const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const limit = Math.min(
-      5000,
-      Math.max(1, Number(url.searchParams.get("limit") || 1200))
+      200,
+      Math.max(10, Number(url.searchParams.get("limit") || 50))
     );
 
     const filters: Filters = {
@@ -144,7 +150,7 @@ export async function GET(req: Request) {
       path: url.searchParams.get("path") || undefined,
     };
 
-    const rows = await fetchRows(fromIso, toIso, filters, limit);
+    const { rows, total } = await fetchRows(fromIso, toIso, filters, page, limit);
 
     // session-first attribution (traffic + campaign + refName sticks to the session)
     const sessionFirst = new Map<string, SiteEventRow>();
@@ -202,7 +208,7 @@ export async function GET(req: Request) {
       };
     });
 
-    return NextResponse.json({ ok: true, rows: out });
+    return NextResponse.json({ ok: true, rows: out, page, limit, total });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Server error" },
