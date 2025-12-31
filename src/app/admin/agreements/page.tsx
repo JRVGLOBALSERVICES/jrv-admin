@@ -8,13 +8,19 @@ export const metadata: Metadata = pageMetadata({
   description:
     "Manage agreements, including booking details and car information.",
   path: "/admin/agreements",
-  index: false, 
+  index: false,
 });
 
 export default function AgreementsPage() {
   return (
     // ✅ FIX: Wrapped in Suspense to handle searchParams during build
-    <Suspense fallback={<div className="p-8 text-center text-gray-500">Loading agreements...</div>}>
+    <Suspense
+      fallback={
+        <div className="p-8 text-center text-gray-500">
+          Loading agreements...
+        </div>
+      }
+    >
       <AgreementsClient />
     </Suspense>
   );

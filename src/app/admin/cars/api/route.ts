@@ -129,18 +129,18 @@ export async function POST(req: Request) {
     if (beforeErr) return jsonError(beforeErr.message, 400);
     if (!before) return jsonError("Car not found", 404);
 
-    const { error: delErr } = await supabaseAdmin
-      .from("cars")
-      .delete()
-      .eq("id", id);
-    if (delErr) return jsonError(delErr.message, 400);
-
     await carAuditLog({
       actor_user_id: actorId,
       action: "DELETE_CAR",
       car_id: id,
       meta: { before },
     });
+
+    const { error: delErr } = await supabaseAdmin
+      .from("cars")
+      .delete()
+      .eq("id", id);
+    if (delErr) return jsonError(delErr.message, 400);
 
     return NextResponse.json({ ok: true });
   }

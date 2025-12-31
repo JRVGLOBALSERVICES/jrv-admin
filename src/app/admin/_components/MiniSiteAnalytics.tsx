@@ -143,7 +143,7 @@ export default function MiniSiteAnalytics({
       <div className="p-4 border-b bg-gray-50 flex items-center justify-between">
         <div>
           <div className="font-semibold text-gray-900">
-            Website Analytics (Last 24h)
+            Website Analytics (8am→8am)
           </div>
           <div className="text-xs text-gray-500">
             Mini view • Click “View details” for full GA-style page

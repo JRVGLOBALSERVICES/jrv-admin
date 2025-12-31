@@ -48,6 +48,49 @@ function buildCarLabel(make?: any, model?: any) {
   return [m1, m2].filter(Boolean).join(" ").trim();
 }
 
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function klDayStartUtcIso(dateYYYYMMDD: string) {
+  const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
+  if (!y || !m || !d) return "";
+  const utcMs = Date.UTC(y, m - 1, d, 0, 0, 0, 0) - KL_OFFSET_MS;
+  const dt = new Date(utcMs);
+  return Number.isNaN(dt.getTime()) ? "" : dt.toISOString();
+}
+
+function klDayEndUtcIso(dateYYYYMMDD: string) {
+  const start = klDayStartUtcIso(dateYYYYMMDD);
+  if (!start) return "";
+  const ms = new Date(start).getTime() + DAY_MS - 1;
+  const dt = new Date(ms);
+  return Number.isNaN(dt.getTime()) ? "" : dt.toISOString();
+}
+
+async function syncCarStatus(carId: string) {
+  const nowIso = new Date().toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from("agreements")
+    .select("id")
+    .eq("car_id", carId)
+    .neq("status", "Deleted")
+    .neq("status", "Cancelled")
+    .gt("date_end", nowIso)
+    .limit(1);
+
+  if (error) throw new Error(error.message);
+
+  const nextStatus = (data ?? []).length ? "rented" : "available";
+
+  const { error: uErr } = await supabaseAdmin
+    .from("cars")
+    .update({ status: nextStatus, updated_at: new Date().toISOString() })
+    .eq("id", carId);
+
+  if (uErr) throw new Error(uErr.message);
+}
+
 async function logAgreement(opts: {
   supabase: any;
   agreement_id: string;
@@ -57,7 +100,7 @@ async function logAgreement(opts: {
   before?: any;
   after?: any;
 }) {
-  const { error } = await supabaseAdmin.from("agreement_logs").insert({
+  await supabaseAdmin.from("agreement_logs").insert({
     agreement_id: opts.agreement_id,
     actor_id: opts.actor_id ?? null,
     actor_email: opts.actor_email,
@@ -65,15 +108,10 @@ async function logAgreement(opts: {
     before: opts.before ?? null,
     after: opts.after ?? null,
   });
-
-  if (error) console.error("Log insert failed:", error);
 }
 
 type FilterOption = { value: string; label: string };
 
-// ==============================================================================
-// GET HANDLER (Filters out Deleted/Cancelled)
-// ==============================================================================
 export async function GET(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
@@ -81,7 +119,6 @@ export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);
 
-  // --- SINGLE FETCH ---
   const id = asStr(url.searchParams.get("id"));
   if (id) {
     const { data: row, error } = await supabase
@@ -113,7 +150,6 @@ export async function GET(req: Request) {
     });
   }
 
-  // --- LIST FETCH ---
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
   const limit = Math.min(
     50,
@@ -131,7 +167,6 @@ export async function GET(req: Request) {
   const actor = asStr(url.searchParams.get("actor"));
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
-  // Preload cars
   const { data: carsRows, error: carsErr } = await supabase
     .from("cars")
     .select(`id, plate_number, car_catalog:catalog_id ( make, model )`)
@@ -147,6 +182,7 @@ export async function GET(req: Request) {
   )
     .sort()
     .map((p) => ({ value: p, label: p }));
+
   const models: FilterOption[] = Array.from(
     new Set(
       (carsRows ?? [])
@@ -158,10 +194,10 @@ export async function GET(req: Request) {
   )
     .sort()
     .map((m) => ({ value: m, label: m }));
+
   if (filtersOnly)
     return NextResponse.json({ ok: true, filters: { plates, models } });
 
-  // Query
   let query = supabase
     .from("agreements")
     .select(
@@ -176,7 +212,6 @@ export async function GET(req: Request) {
     .order("updated_at", { ascending: false })
     .range(from, to);
 
-  // Filter out Deleted/Cancelled
   if (status) {
     query = query.eq("status", status);
   } else {
@@ -184,12 +219,14 @@ export async function GET(req: Request) {
   }
 
   if (dateParam) {
-    query = query
-      .gte("date_start", `${dateParam}T00:00:00`)
-      .lte("date_start", `${dateParam}T23:59:59`);
+    const s = klDayStartUtcIso(dateParam);
+    const e = klDayEndUtcIso(dateParam);
+    if (s && e) query = query.gte("date_start", s).lte("date_start", e);
   }
+
   if (endDateParam) {
-    query = query.gte("date_end", `${endDateParam}T00:00:00`);
+    const s = klDayStartUtcIso(endDateParam);
+    if (s) query = query.gte("date_end", s);
   }
 
   if (plate) {
@@ -198,6 +235,27 @@ export async function GET(req: Request) {
         asStr(c.plate_number).toLowerCase().includes(plate.toLowerCase())
       )
       .map((c: any) => c.id);
+
+    if (ids.length) query = query.in("car_id", ids);
+    else
+      return NextResponse.json({
+        ok: true,
+        page,
+        limit,
+        total: 0,
+        rows: [],
+        filters: { plates, models },
+      });
+  }
+
+  if (model) {
+    const ids = (carsRows ?? [])
+      .filter((c: any) => {
+        const lbl = buildCarLabel(c?.car_catalog?.make, c?.car_catalog?.model);
+        return lbl.toLowerCase().includes(model.toLowerCase());
+      })
+      .map((c: any) => c.id);
+
     if (ids.length) query = query.in("car_id", ids);
     else
       return NextResponse.json({
@@ -235,6 +293,7 @@ export async function GET(req: Request) {
       .from("agreement_logs")
       .select("agreement_id")
       .ilike("actor_email", `%${actor}%`);
+
     const ids = new Set((logRows || []).map((l: any) => l.agreement_id));
     rows = rows.filter((r: any) => ids.has(r.id));
   }
@@ -249,9 +308,6 @@ export async function GET(req: Request) {
   });
 }
 
-// ==============================================================================
-// POST HANDLER (Smart Delete)
-// ==============================================================================
 export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
@@ -274,23 +330,28 @@ export async function POST(req: Request) {
   try {
     if (!action) throw new Error("Missing action");
 
-    // --- SMART DELETE ---
     if (action === "delete") {
       if (actorRole !== "superadmin")
         return jsonError("Forbidden: Superadmin only", 403);
       const id = asStr(body?.id);
       if (!id) throw new Error("Missing agreement id");
 
+      const { data: targetRow, error: tErr } = await supabaseAdmin
+        .from("agreements")
+        .select("id, car_id, status")
+        .eq("id", id)
+        .maybeSingle();
+
+      if (tErr) throw new Error(tErr.message);
+
       let finalStatus = "Deleted";
 
-      // 1. Try "Deleted"
       const { error: err1 } = await supabaseAdmin
         .from("agreements")
         .update({ status: "Deleted" })
         .eq("id", id);
 
       if (err1) {
-        // 2. Fallback to "Cancelled"
         finalStatus = "Cancelled";
         const { error: err2 } = await supabaseAdmin
           .from("agreements")
@@ -303,7 +364,6 @@ export async function POST(req: Request) {
           );
       }
 
-      // ✅ FIX: Log the EXACT status that was applied
       await logAgreement({
         supabase,
         agreement_id: id,
@@ -311,13 +371,15 @@ export async function POST(req: Request) {
         actor_id: actorId,
         action: "soft_deleted",
         before: { id },
-        after: { status: finalStatus }, // Will be "Deleted" or "Cancelled"
+        after: { status: finalStatus },
       });
+
+      const carId = asStr(targetRow?.car_id);
+      if (carId) await syncCarStatus(carId);
 
       return NextResponse.json({ ok: true });
     }
 
-    // --- PREVIEW ---
     if (action === "preview") {
       const data = {
         logo_url: "https://jrv-admin.vercel.app/logo.png",
@@ -349,7 +411,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, preview_url: up.secure_url });
     }
 
-    // --- CREATE / UPDATE ---
     if (action === "confirm_create" || action === "confirm_update") {
       const isEdit = action === "confirm_update";
       const id = isEdit ? must(payload.id, "Missing ID") : undefined;
@@ -388,9 +449,11 @@ export async function POST(req: Request) {
       const pdfBuffer = await renderToBuffer(
         createElement(AgreementPdf as any, { data: pdfData }) as any
       );
+
       const publicId = `${pdfData.mobile.replace("+", "")}_${
         dbData.id_number
       }_${dbData.plate_number}_${Date.now()}`;
+
       const up = await uploadPdfBufferToCloudinary({
         buffer: Buffer.from(pdfBuffer),
         publicId,
@@ -420,6 +483,9 @@ export async function POST(req: Request) {
 
       if (res.error) throw new Error(res.error.message);
 
+      const carId = asStr(dbData.car_id);
+      if (carId) await syncCarStatus(carId);
+
       await logAgreement({
         supabase,
         agreement_id: res.data.id,
@@ -439,7 +505,6 @@ export async function POST(req: Request) {
 
     return jsonError("Unknown action", 400);
   } catch (e: any) {
-    console.error("API Error:", e);
     return jsonError(e.message || "Server Error", 500);
   }
 }

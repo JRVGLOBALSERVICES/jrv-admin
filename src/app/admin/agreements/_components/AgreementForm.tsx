@@ -49,8 +49,17 @@ function pad2(n: number) {
 }
 
 function nowTimeHHmm() {
-  const d = new Date();
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  const d = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
+}
+
+function klLocalToUtcIso(dateYYYYMMDD: string, timeHHmm: string) {
+  const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
+  const [hh, mm] = timeHHmm.split(":").map((x) => Number(x));
+  if (!y || !m || !d || !Number.isFinite(hh) || !Number.isFinite(mm)) return "";
+  const ms = Date.UTC(y, m - 1, d, hh - 8, mm, 0, 0);
+  const dt = new Date(ms);
+  return Number.isNaN(dt.getTime()) ? "" : dt.toISOString();
 }
 
 function diffDays(startIso: string, endIso: string) {
@@ -153,7 +162,9 @@ export function AgreementForm({
     [cars, carId]
   );
 
-  const [customerName, setCustomerName] = useState(initial?.customer_name ?? "");
+  const [customerName, setCustomerName] = useState(
+    initial?.customer_name ?? ""
+  );
   const [idNumber, setIdNumber] = useState(initial?.id_number ?? "");
   const [mobile, setMobile] = useState(() => {
     const m = String(initial?.mobile ?? "").trim();
@@ -161,10 +172,16 @@ export function AgreementForm({
     return m.startsWith("+") ? m : `+${m}`;
   });
 
-  const [startDate, setStartDate] = useState((initial?.date_start ?? "").slice(0, 10));
-  const [startTime, setStartTime] = useState(initial?.start_time ?? nowTimeHHmm());
+  const [startDate, setStartDate] = useState(
+    (initial?.date_start ?? "").slice(0, 10)
+  );
+  const [startTime, setStartTime] = useState(
+    initial?.start_time ?? nowTimeHHmm()
+  );
 
-  const [endDate, setEndDate] = useState((initial?.date_end ?? "").slice(0, 10));
+  const [endDate, setEndDate] = useState(
+    (initial?.date_end ?? "").slice(0, 10)
+  );
   const [endTime, setEndTime] = useState(initial?.end_time ?? nowTimeHHmm());
 
   const [total, setTotal] = useState(String(initial?.total_price ?? "0"));
@@ -174,7 +191,9 @@ export function AgreementForm({
   const [totalTouched, setTotalTouched] = useState(false);
   const [depositTouched, setDepositTouched] = useState(false);
 
-  const [previewUrl, setPreviewUrl] = useState<string | null>(initial?.agreement_url ?? null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(
+    initial?.agreement_url ?? null
+  );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   // Snapshot
@@ -197,7 +216,9 @@ export function AgreementForm({
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/admin/cars/api?mode=dropdown", { cache: "no-store" });
+        const res = await fetch("/admin/cars/api?mode=dropdown", {
+          cache: "no-store",
+        });
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Failed to load cars");
         setCars(Array.isArray(json?.rows) ? json.rows : []);
@@ -214,14 +235,12 @@ export function AgreementForm({
 
   const startIso = useMemo(() => {
     if (!startDate || !startTime) return "";
-    const d = new Date(`${startDate}T${startTime}:00`); 
-    return !isNaN(d.getTime()) ? d.toISOString() : ""; 
+    return klLocalToUtcIso(startDate, startTime);
   }, [startDate, startTime]);
 
   const endIso = useMemo(() => {
     if (!endDate || !endTime) return "";
-    const d = new Date(`${endDate}T${endTime}:00`);
-    return !isNaN(d.getTime()) ? d.toISOString() : "";
+    return klLocalToUtcIso(endDate, endTime);
   }, [endDate, endTime]);
 
   const durationDays = startIso && endIso ? diffDays(startIso, endIso) : 0;
@@ -250,7 +269,10 @@ export function AgreementForm({
       carId !== initialSnapshot.carId ||
       customerName !== initialSnapshot.customerName ||
       idNumber !== initialSnapshot.idNumber ||
-      mobile !== (initialSnapshot.mobile.startsWith("+") ? initialSnapshot.mobile : `+${initialSnapshot.mobile}`) ||
+      mobile !==
+        (initialSnapshot.mobile.startsWith("+")
+          ? initialSnapshot.mobile
+          : `+${initialSnapshot.mobile}`) ||
       startDate !== initialSnapshot.startDate ||
       startTime !== initialSnapshot.startTime ||
       endDate !== initialSnapshot.endDate ||
@@ -259,14 +281,40 @@ export function AgreementForm({
       String(deposit) !== String(initialSnapshot.deposit);
 
     if (!dirty) return;
-    if (status !== "Cancelled" && status !== "Deleted") setStatus("Editted");
-  }, [isEdit, initial?.id, isDeleted, carId, customerName, idNumber, mobile, startDate, startTime, endDate, endTime, total, deposit, initialSnapshot, status]);
+    if (
+      status === initialSnapshot.status &&
+      status !== "Cancelled" &&
+      status !== "Deleted"
+    ) {
+      setStatus("Editted");
+    }
+  }, [
+    isEdit,
+    initial?.id,
+    isDeleted,
+    carId,
+    customerName,
+    idNumber,
+    mobile,
+    startDate,
+    startTime,
+    endDate,
+    endTime,
+    total,
+    deposit,
+    initialSnapshot,
+    status,
+  ]);
 
   const validate = () => {
     if (!customerName.trim()) return "Customer name required";
     if (!idNumber.trim()) return "IC/Passport required";
     if (!mobile.trim()) return "Mobile required";
-    try { normalizePhoneInternational(mobile); } catch (e: any) { return e.message; }
+    try {
+      normalizePhoneInternational(mobile);
+    } catch (e: any) {
+      return e.message;
+    }
     if (!carId) return "Select a car (plate)";
     if (!plate) return "Selected car plate missing";
     if (!carLabel) return "Selected car model missing";
@@ -275,7 +323,8 @@ export function AgreementForm({
     if (!endDate || !endTime) return "End date/time required";
     const a = new Date(startIso).getTime();
     const b = new Date(endIso).getTime();
-    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return "End must be after start";
+    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a)
+      return "End must be after start";
     if (toMoney(total) <= 0) return "Total price required";
     if (toMoney(deposit) < 0) return "Deposit cannot be negative";
     if (mode === "edit" && !initial?.id) return "Missing agreement id";
@@ -329,11 +378,11 @@ export function AgreementForm({
   const executeSave = async (overrideStatus?: string) => {
     play("click");
     setErr(null);
-    
+
     // Only validate if not restoring (restoring assumes data is ok, just status change)
     if (!overrideStatus) {
-       const v = validate();
-       if (v) return setErr(v);
+      const v = validate();
+      if (v) return setErr(v);
     }
 
     setBusy(true);
@@ -370,7 +419,8 @@ export function AgreementForm({
       if (!res.ok) throw new Error(json?.error || "Save failed");
 
       play("ok");
-      if (json.whatsapp_url) window.open(json.whatsapp_url, "_blank", "noopener,noreferrer");
+      if (json.whatsapp_url)
+        window.open(json.whatsapp_url, "_blank", "noopener,noreferrer");
       window.location.href = onDoneHref;
     } catch (e: any) {
       setErr(e?.message || "Save failed");
@@ -383,7 +433,7 @@ export function AgreementForm({
   // ✅ NEW: 2-STEP DELETE HANDLER (No Popup)
   const handleDeleteClick = async () => {
     if (!initial?.id) return;
-    
+
     // Step 1: Ask for confirmation on the button itself
     if (deleteStage === "idle") {
       setDeleteStage("confirm");
@@ -398,17 +448,17 @@ export function AgreementForm({
       play("click");
       setBusy(true);
       setErr(null);
-      
+
       try {
         const res = await fetch("/admin/agreements/api", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "delete", id: initial.id }),
         });
-        
+
         const json = await res.json();
         if (!res.ok) throw new Error(json?.error || "Delete failed");
-        
+
         play("ok");
         // No alert, just redirect
         window.location.href = onDoneHref;
@@ -444,7 +494,9 @@ export function AgreementForm({
             )}
           </div>
           <div className="text-sm opacity-70">
-            {isDeleted ? "This agreement is deleted and read-only." : "Fill fields → Preview PDF → Confirm → WhatsApp"}
+            {isDeleted
+              ? "This agreement is deleted and read-only."
+              : "Fill fields → Preview PDF → Confirm → WhatsApp"}
           </div>
         </div>
 
@@ -458,7 +510,13 @@ export function AgreementForm({
                 disabled={busy}
                 className="bg-emerald-600 text-white px-3 py-2 rounded text-sm font-medium hover:bg-emerald-700 flex items-center gap-2 transition-all shadow-sm"
               >
-                {busy ? "Restoring..." : <><RotateCcw className="w-4 h-4" /> Restore Agreement</>}
+                {busy ? (
+                  "Restoring..."
+                ) : (
+                  <>
+                    <RotateCcw className="w-4 h-4" /> Restore Agreement
+                  </>
+                )}
               </button>
             ) : (
               <button
@@ -467,17 +525,21 @@ export function AgreementForm({
                 disabled={busy}
                 className={`
                   px-3 py-2 rounded text-sm font-medium flex items-center gap-2 transition-all shadow-sm
-                  ${deleteStage === "confirm" 
-                    ? "bg-red-600 text-white animate-pulse" 
-                    : "bg-white border border-red-200 text-red-600 hover:bg-red-50"}
+                  ${
+                    deleteStage === "confirm"
+                      ? "bg-red-600 text-white animate-pulse"
+                      : "bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                  }
                 `}
               >
                 {busy ? (
-                   "Deleting..." 
+                  "Deleting..."
                 ) : deleteStage === "confirm" ? (
-                   "Confirm Delete?" 
+                  "Confirm Delete?"
                 ) : (
-                   <><Trash2 className="w-4 h-4" /> Delete</>
+                  <>
+                    <Trash2 className="w-4 h-4" /> Delete
+                  </>
                 )}
               </button>
             )
@@ -496,7 +558,11 @@ export function AgreementForm({
       )}
 
       {/* LOCKED FORM IF DELETED */}
-      <Card className={`p-4 space-y-4 transition-opacity ${isDeleted ? "opacity-60 pointer-events-none grayscale-[0.5]" : ""}`}>
+      <Card
+        className={`p-4 space-y-4 transition-opacity ${
+          isDeleted ? "opacity-60 pointer-events-none grayscale-[0.5]" : ""
+        }`}
+      >
         <div className="grid md:grid-cols-3 gap-3">
           <div>
             <div className="text-xs opacity-60 mb-1">Customer Name</div>
@@ -596,7 +662,10 @@ export function AgreementForm({
               type="number"
               className="w-full border rounded-lg px-3 py-2 font-bold text-green-700 disabled:bg-gray-100 disabled:text-gray-500"
               value={total}
-              onChange={(e) => { setTotalTouched(true); setTotal(e.target.value); }}
+              onChange={(e) => {
+                setTotalTouched(true);
+                setTotal(e.target.value);
+              }}
             />
           </div>
           <div>
@@ -606,32 +675,54 @@ export function AgreementForm({
               type="number"
               className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
               value={deposit}
-              onChange={(e) => { setDepositTouched(true); setDeposit(e.target.value); }}
+              onChange={(e) => {
+                setDepositTouched(true);
+                setDeposit(e.target.value);
+              }}
             />
           </div>
           <div>
             <div className="text-xs opacity-60 mb-1">Duration</div>
-            <input className="w-full border rounded-lg px-3 py-2 bg-black/5" value={durationDays} readOnly />
+            <input
+              className="w-full border rounded-lg px-3 py-2 bg-black/5"
+              value={durationDays}
+              readOnly
+            />
           </div>
           <div>
             <div className="text-xs opacity-60 mb-1">Status</div>
             {isSuperadmin ? (
               <select
-                disabled={isDeleted} 
+                disabled={isDeleted}
                 className="w-full border rounded-lg px-3 py-2 bg-white disabled:bg-gray-100"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               >
-                {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
               </select>
             ) : (
-              <input className="w-full border rounded-lg px-3 py-2 bg-black/5" value={status} readOnly />
+              <input
+                className="w-full border rounded-lg px-3 py-2 bg-black/5"
+                value={status}
+                readOnly
+              />
             )}
           </div>
         </div>
 
         <div className="flex gap-2 justify-end">
-          <Button sound="on" haptics="on" variant="secondary" onClick={preview} loading={busy} disabled={isDeleted}>
+          <Button
+            sound="on"
+            haptics="on"
+            variant="secondary"
+            onClick={preview}
+            loading={busy}
+            disabled={isDeleted}
+          >
             Preview PDF
           </Button>
         </div>
@@ -639,13 +730,28 @@ export function AgreementForm({
 
       {confirmOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 md:p-6">
-          <button className="absolute inset-0 bg-black/40" onClick={() => setConfirmOpen(false)} />
+          <button
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setConfirmOpen(false)}
+          />
           <div className="relative w-full max-w-6xl rounded-xl border bg-white overflow-hidden">
             <div className="p-3 border-b flex items-center justify-between">
               <div className="font-semibold">Confirm Agreement</div>
               <div className="flex gap-2">
-                <Button variant="secondary" onClick={() => setConfirmOpen(false)}>Close</Button>
-                <Button sound="on" haptics="on" onClick={() => executeSave()} loading={busy}>Confirm & Send</Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmOpen(false)}
+                >
+                  Close
+                </Button>
+                <Button
+                  sound="on"
+                  haptics="on"
+                  onClick={() => executeSave()}
+                  loading={busy}
+                >
+                  Confirm & Send
+                </Button>
               </div>
             </div>
             <div className="p-3 max-h-[80vh] overflow-y-auto bg-gray-50">
@@ -653,7 +759,14 @@ export function AgreementForm({
                 <>
                   <PdfViewer url={previewUrl} />
                   <div className="text-center mt-4 mb-2">
-                    <a href={previewUrl} target="_blank" rel="noreferrer" className="text-sm text-blue-600 underline">Open PDF</a>
+                    <a
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm text-blue-600 underline"
+                    >
+                      Open PDF
+                    </a>
                   </div>
                 </>
               ) : (

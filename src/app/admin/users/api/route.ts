@@ -275,6 +275,16 @@ export async function POST(req: Request) {
         phone: target.phone ?? null,
       });
 
+      await supabaseAdmin
+        .from("admin_audit_logs")
+        .delete()
+        .or(`actor_user_id.eq.${user_id},target_user_id.eq.${user_id}`);
+
+      await supabaseAdmin
+        .from("car_audit_logs")
+        .delete()
+        .eq("actor_user_id", user_id);
+
       const { error: delRowErr } = await supabaseAdmin
         .from("admin_users")
         .delete()
