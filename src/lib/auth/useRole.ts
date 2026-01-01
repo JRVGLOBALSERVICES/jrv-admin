@@ -2,49 +2,74 @@
 
 import { useEffect, useState } from "react";
 
-export type Role = "superadmin" | "admin" | null;
+type RoleState = {
+  role: string | null;
+  status: string | null;
+  email: string | null;
+  loading: boolean;
+};
 
-export function useRole() {
-  const [email, setEmail] = useState<string | null>(null);
-  const [role, setRole] = useState<Role>(null);
-  const [status, setStatus] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  async function load() {
-    try {
-      setLoading(true);
-      const res = await fetch("/admin/me", {
-        method: "GET",
-        credentials: "include",
-        cache: "no-store",
-        headers: { "cache-control": "no-store" },
-      });
-
-      const json = await res.json();
-      // Ensure role and email match the API response structure
-      setRole((json?.role as Role) ?? null);
-      setStatus((json?.status as string | null) ?? null);
-      setEmail((json?.email || json?.user?.email) ?? null);
-    } catch {
-      setRole(null);
-      setStatus(null);
-    } finally {
-      setLoading(false);
-    }
-  }
+export function useRole(): RoleState {
+  const [state, setState] = useState<RoleState>({
+    role: null,
+    status: null,
+    email: null,
+    loading: true,
+  });
 
   useEffect(() => {
-    let alive = true;
+    let cancelled = false;
+
+    async function load() {
+      try {
+        const res = await fetch("/admin/me", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!res.ok) {
+          if (!cancelled) {
+            setState({
+              role: null,
+              status: null,
+              email: null,
+              loading: false,
+            });
+          }
+          return;
+        }
+
+        const data = await res.json();
+
+        if (!cancelled) {
+          setState({
+            role: data?.role ?? null,
+            status: data?.status ?? null,
+            email: data?.user?.email ?? null,
+            loading: false,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setState({
+            role: null,
+            status: null,
+            email: null,
+            loading: false,
+          });
+        }
+      }
+    }
+
     load();
-
-    const onFocus = () => load();
-    window.addEventListener("focus", onFocus);
-
     return () => {
-      alive = false;
-      window.removeEventListener("focus", onFocus);
+      cancelled = true;
     };
   }, []);
 
-  return { role, status, email, loading, refresh: load };
+  return state;
 }
