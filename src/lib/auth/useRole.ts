@@ -1,86 +1,50 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client"; // ✅ Now matches Step 1
-import { useRouter } from "next/navigation";
-import { type AuthChangeEvent } from "@supabase/supabase-js";
 
-export type RoleState = {
-  loading: boolean;
-  role: "admin" | "superadmin" | null;
-  email: string | null;
-  id: string | null;
-};
+export type Role = "superadmin" | "admin" | null;
 
 export function useRole() {
-  const [state, setState] = useState<RoleState>({
-    loading: true,
-    role: null,
-    email: null,
-    id: null,
-  });
-  const router = useRouter();
+  const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<Role>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Initialize safely
-  const supabase = createClient();
+  async function load() {
+    try {
+      setLoading(true);
+      const res = await fetch("/admin/me", {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { "cache-control": "no-store" },
+      });
+
+      const json = await res.json();
+      // Ensure role and email match the API response structure
+      setRole((json?.role as Role) ?? null);
+      setStatus((json?.status as string | null) ?? null);
+      setEmail((json?.email || json?.user?.email) ?? null);
+    } catch {
+      setRole(null);
+      setStatus(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
-    let mounted = true;
+    let alive = true;
+    load();
 
-    async function check() {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error || !session) {
-          if (mounted) {
-            setState({ loading: false, role: null, email: null, id: null });
-            // Redirect to root if user tries to access admin without session
-            if (window.location.pathname.startsWith("/admin")) {
-              router.replace("/");
-            }
-          }
-          return;
-        }
-
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", session.user.id)
-          .single();
-
-        if (mounted) {
-          setState({
-            loading: false,
-            role: (profile?.role as any) ?? "admin",
-            email: session.user.email ?? "",
-            id: session.user.id,
-          });
-        }
-      } catch (e) {
-        console.error("Auth check failed:", e);
-        // ✅ CRITICAL FIX: Ensure loading stops even on error
-        if (mounted) setState((prev) => ({ ...prev, loading: false }));
-      }
-    }
-
-    check();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event: AuthChangeEvent) => {
-      if (event === "SIGNED_OUT") {
-        router.replace("/");
-      }
-    });
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
 
     return () => {
-      mounted = false;
-      subscription.unsubscribe();
+      alive = false;
+      window.removeEventListener("focus", onFocus);
     };
-  }, [router, supabase]);
+  }, []);
 
-  return state;
+  return { role, status, email, loading, refresh: load };
 }
