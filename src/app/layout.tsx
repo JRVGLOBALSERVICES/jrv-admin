@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { baseMetadata } from "@/lib/seo";
+import IosInstallPrompt from "@/components/pwa/IosInstallPrompt"; // Import the component
 
 export const metadata: Metadata = {
   ...baseMetadata(),
-  manifest: "/manifest.json", // ✅ Link to PWA manifest
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -14,7 +15,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <IosInstallPrompt /> {/* Add component here */}
+      </body>
     </html>
   );
 }

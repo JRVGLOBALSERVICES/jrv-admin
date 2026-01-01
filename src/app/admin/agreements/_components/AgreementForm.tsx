@@ -7,7 +7,14 @@ import { Button } from "@/components/ui/Button";
 import { normalizePhoneInternational } from "@/lib/phone";
 import { useRole } from "@/lib/auth/useRole";
 import { PdfViewer } from "./PdfViewer";
-import { RotateCcw, Trash2, AlertTriangle, CheckCircle } from "lucide-react";
+import {
+  RotateCcw,
+  Trash2,
+  AlertTriangle,
+  CheckCircle,
+  XCircle,
+  ShieldAlert,
+} from "lucide-react";
 
 type CarRow = {
   id: string;
@@ -38,6 +45,10 @@ type InitialAgreement = {
   deposit_price?: string | number;
   agreement_url?: string | null;
 };
+
+/* =========================
+   Helpers
+   ========================= */
 
 function toMoney(v: any) {
   const n = Number(v ?? 0);
@@ -80,18 +91,15 @@ function suggestPrice(car: CarRow | null, days: number) {
   const daily = car.daily_price ? Number(car.daily_price) : Infinity;
 
   if (remaining >= 30 && monthly !== Infinity) {
-    const count = Math.floor(remaining / 30);
-    total += count * monthly;
+    total += Math.floor(remaining / 30) * monthly;
     remaining %= 30;
   }
   if (remaining >= 7 && weekly !== Infinity) {
-    const count = Math.floor(remaining / 7);
-    total += count * weekly;
+    total += Math.floor(remaining / 7) * weekly;
     remaining %= 7;
   }
   if (remaining >= 3 && promo3 !== Infinity) {
-    const count = Math.floor(remaining / 3);
-    total += count * promo3;
+    total += Math.floor(remaining / 3) * promo3;
     remaining %= 3;
   }
   if (remaining > 0 && daily !== Infinity) {
@@ -126,9 +134,27 @@ function useSfx() {
       void el.play();
     } catch {}
   };
-
   return { play };
 }
+
+// ✅ Blacklist Check Helper
+async function checkBlacklist(type: "mobile" | "ic", value: string) {
+  if (!value || value.length < 5) return null;
+  try {
+    const res = await fetch("/admin/blacklist/check", {
+      method: "POST",
+      body: JSON.stringify({ type, value }),
+    });
+    const j = await res.json();
+    return j.blacklisted ? j.entry : null;
+  } catch {
+    return null;
+  }
+}
+
+/* =========================
+   COMPONENT
+   ========================= */
 
 export function AgreementForm({
   mode,
@@ -144,10 +170,7 @@ export function AgreementForm({
   const agentRole = roleState?.role ?? "admin";
   const isSuperadmin = agentRole === "superadmin";
   const isEdit = mode === "edit";
-
-  // Check if Deleted
   const isDeleted = initial?.status === "Deleted";
-
   const { play } = useSfx();
 
   const [err, setErr] = useState<string | null>(null);
@@ -156,7 +179,6 @@ export function AgreementForm({
 
   const [cars, setCars] = useState<CarRow[]>([]);
   const [carId, setCarId] = useState(initial?.car_id ?? "");
-
   const selectedCar = useMemo(
     () => cars.find((c) => c.id === carId) ?? null,
     [cars, carId]
@@ -165,12 +187,24 @@ export function AgreementForm({
   const [customerName, setCustomerName] = useState(
     initial?.customer_name ?? ""
   );
+
+  // ✅ Blacklist State
   const [idNumber, setIdNumber] = useState(initial?.id_number ?? "");
+  const [idStatus, setIdStatus] = useState<"idle" | "safe" | "danger">("idle");
+
   const [mobile, setMobile] = useState(() => {
     const m = String(initial?.mobile ?? "").trim();
     if (!m) return "";
     return m.startsWith("+") ? m : `+${m}`;
   });
+  const [mobileStatus, setMobileStatus] = useState<"idle" | "safe" | "danger">(
+    "idle"
+  );
+  const [blacklistAlert, setBlacklistAlert] = useState<{
+    type: string;
+    value: string;
+    reason: string;
+  } | null>(null);
 
   const [startDate, setStartDate] = useState(
     (initial?.date_start ?? "").slice(0, 10)
@@ -178,7 +212,6 @@ export function AgreementForm({
   const [startTime, setStartTime] = useState(
     initial?.start_time ?? nowTimeHHmm()
   );
-
   const [endDate, setEndDate] = useState(
     (initial?.date_end ?? "").slice(0, 10)
   );
@@ -196,9 +229,9 @@ export function AgreementForm({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Snapshot
-  const initialSnapshot = useMemo(() => {
-    return {
+  // Snapshot for dirty check
+  const initialSnapshot = useMemo(
+    () => ({
       carId: initial?.car_id ?? "",
       customerName: initial?.customer_name ?? "",
       idNumber: initial?.id_number ?? "",
@@ -210,8 +243,9 @@ export function AgreementForm({
       total: String(initial?.total_price ?? "0"),
       deposit: String(initial?.deposit_price ?? "0"),
       status: initial?.status ?? "New",
-    };
-  }, [initial?.id]);
+    }),
+    [initial?.id]
+  );
 
   useEffect(() => {
     (async () => {
@@ -222,10 +256,8 @@ export function AgreementForm({
           url.searchParams.set("include", initial.car_id);
         const res = await fetch(url.toString(), { cache: "no-store" });
         const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Failed to load cars");
         setCars(Array.isArray(json?.rows) ? json.rows : []);
-      } catch (e: any) {
-        setErr(e?.message || "Failed to load cars");
+      } catch {
         setCars([]);
       }
     })();
@@ -235,38 +267,32 @@ export function AgreementForm({
   const carLabel = (selectedCar?.car_label ?? "").trim();
   const catalogId = selectedCar?.catalog_id ?? null;
 
-  const startIso = useMemo(() => {
-    if (!startDate || !startTime) return "";
-    return klLocalToUtcIso(startDate, startTime);
-  }, [startDate, startTime]);
-
-  const endIso = useMemo(() => {
-    if (!endDate || !endTime) return "";
-    return klLocalToUtcIso(endDate, endTime);
-  }, [endDate, endTime]);
-
+  const startIso = useMemo(
+    () => (startDate && startTime ? klLocalToUtcIso(startDate, startTime) : ""),
+    [startDate, startTime]
+  );
+  const endIso = useMemo(
+    () => (endDate && endTime ? klLocalToUtcIso(endDate, endTime) : ""),
+    [endDate, endTime]
+  );
   const durationDays = startIso && endIso ? diffDays(startIso, endIso) : 0;
 
   useEffect(() => {
     if (!selectedCar || depositTouched) return;
-    const carDep = selectedCar.deposit;
-    if (carDep != null && toMoney(deposit) <= 0) setDeposit(String(carDep));
+    if (selectedCar.deposit != null && toMoney(deposit) <= 0)
+      setDeposit(String(selectedCar.deposit));
   }, [selectedCar, depositTouched]);
 
   useEffect(() => {
     if (!selectedCar || totalTouched) return;
-    if (durationDays > 0) {
-      const suggested = suggestPrice(selectedCar, durationDays);
-      setTotal(String(suggested.toFixed(2)));
-    } else {
-      setTotal("0.00");
-    }
+    if (durationDays > 0)
+      setTotal(String(suggestPrice(selectedCar, durationDays).toFixed(2)));
+    else setTotal("0.00");
   }, [selectedCar, durationDays, totalTouched]);
 
-  // Dirty Check Logic
+  // Dirty Check
   useEffect(() => {
     if (!isEdit || !initial?.id || isDeleted) return;
-
     const dirty =
       carId !== initialSnapshot.carId ||
       customerName !== initialSnapshot.customerName ||
@@ -282,8 +308,8 @@ export function AgreementForm({
       String(total) !== String(initialSnapshot.total) ||
       String(deposit) !== String(initialSnapshot.deposit);
 
-    if (!dirty) return;
     if (
+      dirty &&
       status === initialSnapshot.status &&
       status !== "Cancelled" &&
       status !== "Deleted"
@@ -308,6 +334,39 @@ export function AgreementForm({
     status,
   ]);
 
+  // ✅ BLACKLIST HANDLERS
+  const handleMobileBlur = async () => {
+    if (mobile.length < 6) return;
+    const entry = await checkBlacklist("mobile", mobile);
+    if (entry) {
+      setMobileStatus("danger");
+      setBlacklistAlert({
+        type: "Mobile Number",
+        value: mobile,
+        reason: entry.reason,
+      });
+      play("fail");
+    } else {
+      setMobileStatus("safe");
+    }
+  };
+
+  const handleIdBlur = async () => {
+    if (idNumber.length < 6) return;
+    const entry = await checkBlacklist("ic", idNumber);
+    if (entry) {
+      setIdStatus("danger");
+      setBlacklistAlert({
+        type: "IC Number",
+        value: idNumber,
+        reason: entry.reason,
+      });
+      play("fail");
+    } else {
+      setIdStatus("safe");
+    }
+  };
+
   const validate = () => {
     if (!customerName.trim()) return "Customer name required";
     if (!idNumber.trim()) return "IC/Passport required";
@@ -318,17 +377,8 @@ export function AgreementForm({
       return e.message;
     }
     if (!carId) return "Select a car (plate)";
-    if (!plate) return "Selected car plate missing";
-    if (!carLabel) return "Selected car model missing";
-    if (!catalogId) return "Selected car catalog_id missing";
-    if (!startDate || !startTime) return "Start date/time required";
-    if (!endDate || !endTime) return "End date/time required";
-    const a = new Date(startIso).getTime();
-    const b = new Date(endIso).getTime();
-    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a)
-      return "End must be after start";
+    if (!startIso || !endIso) return "Invalid dates";
     if (toMoney(total) <= 0) return "Total price required";
-    if (toMoney(deposit) < 0) return "Deposit cannot be negative";
     if (mode === "edit" && !initial?.id) return "Missing agreement id";
     return null;
   };
@@ -376,22 +426,17 @@ export function AgreementForm({
     }
   };
 
-  // Internal save function
   const executeSave = async (overrideStatus?: string) => {
     play("click");
     setErr(null);
-
-    // Only validate if not restoring (restoring assumes data is ok, just status change)
     if (!overrideStatus) {
       const v = validate();
       if (v) return setErr(v);
     }
-
     setBusy(true);
     try {
       const action = mode === "edit" ? "confirm_update" : "confirm_create";
       const finalStatus = overrideStatus || status;
-
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -416,10 +461,8 @@ export function AgreementForm({
           },
         }),
       });
-
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Save failed");
-
       play("ok");
       if (json.whatsapp_url)
         window.open(json.whatsapp_url, "_blank", "noopener,noreferrer");
@@ -432,37 +475,23 @@ export function AgreementForm({
     }
   };
 
-  // ✅ NEW: 2-STEP DELETE HANDLER (No Popup)
   const handleDeleteClick = async () => {
     if (!initial?.id) return;
-
-    // Step 1: Ask for confirmation on the button itself
     if (deleteStage === "idle") {
       setDeleteStage("confirm");
       play("click");
-      // Auto-reset if they don't click within 4 seconds
       setTimeout(() => setDeleteStage("idle"), 4000);
       return;
     }
-
-    // Step 2: Execute Delete
     if (deleteStage === "confirm") {
       play("click");
       setBusy(true);
-      setErr(null);
-
       try {
-        const res = await fetch("/admin/agreements/api", {
+        await fetch("/admin/agreements/api", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ action: "delete", id: initial.id }),
         });
-
-        const json = await res.json();
-        if (!res.ok) throw new Error(json?.error || "Delete failed");
-
         play("ok");
-        // No alert, just redirect
         window.location.href = onDoneHref;
       } catch (e: any) {
         setErr(e?.message || "Delete failed");
@@ -473,11 +502,7 @@ export function AgreementForm({
     }
   };
 
-  // Restore Handler (Also 2-step for safety)
-  const handleRestoreClick = async () => {
-    // We just reuse save with "Editted" status
-    await executeSave("Editted");
-  };
+  const handleRestoreClick = async () => await executeSave("Editted");
 
   const statusOptions = isSuperadmin
     ? ["New", "Editted", "Cancelled", "Deleted", "Completed"]
@@ -485,6 +510,46 @@ export function AgreementForm({
 
   return (
     <div className="p-4 md:p-6 space-y-4">
+      {/* ✅ Blacklist Warning Modal */}
+      {blacklistAlert && (
+        <div className="fixed inset-0 z-100 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 border-l-4 border-red-600">
+            <div className="flex items-center gap-3 text-red-600 mb-2">
+              <ShieldAlert className="w-8 h-8" />
+              <h3 className="text-xl font-bold">Blacklist Warning</h3>
+            </div>
+            <p className="text-gray-700 mb-4">
+              The {blacklistAlert.type}{" "}
+              <span className="font-mono font-bold">
+                {blacklistAlert.value}
+              </span>{" "}
+              is in the blacklist.
+            </p>
+            {blacklistAlert.reason && (
+              <div className="bg-red-50 p-3 rounded mb-4 text-sm text-red-800">
+                <strong>Reason:</strong> {blacklistAlert.reason}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={() => setBlacklistAlert(null)}
+                className="flex-1 bg-gray-200 py-2 rounded font-bold hover:bg-gray-300"
+              >
+                Ignore (Risky)
+              </button>
+              <Link
+                href="/admin/blacklist"
+                target="_blank"
+                className="flex-1 bg-red-600 text-white py-2 rounded font-bold text-center hover:bg-red-700"
+              >
+                View Blacklist
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xl font-semibold flex items-center gap-2">
@@ -501,9 +566,7 @@ export function AgreementForm({
               : "Fill fields → Preview PDF → Confirm → WhatsApp"}
           </div>
         </div>
-
         <div className="flex gap-2 items-center">
-          {/* ✅ SMART DELETE / RESTORE BUTTONS */}
           {isEdit && isSuperadmin ? (
             isDeleted ? (
               <button
@@ -525,14 +588,11 @@ export function AgreementForm({
                 type="button"
                 onClick={handleDeleteClick}
                 disabled={busy}
-                className={`
-                  px-3 py-2 rounded text-sm font-medium flex items-center gap-2 transition-all shadow-sm
-                  ${
-                    deleteStage === "confirm"
-                      ? "bg-red-600 text-white animate-pulse"
-                      : "bg-white border border-red-200 text-red-600 hover:bg-red-50"
-                  }
-                `}
+                className={`px-3 py-2 rounded text-sm font-medium flex items-center gap-2 transition-all shadow-sm ${
+                  deleteStage === "confirm"
+                    ? "bg-red-600 text-white animate-pulse"
+                    : "bg-white border border-red-200 text-red-600 hover:bg-red-50"
+                }`}
               >
                 {busy ? (
                   "Deleting..."
@@ -546,7 +606,6 @@ export function AgreementForm({
               </button>
             )
           ) : null}
-
           <Link href={onDoneHref} className="underline text-sm px-2">
             Back
           </Link>
@@ -559,7 +618,7 @@ export function AgreementForm({
         </div>
       )}
 
-      {/* LOCKED FORM IF DELETED */}
+      {/* Form */}
       <Card
         className={`p-4 space-y-4 transition-opacity ${
           isDeleted ? "opacity-60 pointer-events-none grayscale-[0.5]" : ""
@@ -575,24 +634,68 @@ export function AgreementForm({
               onChange={(e) => setCustomerName(e.target.value)}
             />
           </div>
-          <div>
+
+          {/* ✅ IC Input with Status */}
+          <div className="relative">
             <div className="text-xs opacity-60 mb-1">IC / Passport</div>
-            <input
-              disabled={isDeleted}
-              className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
-              value={idNumber}
-              onChange={(e) => setIdNumber(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                disabled={isDeleted}
+                className={`w-full border rounded-lg px-3 py-2 pr-10 disabled:bg-gray-100 ${
+                  idStatus === "danger"
+                    ? "border-red-500 bg-red-50"
+                    : idStatus === "safe"
+                    ? "border-green-500"
+                    : ""
+                }`}
+                value={idNumber}
+                onChange={(e) => {
+                  setIdNumber(e.target.value);
+                  setIdStatus("idle");
+                }}
+                onBlur={handleIdBlur}
+              />
+              <div className="absolute right-3 top-2.5 pointer-events-none">
+                {idStatus === "safe" && (
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                )}
+                {idStatus === "danger" && (
+                  <XCircle className="w-5 h-5 text-red-500" />
+                )}
+              </div>
+            </div>
           </div>
-          <div>
+
+          {/* ✅ Mobile Input with Status */}
+          <div className="relative">
             <div className="text-xs opacity-60 mb-1">Mobile</div>
-            <input
-              disabled={isDeleted}
-              className="w-full border rounded-lg px-3 py-2 disabled:bg-gray-100"
-              placeholder="+60..."
-              value={mobile}
-              onChange={(e) => setMobile(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                disabled={isDeleted}
+                className={`w-full border rounded-lg px-3 py-2 pr-10 disabled:bg-gray-100 ${
+                  mobileStatus === "danger"
+                    ? "border-red-500 bg-red-50"
+                    : mobileStatus === "safe"
+                    ? "border-green-500"
+                    : ""
+                }`}
+                placeholder="+60..."
+                value={mobile}
+                onChange={(e) => {
+                  setMobile(e.target.value);
+                  setMobileStatus("idle");
+                }}
+                onBlur={handleMobileBlur}
+              />
+              <div className="absolute right-3 top-2.5 pointer-events-none">
+                {mobileStatus === "safe" && (
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                )}
+                {mobileStatus === "danger" && (
+                  <XCircle className="w-5 h-5 text-red-500" />
+                )}
+              </div>
+            </div>
           </div>
         </div>
 

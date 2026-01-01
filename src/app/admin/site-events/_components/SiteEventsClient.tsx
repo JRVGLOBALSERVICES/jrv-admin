@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ExternalLink, Megaphone, TrendingUp, DollarSign } from "lucide-react";
 
 type Filters = { event: string; traffic: string; device: string; path: string };
 
-// ✅ Safety Default
 const DEFAULT_FILTERS: Filters = {
   event: "",
   traffic: "",
@@ -25,6 +25,7 @@ type Summary = {
   topModels: { key: string; count: number }[];
   topReferrers: { name: string; count: number }[];
   trafficSeries: { t: string; v: number }[];
+  // ✅ Campaign Data
   campaigns: {
     campaign: string;
     count: number;
@@ -45,7 +46,7 @@ type Summary = {
 };
 
 /* =========================
-   Location normalization
+   Location Logic
    ========================= */
 
 const COUNTRY_CODE_TO_NAME: Record<string, string> = {
@@ -105,7 +106,7 @@ function buildLocationLabel(cityRaw: any, regionRaw: any, countryRaw: any) {
   if (city && city.includes(",")) {
     const parts = city
       .split(",")
-      .map((x) => x.trim())
+      .map((x: any) => x.trim())
       .filter(Boolean);
     if (parts.length >= 2) {
       const maybeCountry = normalizeCountry(parts[parts.length - 1]);
@@ -130,7 +131,7 @@ function normalizePackedLocation(name: any) {
   if (!decoded) return "";
   const parts = decoded
     .split(",")
-    .map((x) => x.trim())
+    .map((x: any) => x.trim())
     .filter(Boolean);
   if (parts.length >= 3 && /^\d+$/.test(parts[parts.length - 2]))
     parts.splice(parts.length - 2, 1);
@@ -151,22 +152,33 @@ function fmtPct(p: number) {
   return `${v > 0 ? "+" : ""}${v}%`;
 }
 
+// ✅ Aggregation Helper
+function aggregate(
+  data: { name: string; count: number }[],
+  mode: "country" | "packed"
+) {
+  const map = new Map<string, number>();
+  for (const item of data) {
+    let label =
+      mode === "country"
+        ? normalizeCountry(item.name) || item.name
+        : normalizePackedLocation(item.name) || item.name;
+    label = label.replace(/\w\S*/g, (w) =>
+      w.replace(/^\w/, (c) => c.toUpperCase())
+    );
+    map.set(label, (map.get(label) || 0) + item.count);
+  }
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 /* =========================
-   GLOSSY COMPONENTS
+   UI COMPONENTS
    ========================= */
 
-function GlossyKpi({
-  title,
-  value,
-  color = "blue",
-  delta,
-}: {
-  title: string;
-  value: number;
-  color?: "blue" | "green" | "purple" | "orange" | "pink" | "indigo";
-  delta?: { delta: number; pct: number };
-}) {
-  const gradients = {
+function GlossyKpi({ title, value, color = "blue", delta }: any) {
+  const gradients: any = {
     blue: "from-cyan-500 to-blue-600 shadow-blue-200",
     green: "from-emerald-400 to-green-600 shadow-green-200",
     purple: "from-violet-400 to-purple-600 shadow-purple-200",
@@ -174,16 +186,13 @@ function GlossyKpi({
     pink: "from-rose-400 to-red-600 shadow-rose-200",
     indigo: "from-indigo-400 to-blue-800 shadow-indigo-200",
   };
-
-  const selectedGradient = gradients[color] || gradients.blue;
-
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${selectedGradient} group hover:scale-[1.02] transition-transform duration-300`}
+      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${
+        gradients[color] || gradients.blue
+      } group hover:scale-[1.02] transition-transform duration-300`}
     >
-      {/* Glass Shine */}
       <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
-
       <div className="relative z-10 flex flex-col h-full justify-between">
         <div className="flex justify-between items-start">
           <span className="text-xs font-bold uppercase tracking-widest opacity-80">
@@ -207,26 +216,14 @@ function GlossyKpi({
   );
 }
 
-function MixRow({
-  label,
-  value,
-  total,
-  color,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  color: "slate" | "emerald" | "amber" | "sky";
-}) {
+function MixRow({ label, value, total, color }: any) {
   const pct = Math.round((value / Math.max(1, total)) * 100);
-
-  const gradients = {
+  const gradients: any = {
     emerald: "from-emerald-400 to-green-500",
     amber: "from-amber-400 to-orange-500",
     sky: "from-sky-400 to-blue-500",
     slate: "from-slate-400 to-slate-600",
   };
-
   return (
     <div className="group">
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
@@ -250,26 +247,20 @@ function MixRow({
 }
 
 function Sparkline({ series }: { series: number[] }) {
-  const w = 600;
-  const h = 100;
-
   if (!series.length)
     return <div className="text-xs text-gray-400 italic">No data</div>;
-
+  const w = 600;
+  const h = 100;
   const max = Math.max(...series, 1);
   const min = Math.min(...series, 0);
   const range = Math.max(1, max - min);
-
-  // Smooth curve points
   const pts = series.map((v, i) => {
     const x = (i * w) / Math.max(1, series.length - 1);
     const y = h - ((v - min) * h) / range;
     return `${x},${y}`;
   });
-
   const pathD = `M ${pts.join(" L ")}`;
   const areaD = `${pathD} L ${w},${h} L 0,${h} Z`;
-
   return (
     <div className="w-full h-30 relative overflow-hidden rounded-xl bg-linear-to-b from-indigo-50/50 to-white border border-indigo-100">
       <svg
@@ -299,15 +290,7 @@ function Sparkline({ series }: { series: number[] }) {
   );
 }
 
-function Card({
-  title,
-  children,
-  headerExtras,
-}: {
-  title: string;
-  children: any;
-  headerExtras?: any;
-}) {
+function Card({ title, children, headerExtras }: any) {
   return (
     <div className="rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden bg-white flex flex-col h-full">
       <div className="px-5 py-4 border-b border-gray-100 bg-white flex justify-between items-center">
@@ -321,19 +304,6 @@ function Card({
   );
 }
 
-// ✅ VIBRANT TRAFFIC CHIPS
-function typeChip(t: string) {
-  const s = String(t || "").toLowerCase();
-  if (s === "paid")
-    return "bg-linear-to-r from-amber-100 to-orange-100 text-orange-800 border-orange-200";
-  if (s === "organic")
-    return "bg-linear-to-r from-emerald-100 to-green-100 text-emerald-800 border-emerald-200";
-  if (s === "referral")
-    return "bg-linear-to-r from-sky-100 to-blue-100 text-blue-800 border-blue-200";
-  return "bg-gray-100 text-gray-700 border-gray-200";
-}
-
-// ✅ VIBRANT RANK BADGES
 const RANK_BADGES = [
   "bg-indigo-500 text-white shadow-indigo-200",
   "bg-emerald-500 text-white shadow-emerald-200",
@@ -342,12 +312,10 @@ const RANK_BADGES = [
   "bg-sky-500 text-white shadow-sky-200",
   "bg-violet-500 text-white shadow-violet-200",
 ];
-
 function rankBadge(i: number) {
   return RANK_BADGES[i % RANK_BADGES.length] + " shadow-md";
 }
 
-// ✅ Event Log Badges
 function trafficPill(t: string) {
   const s = String(t || "").toLowerCase();
   if (s === "paid")
@@ -360,7 +328,7 @@ function trafficPill(t: string) {
 }
 
 /* =========================
-   MAIN CLIENT COMPONENT
+   MAIN CLIENT
    ========================= */
 
 export default function SiteEventsClient({
@@ -377,19 +345,15 @@ export default function SiteEventsClient({
   const [fromIso, setFromIso] = useState(initialFrom);
   const [toIso, setToIso] = useState(initialTo);
   const [rangeKey, setRangeKey] = useState(initialRange);
-
-  // ✅ FIX: Ensure filters is never undefined
   const [filters, setFilters] = useState<Filters>(
     initialFilters || DEFAULT_FILTERS
   );
 
   const [rows, setRows] = useState<any[]>([]);
-  const [totalCount, setTotalCount] = useState(0); // ✅ Track total records for pagination
+  const [totalCount, setTotalCount] = useState(0);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   const [reqTick, setReqTick] = useState(0);
-
-  // ✅ Pagination State
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
@@ -397,10 +361,9 @@ export default function SiteEventsClient({
     setToIso(initialTo);
     setRangeKey(initialRange);
     setFilters(initialFilters || DEFAULT_FILTERS);
-    setCurrentPage(1); // Reset page on filter change
+    setCurrentPage(1);
   }, [initialFrom, initialTo, initialRange, initialFilters]);
 
-  // debounce fetch
   useEffect(() => {
     const t = setTimeout(() => setReqTick((x) => x + 1), 150);
     return () => clearTimeout(t);
@@ -412,23 +375,20 @@ export default function SiteEventsClient({
     filters?.traffic,
     filters?.device,
     filters?.path,
-    currentPage, // ✅ Trigger fetch on page change
+    currentPage,
   ]);
 
-  // main fetch
   useEffect(() => {
     const ac = new AbortController();
     async function run() {
       setLoading(true);
       try {
-        // ✅ Server-Side Pagination: Pass page & limit to API
         const qs = new URLSearchParams({
           from: fromIso,
           to: toIso,
           page: currentPage.toString(),
           limit: PAGE_SIZE.toString(),
         });
-
         if (filters?.event) qs.set("event", filters.event);
         if (filters?.traffic) qs.set("traffic", filters.traffic);
         if (filters?.device) qs.set("device", filters.device);
@@ -450,7 +410,7 @@ export default function SiteEventsClient({
 
         if (!ac.signal.aborted) {
           setRows(aj?.ok ? aj.rows || [] : []);
-          setTotalCount(aj?.ok ? aj.total || 0 : 0); // ✅ Set total count from server
+          setTotalCount(aj?.ok ? aj.total || 0 : 0);
           setSummary(bj?.ok ? bj : null);
         }
       } finally {
@@ -459,28 +419,7 @@ export default function SiteEventsClient({
     }
     run();
     return () => ac.abort();
-  }, [reqTick, fromIso, toIso, filters, currentPage]); // Added currentPage dependency
-
-  // refresh summary loop
-  useEffect(() => {
-    const t = setInterval(async () => {
-      try {
-        const qs = new URLSearchParams({ from: fromIso, to: toIso });
-        if (filters?.event) qs.set("event", filters.event);
-        if (filters?.traffic) qs.set("traffic", filters.traffic);
-        if (filters?.device) qs.set("device", filters.device);
-        if (filters?.path) qs.set("path", filters.path);
-
-        const r = await fetch(
-          `/api/admin/site-events/summary?${qs.toString()}`,
-          { cache: "no-store" }
-        );
-        const j = await r.json();
-        if (j?.ok) setSummary(j);
-      } catch {}
-    }, 5000);
-    return () => clearInterval(t);
-  }, [fromIso, toIso, filters]);
+  }, [reqTick, fromIso, toIso, filters, currentPage]);
 
   const s = summary;
   const trafficTotal =
@@ -488,34 +427,30 @@ export default function SiteEventsClient({
       (s?.traffic.organic || 0) +
       (s?.traffic.paid || 0) +
       (s?.traffic.referral || 0) || 1;
-
-  // Calculate pages
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
 
-  // Page Path counts (calculated from current page rows - might be less accurate but fast)
-  // Ideally this should come from the Summary API if we want global stats
-  const pagePathCounts = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const r of rows) {
-      if (String(r.event_name).toLowerCase() !== "page_view") continue;
-      const key = r.page_path || "(unknown)";
-      m.set(key, (m.get(key) || 0) + 1);
-    }
-    return Array.from(m.entries())
-      .map(([path, count]) => ({ path, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10);
-  }, [rows]);
+  const mergedCountries = useMemo(() => {
+    const all = [
+      ...(s?.topCountries?.organic || []),
+      ...(s?.topCountries?.paid || []),
+      ...(s?.topCountries?.direct || []),
+      ...(s?.topCountries?.referral || []),
+    ];
+    return aggregate(all, "country").slice(0, 10);
+  }, [s]);
+
+  const mergedCities = useMemo(
+    () => aggregate(s?.topCities || [], "packed").slice(0, 15),
+    [s]
+  );
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
-      {/* 1. Header & KPI Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <GlossyKpi
           title="Active (5m)"
           value={s?.activeUsersRealtime || 0}
           color="indigo"
-          delta={undefined}
         />
         <GlossyKpi
           title="Page Views"
@@ -549,9 +484,7 @@ export default function SiteEventsClient({
         />
       </div>
 
-      {/* 2. Traffic Analysis Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Traffic Mix */}
         <div className="lg:col-span-1">
           <Card title="Traffic Mix">
             <div className="p-5 space-y-5">
@@ -583,13 +516,12 @@ export default function SiteEventsClient({
           </Card>
         </div>
 
-        {/* Traffic Chart */}
         <div className="lg:col-span-2">
           <Card
-            title="Traffic Volume (Trend)"
+            title="Traffic Volume"
             headerExtras={
               <span className="text-xs text-indigo-500 font-medium bg-indigo-50 px-2 py-1 rounded-full">
-                Live Updates
+                Live
               </span>
             }
           >
@@ -597,16 +529,15 @@ export default function SiteEventsClient({
               <Sparkline series={s?.trafficSeries?.map((x) => x.v) || []} />
               <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
                 <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
-                  <div className="text-xs text-gray-500 uppercase font-bold">
+                  <div className="text-xs text-gray-500 font-bold uppercase">
                     Total Events
                   </div>
                   <div className="text-lg font-black text-gray-800">
                     {totalCount}
-                  </div>{" "}
-                  {/* ✅ Show total count from DB */}
+                  </div>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
-                  <div className="text-xs text-gray-500 uppercase font-bold">
+                  <div className="text-xs text-gray-500 font-bold uppercase">
                     Peak Vol
                   </div>
                   <div className="text-lg font-black text-gray-800">
@@ -619,9 +550,85 @@ export default function SiteEventsClient({
         </div>
       </div>
 
-      {/* 3. Top Models, Referrers, Locations */}
+      {/* ✅ NEW: Vibrant & Interactive Campaigns Section */}
+      {s?.campaigns && s.campaigns.length > 0 && (
+        <Card title="Marketing Campaigns">
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-gray-50/80 text-gray-500 font-semibold uppercase sticky top-0">
+                <tr>
+                  <th className="px-5 py-3">Campaign</th>
+                  <th className="px-5 py-3 text-right">Traffic</th>
+                  <th className="px-5 py-3 text-right">Engagements</th>
+                  <th className="px-5 py-3 w-32">Conv. Rate</th>
+                  <th className="px-5 py-3 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {s.campaigns.map((c, i) => (
+                  <tr
+                    key={i}
+                    className="hover:bg-gray-50/80 transition-colors group"
+                  >
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-sm ${
+                            i % 2 === 0
+                              ? "bg-linear-to-br from-indigo-500 to-purple-600"
+                              : "bg-linear-to-br from-pink-500 to-rose-600"
+                          }`}
+                        >
+                          <Megaphone className="w-4 h-4" />
+                        </span>
+                        <div className="font-semibold text-gray-800">
+                          {c.campaign}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="font-bold text-gray-900">{c.count}</div>
+                      <div className="text-[10px] text-gray-400">Visits</div>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <div className="font-bold text-emerald-600">
+                        {c.conversions}
+                      </div>
+                      <div className="text-[10px] text-gray-400">WA/Calls</div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full"
+                            style={{ width: `${Math.min(100, c.rate * 100)}%` }}
+                          />
+                        </div>
+                        <span className="font-bold text-gray-700 w-8 text-right">
+                          {Math.round(c.rate * 100)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3 text-right">
+                      <a
+                        href={`https://ads.google.com/aw/campaigns`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 rounded-lg text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors inline-flex"
+                        title="Open Google Ads Dashboard"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* ✅ TOP MODELS with LINK */}
         <Card title="Top Models">
           <div className="p-4 space-y-2">
             {(s?.topModels || []).slice(0, 10).map((m, i) => (
@@ -655,33 +662,29 @@ export default function SiteEventsClient({
           </div>
         </Card>
 
-        {/* Top Countries */}
         <Card title="Top Countries">
           <div className="p-4 space-y-2">
-            {(s?.topCountries?.organic || [])
-              .concat(s?.topCountries?.paid || [])
-              .slice(0, 10)
-              .map((x, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
-                        i
-                      )}`}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="text-sm font-medium text-gray-700">
-                      {normalizeCountry(x.name)}
-                    </span>
-                  </div>
-                  <span className="font-bold text-gray-900">{x.count}</span>
+            {mergedCountries.map((x, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                      i
+                    )}`}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="text-sm font-medium text-gray-700">
+                    {x.name}
+                  </span>
                 </div>
-              ))}
-            {!(s?.topCountries?.organic || []).length && (
+                <span className="font-bold text-gray-900">{x.count}</span>
+              </div>
+            ))}
+            {!mergedCountries.length && (
               <div className="text-sm text-gray-400 p-2 italic">
                 No country data
               </div>
@@ -689,10 +692,9 @@ export default function SiteEventsClient({
           </div>
         </Card>
 
-        {/* Top Cities */}
         <Card title="Top Cities">
           <div className="p-4 space-y-2 max-h-100 overflow-y-auto custom-scrollbar">
-            {(s?.topCities || []).slice(0, 15).map((x, i) => (
+            {mergedCities.map((x, i) => (
               <div
                 key={i}
                 className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
@@ -706,13 +708,13 @@ export default function SiteEventsClient({
                     {i + 1}
                   </span>
                   <span className="text-sm font-medium text-gray-700 truncate">
-                    {normalizePackedLocation(x.name)}
+                    {x.name}
                   </span>
                 </div>
                 <span className="font-bold text-gray-900">{x.count}</span>
               </div>
             ))}
-            {!s?.topCities?.length && (
+            {!mergedCities.length && (
               <div className="text-sm text-gray-400 p-2 italic">
                 No city data
               </div>
@@ -721,7 +723,6 @@ export default function SiteEventsClient({
         </Card>
       </div>
 
-      {/* 4. Event Log (Server-Side Paginated) */}
       <div className="rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
         <div className="p-4 border-b border-gray-100 bg-white flex justify-between items-center">
           <div className="flex items-center gap-2">
@@ -820,13 +821,11 @@ export default function SiteEventsClient({
             </tbody>
           </table>
         </div>
-
-        {/* ✅ GLOSSY PAGINATION FOOTER */}
         <div className="p-3 border-t border-gray-100 bg-gray-50/80 flex justify-between items-center backdrop-blur-sm">
           <button
             onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
             disabled={currentPage === 1 || loading}
-            className="px-4 py-1.5 rounded-lg border bg-white text-xs font-bold text-gray-600 disabled:opacity-50 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
+            className="px-4 py-1.5 rounded-lg border bg-white text-xs font-bold text-gray-600 disabled:opacity-50 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
           >
             Previous
           </button>
@@ -838,7 +837,7 @@ export default function SiteEventsClient({
           <button
             onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
             disabled={currentPage === totalPages || loading}
-            className="px-4 py-1.5 rounded-lg border bg-white text-xs font-bold text-gray-600 disabled:opacity-50 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 transition-all shadow-sm"
+            className="px-4 py-1.5 rounded-lg border bg-white text-xs font-bold text-gray-600 disabled:opacity-50 hover:bg-indigo-50 hover:text-indigo-600 transition-all shadow-sm"
           >
             Next
           </button>

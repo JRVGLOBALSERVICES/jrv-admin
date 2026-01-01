@@ -7,7 +7,7 @@ type TopReferrer = { name: string; count: number };
 type TopLoc = { name: string; count: number };
 
 /* =========================
-   Location normalization
+   Location Normalization & Aggregation
    ========================= */
 
 const COUNTRY_CODE_TO_NAME: Record<string, string> = {
@@ -85,6 +85,36 @@ function normalizePackedLocation(name: any) {
   return [city, region, country].filter(Boolean).join(", ");
 }
 
+// ✅ Aggregation Function to Merge Duplicates
+function aggregateAndSort(
+  data: TopLoc[],
+  mode: "country" | "packed"
+): TopLoc[] {
+  const map = new Map<string, number>();
+
+  for (const item of data) {
+    let label = item.name;
+    // Normalize based on mode
+    if (mode === "country") {
+      label = normalizeCountry(item.name) || item.name;
+    } else {
+      label = normalizePackedLocation(item.name) || item.name;
+    }
+
+    // Capitalize properly for consistency (simple title case)
+    // label = label.replace(/\w\S*/g, (w) => (w.replace(/^\w/, (c) => c.toUpperCase())));
+
+    // Store using the normalized label as key
+    const current = map.get(label) || 0;
+    map.set(label, current + item.count);
+  }
+
+  // Convert back to array
+  return Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count); // Sort desc
+}
+
 /* =========================
    UI Components
    ========================= */
@@ -128,9 +158,7 @@ function GlossyKpi({
     <div
       className={`relative overflow-hidden rounded-2xl p-4 text-white shadow-lg bg-linear-to-br ${selectedGradient} group hover:scale-[1.02] transition-transform duration-300`}
     >
-      {/* Glass Shine */}
       <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
-
       <div className="relative z-10 flex flex-col h-full justify-between">
         <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">
           {title}
@@ -156,7 +184,6 @@ function MixRow({
   color: "slate" | "emerald" | "amber" | "sky";
 }) {
   const pct = Math.round((value / Math.max(1, total)) * 100);
-
   const gradients = {
     emerald: "from-emerald-400 to-green-500",
     amber: "from-amber-400 to-orange-500",
@@ -230,6 +257,11 @@ export default function MiniSiteAnalytics({
       (traffic.paid || 0) +
       (traffic.referral || 0) || 1;
 
+  // ✅ Clean data before rendering
+  const cleanCountries = aggregateAndSort(topCountries || [], "country");
+  const cleanRegions = aggregateAndSort(topRegions || [], "packed");
+  const cleanCities = aggregateAndSort(topCities || [], "packed");
+
   return (
     <div className="space-y-6">
       {/* 1. Header */}
@@ -258,7 +290,6 @@ export default function MiniSiteAnalytics({
 
       {/* 3. Traffic & Lists */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Traffic Mix */}
         <Card title="Traffic Mix">
           <div className="space-y-4">
             <MixRow
@@ -288,7 +319,6 @@ export default function MiniSiteAnalytics({
           </div>
         </Card>
 
-        {/* Top Models */}
         <Card title="Top Models">
           <div className="space-y-3">
             {topModels.length ? (
@@ -320,7 +350,6 @@ export default function MiniSiteAnalytics({
           </div>
         </Card>
 
-        {/* Top Referrers */}
         <Card title="Top Referrers">
           <div className="space-y-3">
             {topReferrers.length ? (
@@ -357,22 +386,15 @@ export default function MiniSiteAnalytics({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <LocCard
           title="Top Countries"
-          rows={topCountries}
+          rows={cleanCountries}
           empty="No countries yet"
-          mode="country"
         />
         <LocCard
           title="Top Regions"
-          rows={topRegions}
+          rows={cleanRegions}
           empty="No regions yet"
-          mode="packed"
         />
-        <LocCard
-          title="Top Cities"
-          rows={topCities}
-          empty="No cities yet"
-          mode="packed"
-        />
+        <LocCard title="Top Cities" rows={cleanCities} empty="No cities yet" />
       </div>
     </div>
   );
@@ -382,23 +404,16 @@ function LocCard({
   title,
   rows,
   empty,
-  mode,
 }: {
   title: string;
   rows: { name: string; count: number }[];
   empty: string;
-  mode: "country" | "packed";
 }) {
   return (
     <Card title={title}>
       <div className="space-y-3">
         {rows?.length ? (
           rows.slice(0, 5).map((r, i) => {
-            const label =
-              mode === "country"
-                ? normalizeCountry(r.name) || r.name
-                : normalizePackedLocation(r.name) || r.name;
-
             return (
               <div
                 key={`${title}-${r.name}-${i}`}
@@ -413,7 +428,7 @@ function LocCard({
                     {i + 1}
                   </span>
                   <span className="font-semibold text-gray-700 group-hover:text-black truncate max-w-40">
-                    {label}
+                    {r.name}
                   </span>
                 </div>
                 <span className="font-bold text-gray-900">{r.count}</span>

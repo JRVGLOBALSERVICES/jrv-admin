@@ -25,7 +25,13 @@ function Icon({ d }: { d: string }) {
   );
 }
 
-type Item = { href: string; label: string; icon: React.ReactNode };
+// ✅ Added 'color' prop to Item type
+type Item = {
+  href: string;
+  label: string;
+  icon: React.ReactNode;
+  color: string;
+};
 
 function NavItem({
   item,
@@ -45,14 +51,17 @@ function NavItem({
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       className={[
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium",
         active
-          ? "bg-black text-white"
-          : "text-black hover:bg-black/5 active:bg-black/10",
+          ? "bg-black text-white shadow-md"
+          : "text-gray-700 hover:bg-gray-100 active:bg-gray-200", // Softened inactive text
         collapsed ? "justify-center px-2" : "",
       ].join(" ")}
     >
-      <span className="shrink-0">{item.icon}</span>
+      {/* ✅ Apply color only when NOT active (Active is always white) */}
+      <span className={`shrink-0 ${active ? "text-white" : item.color}`}>
+        {item.icon}
+      </span>
       {!collapsed && <span className="truncate">{item.label}</span>}
     </Link>
   );
@@ -83,8 +92,8 @@ function Group({
         type="button"
         onClick={() => !collapsed && setOpen((v) => !v)}
         className={[
-          "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs uppercase tracking-wide",
-          "text-black/60 hover:bg-black/5",
+          "w-full flex items-center justify-between rounded-lg px-3 py-2 text-xs uppercase tracking-wide font-bold",
+          "text-gray-400 hover:bg-gray-50",
           collapsed ? "justify-center px-2" : "",
         ].join(" ")}
         title={collapsed ? title : undefined}
@@ -100,7 +109,7 @@ function Group({
       </button>
 
       {open && (
-        <div className="space-y-1">
+        <div className="space-y-0.5">
           {items.map((it) => (
             <NavItem
               key={it.href}
@@ -130,14 +139,15 @@ export function Sidebar() {
       {
         href: "/admin",
         label: "Dashboard",
+        color: "text-indigo-600",
         icon: (
           <Icon d="M3 10.5h6V21H3V10.5Zm12 0h6V21h-6V10.5ZM3 3h6v6H3V3Zm12 0h6v6h-6V3Z" />
         ),
       },
-      // ✅ NEW: Revenue Analytics
       {
         href: "/admin/revenue",
         label: "Revenue Analytics",
+        color: "text-emerald-600",
         icon: (
           <Icon d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         ),
@@ -145,6 +155,7 @@ export function Sidebar() {
       {
         href: "/admin/agreements",
         label: "Agreements",
+        color: "text-blue-600",
         icon: (
           <Icon d="M8 7h8m-8 4h8m-8 4h5M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
         ),
@@ -152,6 +163,7 @@ export function Sidebar() {
       {
         href: "/admin/cars",
         label: "Cars",
+        color: "text-rose-600",
         icon: (
           <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
         ),
@@ -159,6 +171,7 @@ export function Sidebar() {
       {
         href: "/admin/site-events",
         label: "Website & Traffic",
+        color: "text-violet-600",
         icon: (
           <Icon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         ),
@@ -166,6 +179,7 @@ export function Sidebar() {
       {
         href: "/admin/posts",
         label: "FB Posts & Videos",
+        color: "text-sky-600",
         icon: (
           <Icon d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
         ),
@@ -173,7 +187,17 @@ export function Sidebar() {
       {
         href: "/admin/catalog",
         label: "Catalog",
+        color: "text-amber-600",
         icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
+      },
+      // ✅ NEW: Blacklist (Operational Tool)
+      {
+        href: "/admin/blacklist",
+        label: "Blacklist",
+        color: "text-red-600",
+        icon: (
+          <Icon d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        ),
       },
     ],
     []
@@ -184,6 +208,7 @@ export function Sidebar() {
       {
         href: "/admin/users",
         label: "Admin Users",
+        color: "text-cyan-600",
         icon: (
           <Icon d="M16 11a4 4 0 1 1-8 0 4 4 0 0 1 8 0ZM4 21a8 8 0 0 1 16 0" />
         ),
@@ -191,6 +216,7 @@ export function Sidebar() {
       {
         href: "/admin/marketing-tracker",
         label: "Marketing Tracker",
+        color: "text-orange-600",
         icon: (
           <Icon d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" />
         ),
@@ -198,6 +224,7 @@ export function Sidebar() {
       {
         href: "/admin/audit",
         label: "Audit Logs",
+        color: "text-slate-500",
         icon: (
           <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
         ),
@@ -205,6 +232,7 @@ export function Sidebar() {
       {
         href: "/admin/cars/logs",
         label: "Car Logs",
+        color: "text-slate-400",
         icon: (
           <Icon d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
         ),
@@ -212,6 +240,7 @@ export function Sidebar() {
       {
         href: "/admin/agreements/logs",
         label: "Agreement Logs",
+        color: "text-slate-400",
         icon: (
           <Icon d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
         ),
@@ -219,6 +248,7 @@ export function Sidebar() {
       {
         href: "/admin/notifications",
         label: "Slack Notifications Log",
+        color: "text-pink-600",
         icon: (
           <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
         ),
@@ -311,7 +341,7 @@ export function Sidebar() {
             </button>
           </div>
 
-          <nav className="flex-1 space-y-3 px-2 py-4">
+          <nav className="flex-1 space-y-3 px-2 py-4 overflow-y-auto custom-scrollbar">
             <Group
               title="Main"
               items={mainItems}
