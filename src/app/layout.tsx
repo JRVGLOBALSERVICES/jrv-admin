@@ -1,24 +1,25 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { baseMetadata } from "@/lib/seo";
+// ✅ Import the button
+import GlobalShareButton from "@/components/ui/GlobalShareButton";
 
 export const metadata: Metadata = {
   ...baseMetadata(),
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent", // or 'default', 'black'
+    statusBarStyle: "black-translucent",
     title: "JRV Admin",
   },
 };
 
-// ✅ Fix: Viewport export is required for themeColor in Next.js 14+
 export const viewport: Viewport = {
   themeColor: "#FF3057",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Optional: feels more native
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -28,7 +29,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body className="bg-gray-50 min-h-screen">
+        {children}
+
+        {/* ✅ Add it here, at the bottom */}
+        <GlobalShareButton />
+      </body>
     </html>
   );
 }
