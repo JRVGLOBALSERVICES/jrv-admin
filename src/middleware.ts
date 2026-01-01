@@ -5,7 +5,7 @@ import { createServerClient } from "@supabase/ssr";
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
+  if (pathname === "/" || pathname.startsWith("/")) {
     return NextResponse.next();
   }
 
