@@ -2,7 +2,16 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { AgreementForm } from "../_components/AgreementForm";
+import { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
 
+export const metadata: Metadata = pageMetadata({
+  title: "Edit Agreement",
+  description:
+    "Update agreement details, including booking details and car information.",
+  path: "/admin/agreements/[id]",
+  index: false,
+});
 const APP_TZ = "Asia/Kuala_Lumpur";
 
 // ✅ Timezone-safe helper to extract date/time parts from DB Timestamp

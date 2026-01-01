@@ -1,5 +1,15 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { AgreementForm } from "../_components/AgreementForm";
+import { Metadata } from "next";
+import { pageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = pageMetadata({
+  title: "Create New Agreements",
+  description:
+    "Create new agreements",
+  path: "/admin/agreements/new",
+  index: false,
+});
 
 export default async function NewAgreementPage() {
   const gate = await requireAdmin();
