@@ -3,12 +3,12 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
-  const { pathname, origin, search } = req.nextUrl;
+  const { pathname, search } = req.nextUrl;
 
-  // Only protect /admin routes
+  // Only protect /admin
   if (!pathname.startsWith("/admin")) return NextResponse.next();
 
-  // ✅ Allow these paths to avoid loops / blocking login + auth checks
+  // Allow auth endpoints (avoid loops)
   if (
     pathname === "/admin/me" ||
     pathname.startsWith("/admin/login") ||
@@ -17,7 +17,6 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // Response object used for Supabase cookie refresh
   let res = NextResponse.next();
 
   const supabase = createServerClient(
@@ -35,38 +34,29 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // helper: redirect to / with returnTo
   const redirectToLogin = () => {
     const returnTo = encodeURIComponent(`${pathname}${search || ""}`);
     return NextResponse.redirect(new URL(`/?returnTo=${returnTo}`, req.url));
   };
 
-  // 1) Auth session check
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) return redirectToLogin();
+  // 1) Check user session
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  const user = authData?.user;
 
-  // 2) Admin validation: if /admin/me has no data -> kick to /
-  try {
-    const meRes = await fetch(`${origin}/admin/me`, {
-      headers: {
-        cookie: req.headers.get("cookie") || "",
-        accept: "application/json",
-      },
-      cache: "no-store",
-    });
+  if (authErr || !user) return redirectToLogin();
 
-    if (!meRes.ok) return redirectToLogin();
+  // 2) Validate admin record directly (NO fetch to /admin/me)
+  const { data: admin, error: adminErr } = await supabase
+    .from("admin_users")
+    .select("role,status")
+    .eq("user_id", user.id)
+    .maybeSingle();
 
-    const me = await meRes.json();
+  // "admin/me can't find any data -> /"
+  if (adminErr || !admin?.role || !admin?.status) return redirectToLogin();
 
-    // Your /admin/me returns: { user, role, status }
-    if (!me?.user || !me?.role || !me?.status) return redirectToLogin();
-
-    // optional: enforce active admins only
-    if (me.status !== "active") return redirectToLogin();
-  } catch {
-    return redirectToLogin();
-  }
+  // inactive -> /
+  if (admin.status !== "active") return redirectToLogin();
 
   return res;
 }

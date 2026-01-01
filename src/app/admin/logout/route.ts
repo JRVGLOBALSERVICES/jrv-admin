@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-function createSupabase(req: NextRequest, res: NextResponse) {
+function supabaseFor(req: NextRequest, res: NextResponse) {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -18,27 +18,17 @@ function createSupabase(req: NextRequest, res: NextResponse) {
   );
 }
 
-async function handleLogout(req: NextRequest) {
-  // Redirect to login page after logout
-  const redirectUrl = new URL("/", req.url);
-
-  // Create response early so Supabase can clear cookies onto it
-  const res = NextResponse.redirect(redirectUrl);
-
-  const supabase = createSupabase(req, res);
-
-  // Clears Supabase session cookies
+async function handle(req: NextRequest) {
+  const res = NextResponse.redirect(new URL("/", req.url));
+  const supabase = supabaseFor(req, res);
   await supabase.auth.signOut();
-
   return res;
 }
 
-// ✅ supports your form POST
-export async function POST(req: NextRequest) {
-  return handleLogout(req);
+export async function GET(req: NextRequest) {
+  return handle(req);
 }
 
-// ✅ optional: also allow GET (if you ever use a link)
-export async function GET(req: NextRequest) {
-  return handleLogout(req);
+export async function POST(req: NextRequest) {
+  return handle(req);
 }
