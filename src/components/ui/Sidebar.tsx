@@ -360,19 +360,17 @@ export function Sidebar() {
             )}
           </nav>
 
-          <div className="border-t p-3">
-            <Link href="/admin/logout" className={collapsed ? "block" : ""}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className={collapsed ? "w-full justify-center px-0" : "w-full"}
-                sound="on"
-              >
-                {collapsed ? "⎋" : "Logout"}
-              </Button>
-            </Link>
-          </div>
+          <form action="/admin/logout" method="post" className="border-t p-3">
+            <Button
+              type="submit"
+              variant="secondary"
+              size="sm"
+              className={collapsed ? "w-full justify-center px-0" : "w-full"}
+              sound="on"
+            >
+              {collapsed ? "⎋" : "Logout"}
+            </Button>
+          </form>
         </div>
       </aside>
     </>
