@@ -55,13 +55,8 @@ export default function LoginPage() {
       return;
     }
 
-    const params = new URLSearchParams(window.location.search);
-    const returnTo = params.get("returnTo");
-
-    // allow cookies to flush on mobile Safari
-    await new Promise((r) => setTimeout(r, 150));
-
-    router.replace(returnTo?.startsWith("/admin") ? returnTo : "/admin");
+    await new Promise((r) => setTimeout(r, 350));
+    router.replace("/admin");
     router.refresh();
   };
 

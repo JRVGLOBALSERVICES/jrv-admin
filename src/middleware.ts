@@ -3,21 +3,22 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
-  const { pathname, origin, search } = req.nextUrl;
+  const { pathname } = req.nextUrl;
 
-  // Only protect /admin routes
-  if (!pathname.startsWith("/admin")) return NextResponse.next();
+  // Only protect admin routes
+  if (!pathname.startsWith("/admin")) {
+    return NextResponse.next();
+  }
 
-  // ✅ Allow these paths to avoid loops / blocking login + auth checks
+  // Allow auth-related routes
   if (
-    pathname === "/admin/me" ||
     pathname.startsWith("/admin/login") ||
-    pathname.startsWith("/admin/logout")
+    pathname.startsWith("/admin/logout") ||
+    pathname === "/admin/me"
   ) {
     return NextResponse.next();
   }
 
-  // Response object used for Supabase cookie refresh
   let res = NextResponse.next();
 
   const supabase = createServerClient(
@@ -35,37 +36,12 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // helper: redirect to / with returnTo
-  const redirectToLogin = () => {
-    const returnTo = encodeURIComponent(`${pathname}${search || ""}`);
-    return NextResponse.redirect(new URL(`/?returnTo=${returnTo}`, req.url));
-  };
+  // 🔒 Auth check ONLY
+  const { data } = await supabase.auth.getUser();
 
-  // 1) Auth session check
-  const { data: authData } = await supabase.auth.getUser();
-  if (!authData.user) return redirectToLogin();
-
-  // 2) Admin validation: if /admin/me has no data -> kick to /
-  try {
-    const meRes = await fetch(`${origin}/admin/me`, {
-      headers: {
-        cookie: req.headers.get("cookie") || "",
-        accept: "application/json",
-      },
-      cache: "no-store",
-    });
-
-    if (!meRes.ok) return redirectToLogin();
-
-    const me = await meRes.json();
-
-    // Your /admin/me returns: { user, role, status }
-    if (!me?.user || !me?.role || !me?.status) return redirectToLogin();
-
-    // optional: enforce active admins only
-    if (me.status !== "active") return redirectToLogin();
-  } catch {
-    return redirectToLogin();
+  if (!data.user) {
+    // 🚫 NO returnTo
+    return NextResponse.redirect(new URL("/", req.url));
   }
 
   return res;
