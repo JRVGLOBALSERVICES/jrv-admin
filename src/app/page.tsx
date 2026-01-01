@@ -2,9 +2,10 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import SplashScreen from "@/components/ui/SplashScreen"; // Import the splash screen
 
 const ORANGE = "#F15828";
 const PINK = "#FF3057";
@@ -15,6 +16,14 @@ export default function LoginPage() {
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
+
+  // ✅ State to control splash screen visibility
+  const [showSplash, setShowSplash] = useState(true);
+
+  // We rely on the SplashScreen component's timer, but we also sync state here
+  const handleSplashFinish = () => {
+    setShowSplash(false);
+  };
 
   const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -46,33 +55,30 @@ export default function LoginPage() {
     } catch {}
 
     if (!res.ok) {
-      // ✅ Only stop loading if there was an error
       setLoading(false);
       setErr(json?.error || "Login failed");
       return;
     }
 
-    // ✅ Success: Keep loading TRUE while we redirect.
-    // This prevents the user from clicking the button again.
-
     const params = new URLSearchParams(window.location.search);
     const returnTo = params.get("returnTo");
-
-    // Use replace to prevent back-button returning to login
     router.replace(returnTo?.startsWith("/admin") ? returnTo : "/admin");
     router.refresh();
   };
 
   return (
     <div className="relative min-h-screen flex items-center justify-center p-6 bg-linear-to-br from-[#F15828] via-[#FF3057] to-slate-900">
-      <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-xl bg-black/30 border border-white/20 rounded-2xl shadow-2xl">
+      {/* ✅ Show Splash Screen if state is true */}
+      {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
+
+      <Card className="w-full max-w-md p-8 space-y-6 backdrop-blur-xl bg-black/30 border border-white/20 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-500">
         {/* LOGO CENTERED */}
         <div className="flex flex-col items-center text-center gap-3">
           <div className="bg-white rounded-xl p-3 shadow-md">
             <Image src="/logo.png" alt="JRV Admin" width={90} height={90} />
           </div>
           <h1 className="text-2xl font-semibold text-[#FF3057]">Admin Login</h1>
-          <p className="text-sm">Sign in to continue</p>
+          <p className="text-sm text-gray-200">Sign in to continue</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
@@ -83,9 +89,7 @@ export default function LoginPage() {
             placeholder="Email"
             autoComplete="email"
             className="w-full px-4 py-3 rounded-lg bg-white text-slate-900 outline-none transition-all"
-            style={{
-              border: `2px solid ${ORANGE}`,
-            }}
+            style={{ border: `2px solid ${ORANGE}` }}
             onFocus={(e) => {
               e.currentTarget.style.border = `2px solid ${PINK}`;
             }}
@@ -102,9 +106,7 @@ export default function LoginPage() {
               placeholder="Password"
               autoComplete="current-password"
               className="w-full px-4 py-3 rounded-lg bg-white text-slate-900 outline-none transition-all pr-14"
-              style={{
-                border: `2px solid ${ORANGE}`,
-              }}
+              style={{ border: `2px solid ${ORANGE}` }}
               onFocus={(e) => {
                 e.currentTarget.style.border = `2px solid ${PINK}`;
               }}
@@ -122,7 +124,7 @@ export default function LoginPage() {
             </button>
           </div>
 
-          {/* ERROR (BLACK TEXT AS REQUESTED) */}
+          {/* ERROR */}
           {err && (
             <div className="text-sm text-black bg-white rounded-md px-3 py-2 border border-black/10">
               {err}
@@ -138,18 +140,16 @@ export default function LoginPage() {
           {/* SUBMIT */}
           <Button
             type="submit"
-            disabled={loading} // Disable button while loading
+            disabled={loading}
             loading={loading}
             className="w-full py-3 text-white font-semibold rounded-lg shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
-            style={{
-              background: `linear-gradient(90deg, ${ORANGE}, ${PINK})`,
-            }}
+            style={{ background: `linear-gradient(90deg, ${ORANGE}, ${PINK})` }}
           >
             {loading ? "Redirecting..." : "Sign In"}
           </Button>
 
           {/* Footer */}
-          <div className="text-xs text-center text-[#F15828] pt-2">
+          <div className="text-xs text-center text-white/60 pt-2">
             © {new Date().getFullYear()} JRV Admin Panel
           </div>
         </form>

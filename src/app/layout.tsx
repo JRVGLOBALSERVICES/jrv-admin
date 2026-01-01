@@ -1,25 +1,26 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { baseMetadata } from "@/lib/seo";
-// ✅ Import the button
 import GlobalShareButton from "../components/ui/GlobalShareButton";
+// ✅ Import the new refresh button
+import FloatingRefresh from "../components/ui/FloatingRefresh";
 
 export const metadata: Metadata = {
   ...baseMetadata(),
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "black-translucent", // Makes the content go under the status bar (full screen feel)
     title: "JRV Admin",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FF3057",
+  themeColor: "#FF3057", // Matches your brand pink
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false,
+  userScalable: false, // Prevents zooming issues on inputs
 };
 
 export default function RootLayout({
@@ -32,8 +33,11 @@ export default function RootLayout({
       <body className="bg-gray-50 min-h-screen">
         {children}
 
-        {/* ✅ Add it here, at the bottom */}
+        {/* ✅ Existing Share Button */}
         <GlobalShareButton />
+
+        {/* ✅ New iOS Hard Refresh Button */}
+        <FloatingRefresh />
       </body>
     </html>
   );
