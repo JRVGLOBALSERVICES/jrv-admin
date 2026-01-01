@@ -28,8 +28,6 @@ function toMoneyString(v: any) {
 }
 
 function fmtHuman(dtIso: string) {
-  // Vercel/serverless runs in UTC. Agreements are Malaysia time (UTC+8),
-  // so we must format using Asia/Kuala_Lumpur explicitly to avoid -8h shifts.
   const d = new Date(dtIso);
   if (Number.isNaN(d.getTime())) return dtIso;
 
@@ -106,9 +104,6 @@ async function logAgreement(opts: {
 
 type FilterOption = { value: string; label: string };
 
-// ==============================================================================
-// GET HANDLER (Filters out Deleted/Cancelled)
-// ==============================================================================
 export async function GET(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
@@ -116,7 +111,6 @@ export async function GET(req: Request) {
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);
 
-  // --- SINGLE FETCH ---
   const id = asStr(url.searchParams.get("id"));
   if (id) {
     const { data: row, error } = await supabase
@@ -124,7 +118,7 @@ export async function GET(req: Request) {
       .select(
         `
         id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
-        total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id,
+        total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id, ic_url,
         cars:car_id ( id, plate_number, catalog_id, car_catalog:catalog_id ( make, model ) )
       `
       )
@@ -148,7 +142,6 @@ export async function GET(req: Request) {
     });
   }
 
-  // --- LIST FETCH ---
   const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
   const limit = Math.min(
     50,
@@ -160,13 +153,11 @@ export async function GET(req: Request) {
   const q = asStr(url.searchParams.get("q")).toLowerCase();
   const status = asStr(url.searchParams.get("status"));
   const plate = asStr(url.searchParams.get("plate"));
-  const model = asStr(url.searchParams.get("model"));
   const dateParam = asStr(url.searchParams.get("date"));
   const endDateParam = asStr(url.searchParams.get("endDate"));
   const actor = asStr(url.searchParams.get("actor"));
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
-  // Preload cars
   const { data: carsRows, error: carsErr } = await supabase
     .from("cars")
     .select(`id, plate_number, car_catalog:catalog_id ( make, model )`)
@@ -196,7 +187,6 @@ export async function GET(req: Request) {
   if (filtersOnly)
     return NextResponse.json({ ok: true, filters: { plates, models } });
 
-  // Query
   let query = supabase
     .from("agreements")
     .select(
@@ -211,7 +201,6 @@ export async function GET(req: Request) {
     .order("updated_at", { ascending: false })
     .range(from, to);
 
-  // Filter out Deleted/Cancelled
   if (status) {
     query = query.eq("status", status);
   } else {
@@ -285,9 +274,6 @@ export async function GET(req: Request) {
   });
 }
 
-// ==============================================================================
-// POST HANDLER (Smart Delete)
-// ==============================================================================
 export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
@@ -310,7 +296,6 @@ export async function POST(req: Request) {
   try {
     if (!action) throw new Error("Missing action");
 
-    // --- SMART DELETE ---
     if (action === "delete") {
       if (actorRole !== "superadmin")
         return jsonError("Forbidden: Superadmin only", 403);
@@ -324,28 +309,23 @@ export async function POST(req: Request) {
         .maybeSingle();
 
       let finalStatus = "Deleted";
-
-      // 1. Try "Deleted"
       const { error: err1 } = await supabaseAdmin
         .from("agreements")
         .update({ status: "Deleted" })
         .eq("id", id);
 
       if (err1) {
-        // 2. Fallback to "Cancelled"
         finalStatus = "Cancelled";
         const { error: err2 } = await supabaseAdmin
           .from("agreements")
           .update({ status: "Cancelled" })
           .eq("id", id);
-
         if (err2)
           throw new Error(
             "Could not delete or cancel. DB Error: " + err2.message
           );
       }
 
-      // ✅ FIX: Log the EXACT status that was applied
       await logAgreement({
         supabase,
         agreement_id: id,
@@ -353,7 +333,7 @@ export async function POST(req: Request) {
         actor_id: actorId,
         action: "soft_deleted",
         before: { id },
-        after: { status: finalStatus }, // Will be "Deleted" or "Cancelled"
+        after: { status: finalStatus },
       });
 
       const carId = asStr(targetRow?.car_id);
@@ -362,7 +342,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    // --- PREVIEW ---
     if (action === "preview") {
       const data = {
         logo_url: "https://jrv-admin.vercel.app/logo.png",
@@ -380,6 +359,7 @@ export async function POST(req: Request) {
         total_price: toMoneyString(must(payload.total_price, "Price required")),
         deposit_price: toMoneyString(payload.deposit_price),
         agent_email: asStr(payload.agent_email),
+        ic_url: payload.ic_url || null, // ✅ Pass IC for Preview
       };
 
       const pdfBuffer = await renderToBuffer(
@@ -394,7 +374,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, preview_url: up.secure_url });
     }
 
-    // --- CREATE / UPDATE ---
     if (action === "confirm_create" || action === "confirm_update") {
       const isEdit = action === "confirm_update";
       const id = isEdit ? must(payload.id, "Missing ID") : undefined;
@@ -427,6 +406,7 @@ export async function POST(req: Request) {
         status: payload.status || "New",
         creator_email: isEdit ? undefined : actorEmail,
         updated_at: new Date().toISOString(),
+        ic_url: payload.ic_url || null, // ✅ Save IC URL to DB
       };
 
       if (!isEdit) dbData.created_at = new Date().toISOString();
@@ -438,6 +418,7 @@ export async function POST(req: Request) {
         date_start: fmtHuman(dbData.date_start),
         date_end: fmtHuman(dbData.date_end),
         agent_email: asStr(payload.agent_email) || actorEmail,
+        ic_url: dbData.ic_url, // ✅ Pass IC URL to PDF
       };
 
       const pdfBuffer = await renderToBuffer(

@@ -8,18 +8,13 @@ import {
   Image,
   Font,
 } from "@react-pdf/renderer";
-import path from "path";
-/* ===============================
-   REGISTER SIGNATURE FONT
-================================ */
+
+// ✅ LOAD FONT FROM URL (Safe for Vercel/Serverless)
 Font.register({
   family: "Signature",
-  src: path.join(process.cwd(), "public/fonts/Pacifico-Regular.ttf"),
+  src: "https://jrv-admin.vercel.app/fonts/Pacifico-Regular.ttf",
 });
 
-/* ===============================
-   TYPES
-================================ */
 export type AgreementPdfData = {
   customer_name: string;
   id_number: string;
@@ -31,11 +26,9 @@ export type AgreementPdfData = {
   total_price: string;
   deposit_price: string;
   agent_email?: string | null;
+  ic_url?: string | null;
 };
 
-/* ===============================
-   TERMS
-================================ */
 const TERMS: string[] = [
   "Customer must provide all necessary document for rental purpose.",
   "Fuel level should be the same during pickup and return.",
@@ -55,9 +48,6 @@ const TERMS: string[] = [
   "In cases whereby renter fails to pay within the given date upon extension of rental, a collateral (eg: Mobile Phone, any personal belongings) valued within or higher than amount owed, must be provided by renter to the JRV Services agent in charge.",
 ];
 
-/* ===============================
-   STYLES
-================================ */
 const styles = StyleSheet.create({
   page: {
     backgroundColor: "#F4E7D8",
@@ -68,10 +58,8 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: "#111",
   },
-
   topLogoWrap: { alignItems: "center", marginBottom: 2 },
   logo: { width: 120, height: 90, objectFit: "contain" },
-
   title: {
     textAlign: "center",
     fontSize: 16,
@@ -79,7 +67,6 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     letterSpacing: 0.4,
   },
-
   kv: { alignItems: "center", marginBottom: 6 },
   kvLine: {
     textAlign: "center",
@@ -88,56 +75,47 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   kvValue: { fontFamily: "Helvetica", fontSize: 11 },
-
   para: {
     marginVertical: 6,
     lineHeight: 1.22,
     textAlign: "center",
     fontSize: 10,
   },
-
   divider: {
     height: 3,
     backgroundColor: "#111",
     opacity: 0.25,
     marginVertical: 7,
   },
-
   sectionTitle: {
     textAlign: "center",
     fontSize: 16,
     fontFamily: "Helvetica-Bold",
     marginBottom: 8,
   },
-
   termsGrid: { flexDirection: "row", gap: 12 },
   termsCol: { flex: 1 },
   bulletRow: { flexDirection: "row", marginBottom: 3 },
   bulletDot: { width: 10, textAlign: "center", fontSize: 10 },
   bulletText: { flex: 1, fontSize: 10, lineHeight: 1.18 },
-
   signatures: {
     marginTop: 90,
     flexDirection: "row",
     gap: 20,
   },
-
   sigCol: { flex: 1, alignItems: "center" },
-
   sigText: {
     fontFamily: "Signature",
     fontSize: 20,
-    color: "#1f4fd8", // blue ink
+    color: "#1f4fd8",
     marginBottom: 6,
   },
-
   sigText2: {
     fontFamily: "Signature",
     fontSize: 20,
-    color: "transparent", // blue ink
+    color: "transparent",
     marginBottom: 6,
   },
-
   sigLine: {
     width: "100%",
     height: 1,
@@ -145,43 +123,66 @@ const styles = StyleSheet.create({
     opacity: 0.5,
     marginBottom: 4,
   },
-
   sigLabel: {
     fontFamily: "Helvetica-Bold",
     fontSize: 8.5,
     letterSpacing: 0.3,
   },
+  icPage: {
+    backgroundColor: "#FFF",
+    padding: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  icContainer: {
+    width: "100%",
+    height: 400,
+    position: "relative",
+    justifyContent: "center",
+    alignItems: "center",
+    border: "2px dashed #ccc",
+    borderRadius: 8,
+  },
+  icImage: {
+    width: "90%",
+    height: "90%",
+    objectFit: "contain",
+  },
+  watermark: {
+    position: "absolute",
+    top: "40%",
+    left: "10%",
+    width: "80%",
+    fontSize: 50,
+    fontFamily: "Helvetica-Bold",
+    color: "red",
+    opacity: 0.3,
+    transform: "rotate(-45deg)",
+    textAlign: "center",
+  },
 });
 
-/* ===============================
-   HELPERS
-================================ */
 function agentInitial(email?: string | null) {
   const e = String(email ?? "").trim();
   if (!e) return "";
   return e.slice(0, 3).toUpperCase();
 }
 
-/* ===============================
-   COMPONENT
-================================ */
-export function AgreementPdf({ data }: { data: AgreementPdfData }) {
-  function diffDays(startIso: string, endIso: string) {
-    const a = new Date(startIso).getTime();
-    const b = new Date(endIso).getTime();
-    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
-    return Math.ceil((b - a) / (24 * 60 * 60 * 1000));
-  }
+function diffDays(startIso: string, endIso: string) {
+  const a = new Date(startIso).getTime();
+  const b = new Date(endIso).getTime();
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+  return Math.ceil((b - a) / (24 * 60 * 60 * 1000));
+}
 
+export function AgreementPdf({ data }: { data: AgreementPdfData }) {
   const durationDays =
     data.date_start && data.date_end
       ? diffDays(data.date_start, data.date_end)
       : 0;
-
   const mid = Math.ceil(TERMS.length / 2);
   const left = TERMS.slice(0, mid);
   const right = TERMS.slice(mid);
-
   const depositText =
     Number(data.deposit_price || "0") > 0
       ? `The deposit of RM ${data.deposit_price} will be refundable within 24–72 hours from return date.`
@@ -196,9 +197,7 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
             src="https://jrv-admin.vercel.app/logo.png"
           />
         </View>
-
         <Text style={styles.title}>JRV RENTAL AGREEMENT</Text>
-
         <View style={styles.kv}>
           <Text style={styles.kvLine}>
             RENTER: <Text style={styles.kvValue}>{data.customer_name}</Text>
@@ -220,17 +219,13 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
             </Text>
           </Text>
         </View>
-
         <Text style={styles.para}>
-          The current agreement is presented for the rental of {data.car_type} with
-          registration number of {data.plate_number}. The price for{" "}
-          {durationDays} day(s) is RM {data.total_price}.{" "}{depositText}
+          The current agreement is presented for the rental of {data.car_type}{" "}
+          with registration number of {data.plate_number}. The price for{" "}
+          {durationDays} day(s) is RM {data.total_price}. {depositText}
         </Text>
-
         <View style={styles.divider} />
-
         <Text style={styles.sectionTitle}>TERMS & CONDITIONS</Text>
-
         <View style={styles.termsGrid}>
           <View style={styles.termsCol}>
             {left.map((t, i) => (
@@ -249,9 +244,7 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
             ))}
           </View>
         </View>
-
         <View style={styles.divider} />
-
         <View style={styles.signatures}>
           <View style={styles.sigCol}>
             {data.agent_email ? (
@@ -262,8 +255,8 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
             <View style={styles.sigLine} />
             <Text style={styles.sigLabel}>AGENT SIGNATURE</Text>
           </View>
-
           <View style={styles.sigCol}>
+            {/* Client Signature - Intentionally Blank/Transparent */}
             {data.agent_email ? (
               <Text style={styles.sigText2}>
                 {agentInitial(data.agent_email)}
@@ -274,6 +267,20 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
           </View>
         </View>
       </Page>
+
+      {/* Second Page: IC Image */}
+      {data.ic_url && (
+        <Page size="A4" style={styles.icPage}>
+          <Text style={styles.title}>CUSTOMER IDENTIFICATION</Text>
+          <View style={styles.icContainer}>
+            <Image src={data.ic_url} style={styles.icImage} />
+            <Text style={styles.watermark}>JRV USE ONLY</Text>
+          </View>
+          <Text style={[styles.para, { marginTop: 20 }]}>
+            This document is strictly for internal use by JRV Global Services.
+          </Text>
+        </Page>
+      )}
     </Document>
   );
 }

@@ -158,7 +158,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           variants[variant],
           sizes[size],
           fullWidth && "w-full",
-          className
+          'p-4'
+,          className
         )}
         disabled={isDisabled}
         aria-disabled={isDisabled}

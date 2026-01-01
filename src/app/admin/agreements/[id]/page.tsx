@@ -65,7 +65,8 @@ export default async function EditAgreementPage({
       date_end,
       total_price,
       deposit_price,
-      agreement_url
+      agreement_url,
+      ic_url
     `
     )
     .eq("id", id)
@@ -96,6 +97,7 @@ export default async function EditAgreementPage({
         total_price: row.total_price ?? "0",
         deposit_price: row.deposit_price ?? "0",
         agreement_url: row.agreement_url ?? null,
+        ic_url: row.ic_url ?? null, // ✅ PASSING IT DOWN
       }}
     />
   );
