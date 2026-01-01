@@ -13,6 +13,10 @@ type Period =
   | "all"
   | "custom";
 
+// ✅ Unified "Glossy" Input Style (matches Site Events)
+const inputClass =
+  "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 h-10";
+
 export default function DashboardFilters({
   plates,
   models,
@@ -36,7 +40,6 @@ export default function DashboardFilters({
 
   const activePeriod = fromParam && toParam ? "custom" : currentPeriod;
 
-  // Sync state with URL params
   useEffect(() => {
     setCustomStart(fromParam);
     setCustomEnd(toParam);
@@ -49,12 +52,8 @@ export default function DashboardFilters({
         if (val) sp.set(key, val);
         else sp.delete(key);
       });
-
-      const queryString = sp.toString();
-      const url = `${pathname}?${queryString}`;
-
+      const url = `${pathname}?${sp.toString()}`;
       startTransition(() => {
-        // scroll: false prevents jumping to top on filter change
         router.push(url, { scroll: false });
       });
     },
@@ -62,7 +61,6 @@ export default function DashboardFilters({
   );
 
   const handlePeriodClick = (p: Period) => {
-    // When switching preset, clear custom dates
     updateParams({ period: p, from: null, to: null });
   };
 
@@ -80,14 +78,14 @@ export default function DashboardFilters({
 
   return (
     <div
-      className={`bg-white p-3 md:p-4 rounded-xl border shadow-sm w-full transition-opacity ${
-        isPending ? "opacity-50 pointer-events-none" : ""
+      className={`bg-white p-4 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 w-full transition-opacity ${
+        isPending ? "opacity-60 pointer-events-none" : ""
       }`}
     >
-      <div className="flex flex-col gap-3">
-        {/* Row 1: Period Presets */}
-        <div className="flex items-center gap-3 overflow-hidden">
-          <div className="flex bg-gray-100 rounded-lg p-1 overflow-x-auto no-scrollbar flex-nowrap w-full md:w-auto gap-1">
+      <div className="flex flex-col gap-4">
+        {/* Row 1: Period Presets & Reset */}
+        <div className="flex flex-col md:flex-row md:items-center gap-3 justify-between">
+          <div className="flex bg-gray-100/80 p-1 rounded-lg overflow-x-auto no-scrollbar gap-1 w-full md:w-auto">
             {(
               [
                 "daily",
@@ -100,118 +98,88 @@ export default function DashboardFilters({
             ).map((p) => (
               <Button
                 key={p}
-                // @ts-ignore - custom prop
+                // @ts-ignore
                 sound="on"
                 onClick={() => handlePeriodClick(p)}
-                variant={activePeriod === p ? "primary" : "secondary"}
                 size="sm"
-                className={`px-3 text-xs font-medium capitalize shrink-0 ${
-                  activePeriod !== p
-                    ? "text-gray-500 hover:text-black bg-transparent"
-                    : ""
-                }`}
+                className={`flex-1 md:flex-none px-3 py-1.5 text-[10px] md:text-xs font-bold uppercase tracking-wide rounded-md transition-all`}
+                variant={`${activePeriod === p ? "primary" : "tertiary"}`}
               >
                 {p}
               </Button>
             ))}
           </div>
 
-          <div className="hidden md:block h-6 w-px bg-gray-200 shrink-0" />
-
-          {/* Desktop Reset Link */}
           {(model || plate || activePeriod !== "daily") && (
             <Button
               onClick={clearAll}
               variant="ghost"
               size="sm"
-              className="hidden md:inline-flex text-xs text-red-600 hover:bg-red-50 hover:text-red-700 px-2 ml-auto"
+              className="hidden md:inline-flex text-xs text-red-600 hover:bg-red-50 px-2 h-8"
             >
-              Reset Filters
+              Reset
             </Button>
           )}
         </div>
 
-        {/* Row 2: Dropdowns */}
-        <div className="grid grid-cols-2 md:flex md:flex-wrap gap-2">
-          <select
-            value={model}
-            onChange={(e) => updateParams({ model: e.target.value })}
-            className="w-full md:w-auto text-sm border-none bg-gray-50 rounded-lg px-3 py-2 focus:ring-1 focus:ring-black md:min-w-35 truncate h-10"
-          >
-            <option value="">All Models</option>
-            {models.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+        {/* Row 2: Filters & Custom Range */}
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* Dropdowns - Grid on Mobile */}
+          <div className="grid grid-cols-2 gap-2 md:flex md:w-auto w-full">
+            <select
+              value={model}
+              onChange={(e) => updateParams({ model: e.target.value })}
+              className={inputClass}
+            >
+              <option value="">All Models</option>
+              {models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={plate}
-            onChange={(e) => updateParams({ plate: e.target.value })}
-            className="w-full md:w-auto text-sm border-none bg-gray-50 rounded-lg px-3 py-2 focus:ring-1 focus:ring-black md:min-w-35 truncate h-10"
-          >
-            <option value="">All Plates</option>
-            {plates.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
+            <select
+              value={plate}
+              onChange={(e) => updateParams({ plate: e.target.value })}
+              className={inputClass}
+            >
+              <option value="">All Plates</option>
+              {plates.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {/* --- Bottom Section: Custom Date Range --- */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <span className="text-gray-500 text-[10px] uppercase font-bold tracking-wide md:mr-2">
-            Custom Range
-          </span>
+          <div className="w-px h-10 bg-gray-100 hidden md:block" />
 
-          <div className="flex flex-col md:flex-row md:items-center gap-2 w-full md:w-auto">
+          {/* Custom Date - Grid on Mobile */}
+          <div className="grid grid-cols-[1fr_1fr_auto] md:flex md:items-center gap-2 w-full md:w-auto">
             <input
               type="date"
               value={customStart}
               onChange={(e) => setCustomStart(e.target.value)}
-              className="w-full md:w-auto border rounded px-3 py-2 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-black outline-none transition h-10"
+              className={inputClass}
             />
-            <span className="text-gray-400 self-center hidden md:inline">
-              →
-            </span>
-            <span className="text-gray-400 text-xs text-center md:hidden">
-              to
-            </span>
             <input
               type="date"
               value={customEnd}
               onChange={(e) => setCustomEnd(e.target.value)}
-              className="w-full md:w-auto border rounded px-3 py-2 text-sm text-gray-700 bg-gray-50 focus:bg-white focus:ring-1 focus:ring-black outline-none transition h-10"
+              className={inputClass}
             />
-          </div>
-
-          <Button
-            onClick={handleDateApply}
-            disabled={!customStart || !customEnd}
-            size="sm"
-            className="w-full md:w-auto font-bold uppercase tracking-wide"
-            // @ts-ignore
-            sound="on"
-          >
-            Apply
-          </Button>
-
-          {(model || plate || activePeriod !== "daily") && (
             <Button
-              onClick={clearAll}
-              variant="danger"
+              onClick={handleDateApply}
+              disabled={!customStart || !customEnd}
               size="sm"
               // @ts-ignore
               sound="on"
-              className="md:hidden w-full bg-red-50 text-red-600 border border-red-100 hover:bg-red-100 hover:text-red-700 shadow-none"
+              className="h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700"
             >
-              Clear All Filters
+              Go
             </Button>
-          )}
+          </div>
         </div>
       </div>
     </div>

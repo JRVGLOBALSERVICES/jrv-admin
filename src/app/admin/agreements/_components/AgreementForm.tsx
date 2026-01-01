@@ -4,13 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { normalizePhoneInternational } from "@/lib/phone";
 import { useRole } from "@/lib/auth/useRole";
 import { PdfViewer } from "./PdfViewer";
 import { uploadImage } from "@/lib/upload";
 import {
-  RotateCcw,
-  Trash2,
   ShieldAlert,
   CheckCircle,
   Upload,
@@ -27,17 +24,11 @@ import {
   AlertTriangle,
 } from "lucide-react";
 
-type CarRow = {
-  id: string;
-  plate_number: string;
-  catalog_id: string;
-  car_label: string;
-  deposit: number | null;
-  daily_price: number | null;
-  price_3_days: number | null;
-  weekly_price: number | null;
-  monthly_price: number | null;
-};
+// --- STYLES ---
+const inputClass =
+  "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 uppercase h-10";
+const labelClass =
+  "text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5";
 
 type InitialAgreement = {
   id?: string;
@@ -71,7 +62,7 @@ function nowTimeHHmm() {
 function klLocalToUtcIso(dateYYYYMMDD: string, timeHHmm: string) {
   const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
   const [hh, mm] = timeHHmm.split(":").map((x) => Number(x));
-  if (!y || !m || !d || !Number.isFinite(hh) || !Number.isFinite(mm)) return "";
+  if (!y || !m || !d) return "";
   const ms = Date.UTC(y, m - 1, d, hh - 8, mm, 0, 0);
   const dt = new Date(ms);
   return Number.isNaN(dt.getTime()) ? "" : dt.toISOString();
@@ -79,18 +70,17 @@ function klLocalToUtcIso(dateYYYYMMDD: string, timeHHmm: string) {
 function diffDays(startIso: string, endIso: string) {
   const a = new Date(startIso).getTime();
   const b = new Date(endIso).getTime();
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
+  if (b <= a) return 0;
   return Math.ceil((b - a) / (24 * 60 * 60 * 1000));
 }
 function suggestPrice(car: any, days: number) {
   if (!car || days <= 0) return 0;
   let remaining = days;
   let total = 0;
-  const monthly = car.monthly_price ? Number(car.monthly_price) : Infinity;
-  const weekly = car.weekly_price ? Number(car.weekly_price) : Infinity;
-  const promo3 = car.price_3_days ? Number(car.price_3_days) : Infinity;
-  const daily = car.daily_price ? Number(car.daily_price) : Infinity;
-
+  const monthly = car.monthly_price || Infinity;
+  const weekly = car.weekly_price || Infinity;
+  const promo3 = car.price_3_days || Infinity;
+  const daily = car.daily_price || Infinity;
   if (remaining >= 30 && monthly !== Infinity) {
     total += Math.floor(remaining / 30) * monthly;
     remaining %= 30;
@@ -109,34 +99,31 @@ function suggestPrice(car: any, days: number) {
   return total;
 }
 
+// ✅ Safe Sound Hook
 function useSfx() {
-  const clickRef = useRef<HTMLAudioElement | null>(null);
-  const okRef = useRef<HTMLAudioElement | null>(null);
-  const failRef = useRef<HTMLAudioElement | null>(null);
+  const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
   useEffect(() => {
     if (typeof window !== "undefined") {
-      clickRef.current = new Audio("/sfx/click.mp3");
-      okRef.current = new Audio("/sfx/success.mp3");
-      failRef.current = new Audio("/sfx/fail.mp3");
+      audioRefs.current = {
+        click: new Audio("/sfx/click.mp3"),
+        ok: new Audio("/sfx/success.mp3"),
+        fail: new Audio("/sfx/fail.mp3"),
+      };
     }
   }, []);
-  const play = (which: "click" | "ok" | "fail") => {
-    const el =
-      which === "click"
-        ? clickRef.current
-        : which === "ok"
-        ? okRef.current
-        : failRef.current;
-    if (el) {
-      el.currentTime = 0;
-      void el.play();
-    }
+  const play = (key: string) => {
+    try {
+      const audio = audioRefs.current[key];
+      if (audio) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+    } catch {}
   };
   return { play };
 }
 
-async function checkBlacklist(type: "mobile" | "ic", value: string) {
-  if (!value || value.length < 5) return null;
+async function checkBlacklist(type: string, value: string) {
   try {
     const res = await fetch("/admin/blacklist/check", {
       method: "POST",
@@ -150,7 +137,6 @@ async function checkBlacklist(type: "mobile" | "ic", value: string) {
 }
 
 async function checkHistory(ic: string, mobile: string) {
-  if (ic.length < 6 && mobile.length < 6) return null;
   try {
     const res = await fetch("/admin/agreements/api/check-history", {
       method: "POST",
@@ -168,41 +154,29 @@ export function AgreementForm({
   initial,
   onDoneHref = "/admin/agreements",
 }: {
-  mode: "create" | "edit";
+  mode: any;
   initial?: InitialAgreement;
   onDoneHref?: string;
 }) {
   const roleState = useRole();
   const agentEmail = roleState?.email ?? "";
-  const agentRole = roleState?.role ?? "admin";
-  const isSuperadmin = agentRole === "superadmin";
-  const isEdit = mode === "edit";
-  const isDeleted = initial?.status === "Deleted";
+  const isSuperadmin = roleState?.role === "superadmin";
   const { play } = useSfx();
 
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteStage, setDeleteStage] = useState<"idle" | "confirm">("idle");
-
   const [cars, setCars] = useState<any[]>([]);
-  const [carId, setCarId] = useState(initial?.car_id ?? "");
-  const selectedCar = useMemo(
-    () => cars.find((c) => c.id === carId) ?? null,
-    [cars, carId]
-  );
 
-  // Form Fields
+  // ✅ Initialize State with Fallbacks to prevent uncontrolled inputs
+  const [carId, setCarId] = useState(initial?.car_id ?? "");
   const [customerName, setCustomerName] = useState(
     (initial?.customer_name ?? "").toUpperCase()
   );
   const [idNumber, setIdNumber] = useState(
     (initial?.id_number ?? "").toUpperCase()
   );
-  const [mobile, setMobile] = useState(() => {
-    const m = String(initial?.mobile ?? "").trim();
-    if (!m) return "";
-    return m.startsWith("+") ? m : `+${m}`;
-  });
+  const [mobile, setMobile] = useState(initial?.mobile ?? "");
 
   const [icFile, setIcFile] = useState<File | null>(null);
   const [icPreview, setIcPreview] = useState<string | null>(
@@ -210,23 +184,14 @@ export function AgreementForm({
   );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Loading States
   const [checkingMobile, setCheckingMobile] = useState(false);
   const [checkingId, setCheckingId] = useState(false);
-
-  const [blacklistAlert, setBlacklistAlert] = useState<{
-    type: string;
-    value: string;
-    reason: string;
-  } | null>(null);
+  const [blacklistAlert, setBlacklistAlert] = useState<any>(null);
   const [historyMatch, setHistoryMatch] = useState<any>(null);
 
-  const [idStatus, setIdStatus] = useState<"idle" | "safe" | "danger">("idle");
-  const [mobileStatus, setMobileStatus] = useState<"idle" | "safe" | "danger">(
-    "idle"
-  );
+  const [idStatus, setIdStatus] = useState("idle");
+  const [mobileStatus, setMobileStatus] = useState("idle");
 
-  // Dates & Prices
   const [startDate, setStartDate] = useState(
     (initial?.date_start ?? "").slice(0, 10)
   );
@@ -240,72 +205,86 @@ export function AgreementForm({
   const [total, setTotal] = useState(String(initial?.total_price ?? "0"));
   const [deposit, setDeposit] = useState(String(initial?.deposit_price ?? "0"));
   const [status, setStatus] = useState(initial?.status ?? "New");
-  const [totalTouched, setTotalTouched] = useState(false);
-  const [depositTouched, setDepositTouched] = useState(false);
+
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initial?.agreement_url ?? null
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [totalTouched, setTotalTouched] = useState(false);
 
-  // Sync Initial
+  const selectedCar = useMemo(
+    () => cars.find((c) => c.id === carId) ?? null,
+    [cars, carId]
+  );
+
+  // ✅ SYNC INITIAL DATA WHEN LOADED (Fixes Edit Mode Issues)
   useEffect(() => {
-    if (initial?.ic_url) setIcPreview(initial.ic_url);
-    if (initial?.customer_name)
-      setCustomerName(initial.customer_name.toUpperCase());
-    if (initial?.id_number) setIdNumber(initial.id_number.toUpperCase());
+    if (initial) {
+      if (initial.car_id) setCarId(initial.car_id);
+      if (initial.mobile) setMobile(initial.mobile);
+      if (initial.customer_name)
+        setCustomerName(initial.customer_name.toUpperCase());
+      if (initial.id_number) setIdNumber(initial.id_number.toUpperCase());
+      if (initial.ic_url) setIcPreview(initial.ic_url);
+      if (initial.total_price) setTotal(String(initial.total_price));
+      if (initial.deposit_price) setDeposit(String(initial.deposit_price));
+      if (initial.status) setStatus(initial.status);
+      if (initial.date_start) setStartDate(initial.date_start.slice(0, 10));
+      if (initial.date_end) setEndDate(initial.date_end.slice(0, 10));
+      if (initial.start_time) setStartTime(initial.start_time);
+      if (initial.end_time) setEndTime(initial.end_time);
+    }
   }, [initial]);
 
+  // ✅ LOAD CARS
   useEffect(() => {
     (async () => {
+      const url = new URL("/admin/cars/api", window.location.origin);
+      url.searchParams.set("mode", "dropdown");
+      // Ensure the current car is included in the list even if rented
+      if (initial?.car_id) url.searchParams.set("include", initial.car_id);
+
       try {
-        const url = new URL("/admin/cars/api", window.location.origin);
-        url.searchParams.set("mode", "dropdown");
-        if (isEdit && initial?.car_id)
-          url.searchParams.set("include", initial.car_id);
         const res = await fetch(url.toString());
         const json = await res.json();
-        setCars(json.rows || []);
+        if (json.rows) setCars(json.rows);
       } catch {}
     })();
-  }, [isEdit, initial?.car_id]);
+  }, [initial?.car_id]);
 
   const startIso = useMemo(
-    () => (startDate && startTime ? klLocalToUtcIso(startDate, startTime) : ""),
+    () => klLocalToUtcIso(startDate, startTime),
     [startDate, startTime]
   );
   const endIso = useMemo(
-    () => (endDate && endTime ? klLocalToUtcIso(endDate, endTime) : ""),
+    () => klLocalToUtcIso(endDate, endTime),
     [endDate, endTime]
   );
-  const durationDays = startIso && endIso ? diffDays(startIso, endIso) : 0;
+  const durationDays = useMemo(
+    () => diffDays(startIso, endIso),
+    [startIso, endIso]
+  );
 
   useEffect(() => {
-    if (!selectedCar || totalTouched) return;
-    if (durationDays > 0)
-      setTotal(String(suggestPrice(selectedCar, durationDays).toFixed(2)));
-    else setTotal("0.00");
+    if (selectedCar && durationDays > 0 && !totalTouched)
+      setTotal(suggestPrice(selectedCar, durationDays).toFixed(2));
   }, [selectedCar, durationDays, totalTouched]);
 
-  // ✅ HANDLERS
-  const handleMobileBlur = async () => {
-    if (mobile.length < 6) return;
-    setCheckingMobile(true);
-    setMobileStatus("idle");
+  // --- HANDLERS ---
 
+  const handleMobileBlur = async () => {
+    if (mobile.length < 5) return;
+    setCheckingMobile(true);
+    setMobileStatus("checking");
     const bl = await checkBlacklist("mobile", mobile);
     if (!historyMatch && mode === "create") {
-      const hist = await checkHistory("", mobile);
-      if (hist) setHistoryMatch(hist);
+      const h = await checkHistory("", mobile);
+      if (h) setHistoryMatch(h);
     }
     setCheckingMobile(false);
-
     if (bl) {
       setMobileStatus("danger");
-      setBlacklistAlert({
-        type: "Mobile Number",
-        value: mobile,
-        reason: bl.reason,
-      });
+      setBlacklistAlert({ type: "Mobile", value: mobile, reason: bl.reason });
       play("fail");
     } else {
       setMobileStatus("safe");
@@ -313,91 +292,55 @@ export function AgreementForm({
   };
 
   const handleIdBlur = async () => {
-    if (idNumber.length < 6) return;
+    if (idNumber.length < 5) return;
     setCheckingId(true);
-    setIdStatus("idle");
-
+    setIdStatus("checking");
     const bl = await checkBlacklist("ic", idNumber);
     if (!historyMatch && mode === "create") {
-      const hist = await checkHistory(idNumber, "");
-      if (hist) setHistoryMatch(hist);
+      const h = await checkHistory(idNumber, "");
+      if (h) setHistoryMatch(h);
     }
     setCheckingId(false);
-
     if (bl) {
       setIdStatus("danger");
-      setBlacklistAlert({
-        type: "IC Number",
-        value: idNumber,
-        reason: bl.reason,
-      });
+      setBlacklistAlert({ type: "IC", value: idNumber, reason: bl.reason });
       play("fail");
     } else {
       setIdStatus("safe");
     }
   };
 
-  const confirmHistoryUse = () => {
-    if (!historyMatch) return;
-    setCustomerName(historyMatch.customer_name?.toUpperCase() || "");
-    if (historyMatch.id_number)
-      setIdNumber(historyMatch.id_number.toUpperCase());
-    if (historyMatch.mobile) setMobile(historyMatch.mobile);
-    if (historyMatch.ic_url) {
-      setIcPreview(historyMatch.ic_url);
-      setIcFile(null);
-    }
-    setHistoryMatch(null);
-    play("ok");
-  };
-
   const handleScan = async () => {
-    if (!icFile) return setErr("Please select an IC image first.");
+    if (!icFile) return setErr("Upload IC first.");
     setBusy(true);
-    setErr(null);
     try {
       const fd = new FormData();
       fd.append("file", icFile);
       const res = await fetch("/api/ocr/scan", { method: "POST", body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Scan failed");
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
 
-      if (json.data.name) setCustomerName(json.data.name.toUpperCase());
-      if (json.data.id_number) {
-        const id = json.data.id_number.toUpperCase();
-        setIdNumber(id);
-        setCheckingId(true);
-        checkBlacklist("ic", id).then((entry) => {
-          setCheckingId(false);
-          if (entry) {
-            setBlacklistAlert({
-              type: "IC Number",
-              value: id,
-              reason: entry.reason,
-            });
-            play("fail");
-            setIdStatus("danger");
-          } else {
-            play("ok");
-            setIdStatus("safe");
-          }
-        });
+      if (j.data.name) setCustomerName(j.data.name.toUpperCase());
+      if (j.data.id_number) {
+        const scanId = j.data.id_number.toUpperCase();
+        setIdNumber(scanId);
+        const bl = await checkBlacklist("ic", scanId);
+        if (bl) {
+          setIdStatus("danger");
+          setBlacklistAlert({ type: "IC", value: scanId, reason: bl.reason });
+          play("fail");
+        } else {
+          setIdStatus("safe");
+          play("ok");
+        }
       } else {
         play("ok");
       }
     } catch (e: any) {
-      setErr("Scan failed: " + e.message);
+      setErr(e.message);
       play("fail");
     } finally {
       setBusy(false);
-    }
-  };
-
-  const handleIcSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.[0]) {
-      const f = e.target.files[0];
-      setIcFile(f);
-      setIcPreview(URL.createObjectURL(f));
     }
   };
 
@@ -410,70 +353,54 @@ export function AgreementForm({
     return null;
   };
 
-  const executeSave = async (overrideStatus?: string) => {
-    setErr(null);
+  // ✅ ROBUST PREVIEW FUNCTION
+  const preview = async () => {
     const v = validate();
     if (v) return setErr(v);
+
+    // Block if blacklisted
+    const bl1 = await checkBlacklist("mobile", mobile);
+    if (bl1) return setErr("Mobile is Blacklisted.");
+    const bl2 = await checkBlacklist("ic", idNumber);
+    if (bl2) return setErr("IC is Blacklisted.");
+
     setBusy(true);
     try {
-      // 🚨 BLOCKING BLACKLIST CHECK
-      const blMobile = await checkBlacklist("mobile", mobile);
-      if (blMobile) {
-        throw new Error(
-          `Mobile number ${mobile} is BLACKLISTED. Cannot proceed until removed.`
-        );
-      }
-
-      const blIc = await checkBlacklist("ic", idNumber);
-      if (blIc) {
-        throw new Error(
-          `IC number ${idNumber} is BLACKLISTED. Cannot proceed until removed.`
-        );
-      }
-
-      let finalIcUrl = initial?.ic_url ?? null;
+      let url = initial?.ic_url ?? null;
+      // Only upload if new file exists, otherwise use existing URL
       if (icFile) {
-        finalIcUrl = await uploadImage(icFile);
-      } else if (
-        icPreview &&
-        typeof icPreview === "string" &&
-        icPreview.startsWith("http")
-      ) {
-        finalIcUrl = icPreview;
+        url = await uploadImage(icFile);
+      } else if (icPreview && icPreview.startsWith("http")) {
+        url = icPreview;
       }
-
-      const payload = {
-        id: initial?.id,
-        customer_name: customerName.toUpperCase(),
-        id_number: idNumber.toUpperCase(),
-        mobile,
-        car_id: carId,
-        plate_number: (selectedCar?.plate_number || "").toUpperCase(),
-        car_type: (selectedCar?.car_label || "").toUpperCase(),
-        date_start_iso: startIso,
-        date_end_iso: endIso,
-        booking_duration_days: durationDays,
-        total_price: total,
-        deposit_price: deposit,
-        status: overrideStatus || status,
-        agent_email: agentEmail,
-        ic_url: finalIcUrl,
-      };
 
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: mode === "edit" ? "confirm_update" : "confirm_create",
-          payload,
+          action: "preview",
+          payload: {
+            customer_name: customerName,
+            id_number: idNumber,
+            mobile,
+            plate_number: selectedCar?.plate_number,
+            car_type: selectedCar?.car_label,
+            date_start_iso: startIso,
+            date_end_iso: endIso,
+            total_price: total,
+            deposit_price: deposit,
+            ic_url: url,
+            agent_email: agentEmail,
+          },
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Save failed");
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
 
-      play("ok");
-      if (json.whatsapp_url) window.open(json.whatsapp_url, "_blank");
-      window.location.href = onDoneHref;
+      if (j.preview_url) {
+        setPreviewUrl(j.preview_url);
+        setConfirmOpen(true); // ✅ Force Open
+        play("ok");
+      }
     } catch (e: any) {
       setErr(e.message);
       play("fail");
@@ -482,57 +409,51 @@ export function AgreementForm({
     }
   };
 
-  const preview = async () => {
-    // 🚨 BLOCKING BLACKLIST CHECK FOR PREVIEW TOO
-    const blMobile = await checkBlacklist("mobile", mobile);
-    if (blMobile) return setErr(`Mobile number ${mobile} is BLACKLISTED.`);
-    const blIc = await checkBlacklist("ic", idNumber);
-    if (blIc) return setErr(`IC number ${idNumber} is BLACKLISTED.`);
-
-    if (icFile) {
-      try {
-        const tempUrl = await uploadImage(icFile);
-        callPreviewApi(tempUrl);
-      } catch {
-        setErr("Failed to upload IC for preview");
-      }
-    } else {
-      callPreviewApi(icPreview);
-    }
-  };
-
-  const callPreviewApi = async (icUrlOverride: string | null) => {
+  const executeSave = async (overrideStatus?: string) => {
+    const v = validate();
+    if (v) return setErr(v);
     setBusy(true);
     try {
+      const bl1 = await checkBlacklist("mobile", mobile);
+      if (bl1) throw new Error("Mobile Blacklisted");
+      const bl2 = await checkBlacklist("ic", idNumber);
+      if (bl2) throw new Error("IC Blacklisted");
+
+      let url = initial?.ic_url ?? null;
+      if (icFile) url = await uploadImage(icFile);
+      else if (icPreview && icPreview.startsWith("http")) url = icPreview;
+
+      const payload = {
+        id: initial?.id,
+        customer_name: customerName,
+        id_number: idNumber,
+        mobile,
+        car_id: carId,
+        plate_number: selectedCar?.plate_number,
+        car_type: selectedCar?.car_label,
+        date_start_iso: startIso,
+        date_end_iso: endIso,
+        total_price: total,
+        deposit_price: deposit,
+        status: overrideStatus || status,
+        agent_email: agentEmail,
+        ic_url: url,
+      };
+
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
         body: JSON.stringify({
-          action: "preview",
-          payload: {
-            customer_name: customerName.toUpperCase(),
-            id_number: idNumber.toUpperCase(),
-            mobile,
-            plate_number: (selectedCar?.plate_number || "").toUpperCase(),
-            car_type: (selectedCar?.car_label || "").toUpperCase(),
-            date_start_iso: startIso,
-            date_end_iso: endIso,
-            total_price: total,
-            deposit_price: deposit,
-            ic_url: icUrlOverride,
-            agent_email: agentEmail,
-          },
+          action: mode === "edit" ? "confirm_update" : "confirm_create",
+          payload,
         }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Preview generation failed");
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.error);
 
-      if (json.preview_url) {
-        setPreviewUrl(json.preview_url);
-        setConfirmOpen(true);
-        play("ok");
-      }
+      play("ok");
+      if (j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
+      window.location.href = onDoneHref;
     } catch (e: any) {
-      console.error(e);
       setErr(e.message);
       play("fail");
     } finally {
@@ -548,24 +469,12 @@ export function AgreementForm({
       setTimeout(() => setDeleteStage("idle"), 4000);
       return;
     }
-    if (deleteStage === "confirm") {
-      play("click");
-      setBusy(true);
-      setErr(null);
-      try {
-        await fetch("/admin/agreements/api", {
-          method: "POST",
-          body: JSON.stringify({ action: "delete", id: initial.id }),
-        });
-        play("ok");
-        window.location.href = onDoneHref;
-      } catch (e: any) {
-        setErr(e?.message || "Delete failed");
-        play("fail");
-        setBusy(false);
-        setDeleteStage("idle");
-      }
-    }
+    setBusy(true);
+    await fetch("/admin/agreements/api", {
+      method: "POST",
+      body: JSON.stringify({ action: "delete", id: initial.id }),
+    });
+    window.location.href = onDoneHref;
   };
 
   const handleRestoreClick = async () => await executeSave("Editted");
@@ -575,407 +484,341 @@ export function AgreementForm({
     : ["New", "Editted", "Cancelled"];
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-5xl mx-auto">
-      {/* ✅ GENERIC ERROR MODAL */}
+    <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
+      {/* ALERTS */}
       {err && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 animate-in fade-in backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl border-l-4 border-red-500 max-w-sm w-full shadow-2xl">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-red-100 rounded-full text-red-600">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-              <h3 className="text-red-700 font-bold text-lg">
-                Action Required
-              </h3>
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white p-6 rounded-2xl border-l-4 border-red-500 shadow-2xl max-w-sm w-full">
+            <div className="flex items-center gap-3 text-red-700 font-bold mb-2">
+              <AlertTriangle /> Action Required
             </div>
-            <p className="text-gray-700 font-medium text-sm leading-relaxed mb-4">
-              {err}
-            </p>
+            <p className="text-gray-700 text-sm mb-4">{err}</p>
             <Button
               onClick={() => setErr(null)}
-              className="w-full bg-red-600 hover:bg-red-700 text-white shadow-md"
+              className="w-full bg-red-600 hover:bg-red-700 text-white"
             >
-              Okay, I'll fix it
+              Okay
             </Button>
           </div>
         </div>
       )}
-
-      {/* Blacklist Modal */}
       {blacklistAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl border-l-4 border-red-600 max-w-md shadow-2xl w-full">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-red-100 rounded-full text-red-600">
-                <ShieldAlert className="w-6 h-6" />
-              </div>
-              <h3 className="text-red-700 font-bold text-lg">
-                Blacklist Warning
-              </h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl border-l-4 border-red-600 shadow-2xl max-w-md w-full">
+            <div className="flex items-center gap-3 text-red-700 font-bold mb-3">
+              <ShieldAlert /> Blacklist Warning
             </div>
-            <p className="text-gray-800 font-medium">
+            <p className="text-gray-800">
               The {blacklistAlert.type}{" "}
-              <span className="font-mono bg-red-100 px-1 rounded mx-1">
+              <span className="bg-red-100 font-mono px-1 rounded">
                 {blacklistAlert.value}
               </span>{" "}
-              is in the blacklist.
+              is blacklisted.
             </p>
-            <p className="text-sm bg-red-50 p-4 mt-4 rounded-xl text-red-800 border border-red-100">
-              <strong>Reason:</strong>{" "}
-              {blacklistAlert.reason || "No reason provided."}
-            </p>
+            <div className="bg-red-50 p-3 rounded-lg text-xs text-red-800 mt-3 border border-red-100">
+              <strong>Reason:</strong> {blacklistAlert.reason}
+            </div>
             <Button
               onClick={() => setBlacklistAlert(null)}
-              className="mt-6 w-full bg-red-600 hover:bg-red-700 text-white shadow-md"
+              className="w-full mt-4 bg-red-600 text-white hover:bg-red-700"
             >
-              Acknowledge Warning
+              Acknowledge
             </Button>
           </div>
         </div>
       )}
-
-      {/* History Match Modal */}
       {historyMatch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-blue-100">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2 bg-blue-100 rounded-full text-blue-600">
-                <History className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="text-gray-900 font-bold text-lg">
-                  Found Existing Customer
-                </h3>
-                <p className="text-xs text-gray-500">
-                  Matches your input details
-                </p>
-              </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-blue-100">
+            <div className="flex items-center gap-3 text-blue-700 font-bold mb-3">
+              <History /> Found Existing Customer
             </div>
-
-            <div className="bg-gray-50 p-4 rounded-xl space-y-2 mb-6 border border-gray-100">
-              <div className="text-sm">
+            <div className="bg-blue-50 p-4 rounded-xl space-y-1 text-sm text-blue-900 mb-4">
+              <div>
                 <strong>Name:</strong> {historyMatch.customer_name}
               </div>
-              <div className="text-sm">
+              <div>
                 <strong>IC:</strong> {historyMatch.id_number}
               </div>
-              <div className="text-sm">
-                <strong>Mobile:</strong> {historyMatch.mobile}
-              </div>
-              {historyMatch.ic_url && (
-                <div className="mt-2 text-xs text-green-600 flex items-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> Previous IC Image
-                  Available
-                </div>
-              )}
             </div>
-
-            <div className="flex gap-3">
+            <div className="flex gap-2">
               <Button
                 onClick={() => setHistoryMatch(null)}
-                variant="secondary"
+                variant="ghost"
                 className="flex-1"
               >
-                Ignore
+                Cancel
               </Button>
               <Button
-                onClick={confirmHistoryUse}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => {
+                  setCustomerName(historyMatch.customer_name.toUpperCase());
+                  setIdNumber(historyMatch.id_number.toUpperCase());
+                  if (historyMatch.ic_url) setIcPreview(historyMatch.ic_url);
+                  setHistoryMatch(null);
+                }}
+                className="flex-1 bg-blue-600 text-white"
               >
-                Use Previous Data
+                Use Data
               </Button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
           {mode === "edit" ? "Edit Agreement" : "New Agreement"}
-          {isDeleted && (
-            <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold border border-red-200">
+          {initial?.status === "Deleted" && (
+            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded border border-red-200">
               DELETED
             </span>
           )}
         </h1>
-        <div className="flex gap-2 w-full md:w-auto">
-          {isEdit &&
-            isSuperadmin &&
-            (isDeleted ? (
-              <Button
-                onClick={handleRestoreClick}
-                loading={busy}
-                variant="secondary"
-                className="flex-1 md:flex-none bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
-              >
-                Restore
-              </Button>
-            ) : (
-              <Button
-                onClick={handleDeleteClick}
-                loading={busy}
-                variant="secondary"
-                className="flex-1 md:flex-none text-red-600 border-red-200 hover:bg-red-50 shadow-sm"
-              >
-                {deleteStage === "confirm" ? "Confirm?" : "Delete"}
-              </Button>
-            ))}
-          <Link
-            href={onDoneHref}
-            className="text-sm underline self-center px-2 text-gray-500"
-          >
-            Back
-          </Link>
-        </div>
+        <Link
+          href={onDoneHref}
+          className="text-sm font-medium text-gray-500 hover:text-black transition"
+        >
+          Cancel & Back
+        </Link>
       </div>
 
-      <Card className="p-4 space-y-5">
-        {/* IC UPLOAD & SCAN */}
-        <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex flex-col md:flex-row gap-5 items-start shadow-sm">
-          <div className="relative w-full md:w-40 h-48 md:h-32 bg-white border-2 border-dashed border-blue-200 rounded-lg flex items-center justify-center overflow-hidden shrink-0 group hover:border-blue-400 transition-all shadow-sm">
-            {icPreview ? (
-              <img
-                src={icPreview}
-                alt="IC"
-                className="w-full h-full object-contain"
-              />
-            ) : (
-              <div className="text-center flex flex-col items-center">
-                <Upload className="w-8 h-8 text-blue-300 mb-2 group-hover:scale-110 transition-transform" />
-                <span className="text-xs text-blue-400 font-bold uppercase tracking-wider">
-                  Upload IC
-                </span>
-              </div>
-            )}
-            <input
-              type="file"
-              ref={fileInputRef}
-              accept="image/*"
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              onChange={handleIcSelect}
-            />
-          </div>
-
-          <div className="flex-1 w-full space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="font-bold text-sm text-blue-900 flex items-center gap-2">
-                <ScanLine className="w-4 h-4" /> CUSTOMER DETAILS
-              </h3>
-              <Button
-                onClick={handleScan}
-                variant="secondary"
-                size="sm"
-                className="bg-white border-blue-200 text-blue-700 hover:bg-blue-50 shadow-sm"
-              >
-                Scan & Auto-fill
-              </Button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <div className="text-xs text-gray-500 mb-1 font-semibold uppercase flex items-center gap-1">
-                  <User className="w-3 h-3" /> Full Name
-                </div>
-                <input
-                  className="w-full border rounded-lg px-3 py-2 text-sm uppercase shadow-sm focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                  value={customerName}
-                  onChange={(e) =>
-                    setCustomerName(e.target.value.toUpperCase())
-                  }
-                  placeholder="AS PER IC / PASSPORT"
+      <Card className="p-0 overflow-hidden shadow-xl shadow-gray-200/50 border border-gray-100">
+        <div className="p-6 space-y-6">
+          <div className="bg-linear-to-br from-blue-50/50 to-indigo-50/30 p-5 rounded-2xl border border-blue-100/50 flex flex-col md:flex-row gap-6">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="relative w-full md:w-48 h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:scale-[1.02] transition-all shadow-sm group"
+            >
+              {icPreview ? (
+                <img
+                  src={icPreview}
+                  className="w-full h-full object-contain p-2"
                 />
-              </div>
-              <div>
-                <div className="text-xs text-gray-500 mb-1 font-semibold uppercase flex items-center gap-1">
-                  <CreditCard className="w-3 h-3" /> IC / Passport
+              ) : (
+                <div className="text-center space-y-1">
+                  <div className="p-2 bg-blue-50 rounded-full inline-flex text-blue-400 group-hover:text-indigo-500 transition-colors">
+                    <Upload className="w-5 h-5" />
+                  </div>
+                  <div className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">
+                    Upload IC
+                  </div>
                 </div>
-                <div className="relative">
+              )}
+              <input
+                type="file"
+                ref={fileInputRef}
+                hidden
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    setIcFile(e.target.files[0]);
+                    setIcPreview(URL.createObjectURL(e.target.files[0]));
+                  }
+                }}
+              />
+            </div>
+            <div className="flex-1 space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                  <ScanLine className="w-4 h-4" /> Customer Details
+                </h3>
+                <Button
+                  onClick={handleScan}
+                  variant="secondary"
+                  size="sm"
+                  className="bg-white border-blue-200 text-indigo-600 hover:bg-indigo-50 shadow-sm text-xs font-bold"
+                >
+                  Scan & Autofill
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>
+                    <User className="w-3 h-3" /> Name
+                  </label>
                   <input
-                    className={`w-full border rounded-lg px-3 py-2 text-sm uppercase shadow-sm focus:ring-2 outline-none transition-all pr-8 ${
-                      idStatus === "danger"
-                        ? "border-red-500 bg-red-50 focus:ring-red-100"
-                        : idStatus === "safe"
-                        ? "border-green-500 bg-green-50/30 focus:ring-green-100"
-                        : "focus:ring-blue-100"
-                    }`}
-                    value={idNumber}
-                    onChange={(e) => {
-                      setIdNumber(e.target.value.toUpperCase());
-                      setIdStatus("idle");
-                    }}
-                    onBlur={handleIdBlur}
-                    placeholder="000000-00-0000"
+                    className={inputClass}
+                    value={customerName}
+                    onChange={(e) =>
+                      setCustomerName(e.target.value.toUpperCase())
+                    }
+                    placeholder="FULL NAME"
                   />
-                  <div className="absolute right-3 top-2.5 pointer-events-none">
-                    {checkingId ? (
-                      <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                    ) : idStatus === "safe" ? (
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                    ) : idStatus === "danger" ? (
-                      <XCircle className="w-4 h-4 text-red-600" />
-                    ) : null}
+                </div>
+                <div>
+                  <label className={labelClass}>
+                    <CreditCard className="w-3 h-3" /> IC Number
+                  </label>
+                  <div className="relative">
+                    <input
+                      className={`${inputClass} pr-9`}
+                      value={idNumber}
+                      onChange={(e) => {
+                        setIdNumber(e.target.value.toUpperCase());
+                        setIdStatus("idle");
+                      }}
+                      onBlur={handleIdBlur}
+                      placeholder="000000-00-0000"
+                    />
+                    <div className="absolute right-3 top-3">
+                      {checkingId ? (
+                        <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                      ) : idStatus === "safe" ? (
+                        <CheckCircle className="w-4 h-4 text-green-500" />
+                      ) : idStatus === "danger" ? (
+                        <XCircle className="w-4 h-4 text-red-500" />
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-xs opacity-60 mb-1 uppercase font-bold flex items-center gap-1">
-              <Phone className="w-3 h-3" /> Mobile
-            </div>
-            <div className="relative">
-              <input
-                className={`w-full border rounded-lg px-3 py-2 shadow-sm focus:ring-2 outline-none transition-all pr-8 ${
-                  mobileStatus === "danger"
-                    ? "border-red-500 bg-red-50 focus:ring-red-100"
-                    : mobileStatus === "safe"
-                    ? "border-green-500 bg-green-50/30 focus:ring-green-100"
-                    : "focus:ring-blue-100"
-                }`}
-                value={mobile}
-                onChange={(e) => {
-                  setMobile(e.target.value);
-                  setMobileStatus("idle");
-                }}
-                onBlur={handleMobileBlur}
-                placeholder="+60..."
-              />
-              <div className="absolute right-3 top-2.5 pointer-events-none">
-                {checkingMobile ? (
-                  <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                ) : mobileStatus === "safe" ? (
-                  <CheckCircle className="w-4 h-4 text-green-600" />
-                ) : mobileStatus === "danger" ? (
-                  <XCircle className="w-4 h-4 text-red-600" />
-                ) : null}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className={labelClass}>
+                <Phone className="w-3 h-3" /> Mobile
+              </label>
+              <div className="relative">
+                <input
+                  className={`${inputClass} pr-9`}
+                  value={mobile}
+                  onChange={(e) => {
+                    setMobile(e.target.value);
+                    setMobileStatus("idle");
+                  }}
+                  onBlur={handleMobileBlur}
+                  placeholder="+60..."
+                />
+                <div className="absolute right-3 top-3">
+                  {checkingMobile ? (
+                    <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                  ) : mobileStatus === "safe" ? (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  ) : mobileStatus === "danger" ? (
+                    <XCircle className="w-4 h-4 text-red-500" />
+                  ) : null}
+                </div>
               </div>
             </div>
+            <div>
+              <label className={labelClass}>
+                <Car className="w-3 h-3" /> Vehicle
+              </label>
+              <select
+                className={inputClass}
+                value={carId}
+                onChange={(e) => setCarId(e.target.value)}
+              >
+                <option value="">Select Car...</option>
+                {cars.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.plate_number.toUpperCase()} — {c.car_label.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <div className="text-xs opacity-60 mb-1 uppercase font-bold flex items-center gap-1">
-              <Car className="w-3 h-3" /> Car Selection
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className={labelClass}>Start Date</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
             </div>
-            <select
-              className="w-full border rounded-lg px-3 py-2 uppercase bg-white shadow-sm focus:ring-2 focus:ring-blue-100 outline-none"
-              value={carId}
-              onChange={(e) => setCarId(e.target.value)}
+            <div>
+              <label className={labelClass}>Start Time</label>
+              <input
+                type="time"
+                className={inputClass}
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>End Date</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className={labelClass}>End Time</label>
+              <input
+                type="time"
+                className={inputClass}
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+            <div className="bg-green-50/50 p-4 rounded-xl border border-green-100">
+              <label className="text-[10px] font-bold text-green-700 uppercase tracking-wide mb-1 block">
+                Total Amount (RM)
+              </label>
+              <input
+                type="number"
+                className="w-full bg-transparent text-2xl font-black text-green-700 placeholder-green-300 outline-none border-0 p-0 focus:ring-0"
+                value={total}
+                onChange={(e) => {
+                  setTotal(e.target.value);
+                  setTotalTouched(true);
+                }}
+              />
+            </div>
+            <div className="p-4 rounded-xl border border-gray-100">
+              <label className={labelClass}>Deposit (RM)</label>
+              <input
+                type="number"
+                className="w-full bg-transparent text-xl font-bold text-gray-700 outline-none border-0 p-0 focus:ring-0"
+                value={deposit}
+                onChange={(e) => setDeposit(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-50">
+            <div className="mr-auto w-40">
+              <label className={labelClass}>Status</label>
+              <select
+                className={inputClass}
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                {statusOptions.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              onClick={() => preview()}
+              loading={busy}
+              variant="secondary"
+              className="shadow-sm"
             >
-              <option value="">SELECT CAR...</option>
-              {cars.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.plate_number.toUpperCase()} — {c.car_label.toUpperCase()}
-                </option>
-              ))}
-            </select>
+              Preview PDF
+            </Button>
+            <Button
+              onClick={() => executeSave()}
+              loading={busy}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+            >
+              Save & WhatsApp
+            </Button>
           </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-          <div>
-            <div className="text-xs opacity-60 font-bold mb-1 flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> Start Date
-            </div>
-            <input
-              type="date"
-              className="w-full border rounded px-2 py-2 shadow-sm focus:ring-2 focus:ring-blue-50 outline-none"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-            />
-          </div>
-          <div>
-            <div className="text-xs opacity-60 font-bold mb-1 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Start Time
-            </div>
-            <input
-              type="time"
-              className="w-full border rounded px-2 py-2 shadow-sm focus:ring-2 focus:ring-blue-50 outline-none"
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-            />
-          </div>
-          <div>
-            <div className="text-xs opacity-60 font-bold mb-1 flex items-center gap-1">
-              <Calendar className="w-3 h-3" /> End Date
-            </div>
-            <input
-              type="date"
-              className="w-full border rounded px-2 py-2 shadow-sm focus:ring-2 focus:ring-blue-50 outline-none"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-            />
-          </div>
-          <div>
-            <div className="text-xs opacity-60 font-bold mb-1 flex items-center gap-1">
-              <Clock className="w-3 h-3" /> End Time
-            </div>
-            <input
-              type="time"
-              className="w-full border rounded px-2 py-2 shadow-sm focus:ring-2 focus:ring-blue-50 outline-none"
-              value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <div className="text-xs opacity-60 font-bold mb-1">Total (RM)</div>
-            <input
-              type="number"
-              className="w-full border rounded-lg px-3 py-2 font-black text-green-700 text-lg shadow-sm bg-green-50/20 border-green-200 focus:ring-2 focus:ring-green-200 outline-none transition-all"
-              value={total}
-              onChange={(e) => {
-                setTotal(e.target.value);
-                setTotalTouched(true);
-              }}
-            />
-          </div>
-          <div>
-            <div className="text-xs opacity-60 font-bold mb-1">
-              Deposit (RM)
-            </div>
-            <input
-              type="number"
-              className="w-full border rounded-lg px-3 py-2 shadow-sm font-semibold text-gray-700 focus:ring-2 focus:ring-gray-100 outline-none"
-              value={deposit}
-              onChange={(e) => setDeposit(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div>
-          <div className="text-xs opacity-60 mb-1 font-bold">Status</div>
-          <select
-            disabled={isDeleted}
-            className="w-full border rounded-lg px-3 py-2 bg-white disabled:bg-gray-100 shadow-sm focus:ring-2 focus:ring-gray-100 outline-none"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            {statusOptions.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button
-            variant="secondary"
-            onClick={preview}
-            loading={busy}
-            className="shadow-sm w-full md:w-auto"
-          >
-            Preview PDF
-          </Button>
         </div>
       </Card>
 
-      {/* PDF Modal */}
       {confirmOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-0 md:p-4">
           <div className="bg-white w-full h-full md:h-[85vh] md:max-w-4xl md:rounded-xl flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300">
