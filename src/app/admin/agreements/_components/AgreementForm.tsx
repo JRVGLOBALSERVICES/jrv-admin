@@ -804,14 +804,14 @@ export function AgreementForm({
               onClick={() => preview()}
               loading={busy}
               variant="secondary"
-              className="shadow-sm"
+              className="shadow-sm p-6"
             >
               Preview PDF
             </Button>
             <Button
               onClick={() => executeSave()}
               loading={busy}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-6 shadow-lg shadow-indigo-200"
             >
               Save & WhatsApp
             </Button>
