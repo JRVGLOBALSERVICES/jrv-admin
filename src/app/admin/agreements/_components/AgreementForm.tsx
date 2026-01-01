@@ -22,6 +22,7 @@ import {
   Car,
   History,
   AlertTriangle,
+  Share2,
 } from "lucide-react";
 
 // --- STYLES ---
@@ -99,7 +100,7 @@ function suggestPrice(car: any, days: number) {
   return total;
 }
 
-// ✅ Safe Sound Hook
+// Safe Sound Hook
 function useSfx() {
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
   useEffect(() => {
@@ -154,7 +155,7 @@ export function AgreementForm({
   initial,
   onDoneHref = "/admin/agreements",
 }: {
-  mode: any;
+  mode: "create" | "edit";
   initial?: InitialAgreement;
   onDoneHref?: string;
 }) {
@@ -163,12 +164,16 @@ export function AgreementForm({
   const isSuperadmin = roleState?.role === "superadmin";
   const { play } = useSfx();
 
+  // ✅ Fix: Define these variables based on props
+  const isEdit = mode === "edit";
+  const isDeleted = initial?.status === "Deleted";
+
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deleteStage, setDeleteStage] = useState<"idle" | "confirm">("idle");
   const [cars, setCars] = useState<any[]>([]);
 
-  // ✅ Initialize State with Fallbacks to prevent uncontrolled inputs
+  // State
   const [carId, setCarId] = useState(initial?.car_id ?? "");
   const [customerName, setCustomerName] = useState(
     (initial?.customer_name ?? "").toUpperCase()
@@ -217,7 +222,7 @@ export function AgreementForm({
     [cars, carId]
   );
 
-  // ✅ SYNC INITIAL DATA WHEN LOADED (Fixes Edit Mode Issues)
+  // Sync Initial Data
   useEffect(() => {
     if (initial) {
       if (initial.car_id) setCarId(initial.car_id);
@@ -236,14 +241,12 @@ export function AgreementForm({
     }
   }, [initial]);
 
-  // ✅ LOAD CARS
+  // Load Cars
   useEffect(() => {
     (async () => {
       const url = new URL("/admin/cars/api", window.location.origin);
       url.searchParams.set("mode", "dropdown");
-      // Ensure the current car is included in the list even if rented
       if (initial?.car_id) url.searchParams.set("include", initial.car_id);
-
       try {
         const res = await fetch(url.toString());
         const json = await res.json();
@@ -270,8 +273,7 @@ export function AgreementForm({
       setTotal(suggestPrice(selectedCar, durationDays).toFixed(2));
   }, [selectedCar, durationDays, totalTouched]);
 
-  // --- HANDLERS ---
-
+  // Handlers
   const handleMobileBlur = async () => {
     if (mobile.length < 5) return;
     setCheckingMobile(true);
@@ -310,6 +312,20 @@ export function AgreementForm({
     }
   };
 
+  const confirmHistoryUse = () => {
+    if (!historyMatch) return;
+    setCustomerName(historyMatch.customer_name?.toUpperCase() || "");
+    if (historyMatch.id_number)
+      setIdNumber(historyMatch.id_number.toUpperCase());
+    if (historyMatch.mobile) setMobile(historyMatch.mobile);
+    if (historyMatch.ic_url) {
+      setIcPreview(historyMatch.ic_url);
+      setIcFile(null);
+    }
+    setHistoryMatch(null);
+    play("ok");
+  };
+
   const handleScan = async () => {
     if (!icFile) return setErr("Upload IC first.");
     setBusy(true);
@@ -344,6 +360,14 @@ export function AgreementForm({
     }
   };
 
+  const handleIcSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files?.[0]) {
+      const f = e.target.files[0];
+      setIcFile(f);
+      setIcPreview(URL.createObjectURL(f));
+    }
+  };
+
   const validate = () => {
     if (!customerName) return "Customer Name is required";
     if (!idNumber) return "IC / Passport is required";
@@ -353,12 +377,30 @@ export function AgreementForm({
     return null;
   };
 
-  // ✅ ROBUST PREVIEW FUNCTION
+  const handleShare = async () => {
+    const url = window.location.href;
+    const text = `JRV Admin: Review Agreement for ${
+      customerName || "Customer"
+    }`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "JRV Admin", text: text, url: url });
+        play("click");
+        return;
+      } catch (err) {
+        console.log("Share cancelled", err);
+      }
+    }
+    const waUrl = `https://wa.me/?text=${encodeURIComponent(
+      text + "\n" + url
+    )}`;
+    window.open(waUrl, "_blank");
+    play("click");
+  };
+
   const preview = async () => {
     const v = validate();
     if (v) return setErr(v);
-
-    // Block if blacklisted
     const bl1 = await checkBlacklist("mobile", mobile);
     if (bl1) return setErr("Mobile is Blacklisted.");
     const bl2 = await checkBlacklist("ic", idNumber);
@@ -367,7 +409,6 @@ export function AgreementForm({
     setBusy(true);
     try {
       let url = initial?.ic_url ?? null;
-      // Only upload if new file exists, otherwise use existing URL
       if (icFile) {
         url = await uploadImage(icFile);
       } else if (icPreview && icPreview.startsWith("http")) {
@@ -398,7 +439,7 @@ export function AgreementForm({
 
       if (j.preview_url) {
         setPreviewUrl(j.preview_url);
-        setConfirmOpen(true); // ✅ Force Open
+        setConfirmOpen(true);
         play("ok");
       }
     } catch (e: any) {
@@ -486,6 +527,7 @@ export function AgreementForm({
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
       {/* ALERTS */}
+      {/* ✅ Use z-[60] to ensure this error pops over everything else */}
       {err && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white p-6 rounded-2xl border-l-4 border-red-500 shadow-2xl max-w-sm w-full">
@@ -502,6 +544,7 @@ export function AgreementForm({
           </div>
         </div>
       )}
+
       {blacklistAlert && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl border-l-4 border-red-600 shadow-2xl max-w-md w-full">
@@ -527,6 +570,7 @@ export function AgreementForm({
           </div>
         </div>
       )}
+
       {historyMatch && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-blue-100">
@@ -566,20 +610,52 @@ export function AgreementForm({
       )}
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
-          {mode === "edit" ? "Edit Agreement" : "New Agreement"}
-          {initial?.status === "Deleted" && (
-            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded border border-red-200">
-              DELETED
-            </span>
-          )}
-        </h1>
-        <Link
-          href={onDoneHref}
-          className="text-sm font-medium text-gray-500 hover:text-black transition"
-        >
-          Cancel & Back
-        </Link>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+            {mode === "edit" ? "Edit Agreement" : "New Agreement"}
+            {isDeleted && (
+              <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded border border-red-200">
+                DELETED
+              </span>
+            )}
+          </h1>
+          <button
+            onClick={handleShare}
+            className="p-2 rounded-full bg-gray-100 text-gray-600 hover:bg-green-100 hover:text-green-600 transition-colors ml-auto md:ml-2 shadow-sm border border-gray-200"
+            title="Share Page Link"
+          >
+            <Share2 className="w-5 h-5" />
+          </button>
+        </div>
+        <div className="flex gap-2 w-full md:w-auto">
+          {isEdit &&
+            isSuperadmin &&
+            (isDeleted ? (
+              <Button
+                onClick={handleRestoreClick}
+                loading={busy}
+                variant="secondary"
+                className="flex-1 md:flex-none bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+              >
+                Restore
+              </Button>
+            ) : (
+              <Button
+                onClick={handleDeleteClick}
+                loading={busy}
+                variant="secondary"
+                className="flex-1 md:flex-none text-red-600 border-red-200 hover:bg-red-50 shadow-sm"
+              >
+                {deleteStage === "confirm" ? "Confirm?" : "Delete"}
+              </Button>
+            ))}
+          <Link
+            href={onDoneHref}
+            className="text-sm font-medium text-gray-500 hover:text-black transition"
+          >
+            Cancel & Back
+          </Link>
+        </div>
       </div>
 
       <Card className="p-0 overflow-hidden shadow-xl shadow-gray-200/50 border border-gray-100">
@@ -785,8 +861,9 @@ export function AgreementForm({
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-50">
-            <div className="mr-auto w-40">
+          {/* ✅ FIXED LAYOUT: Status top, Buttons below on Mobile */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-6 border-t border-gray-100">
+            <div className="w-full md:w-48">
               <label className={labelClass}>Status</label>
               <select
                 className={inputClass}
@@ -800,25 +877,29 @@ export function AgreementForm({
                 ))}
               </select>
             </div>
-            <Button
-              onClick={() => preview()}
-              loading={busy}
-              variant="secondary"
-              className="shadow-sm p-6"
-            >
-              Preview PDF
-            </Button>
-            <Button
-              onClick={() => executeSave()}
-              loading={busy}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold p-6 shadow-lg shadow-indigo-200"
-            >
-              Save & WhatsApp
-            </Button>
+
+            <div className="flex w-full md:w-auto gap-3">
+              <Button
+                onClick={() => preview()}
+                loading={busy}
+                variant="secondary"
+                className="flex-1 md:flex-none shadow-sm"
+              >
+                Preview PDF
+              </Button>
+              <Button
+                onClick={() => executeSave()}
+                loading={busy}
+                className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+              >
+                Save & WhatsApp
+              </Button>
+            </div>
           </div>
         </div>
       </Card>
 
+      {/* PDF PREVIEW MODAL */}
       {confirmOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-0 md:p-4">
           <div className="bg-white w-full h-full md:h-[85vh] md:max-w-4xl md:rounded-xl flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300">
