@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { redirect } from "next/navigation";
 import AgreementLogsClient from "./_components/AgreementLogsClient";
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
@@ -52,6 +53,7 @@ export default async function AgreementLogsPage({
 
   const gate = await requireAdmin();
   if (!gate.ok) {
+    if (gate.status === 401) redirect("/");
     return (
       <div className="p-6">
         <div className="text-lg font-semibold">Forbidden</div>
@@ -62,16 +64,6 @@ export default async function AgreementLogsPage({
     );
   }
 
-  if (gate.role !== "superadmin") {
-    return (
-      <div className="p-6">
-        <div className="text-lg font-semibold">Forbidden</div>
-        <div className="mt-2 rounded-lg border p-3 text-sm text-red-600">
-          Superadmin only.
-        </div>
-      </div>
-    );
-  }
 
   const q = asString(sp.q).trim();
   const action = asString(sp.action).trim();
@@ -146,7 +138,7 @@ export default async function AgreementLogsPage({
         <div>
           <div className="text-xl font-semibold">Agreement Logs</div>
           <div className="text-sm opacity-70">
-            Audit trail for agreements (superadmin only).
+            Audit trail for agreements.
           </div>
         </div>
 

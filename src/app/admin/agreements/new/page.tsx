@@ -1,4 +1,5 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { redirect } from "next/navigation";
 import { AgreementForm } from "../_components/AgreementForm";
 import { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
@@ -14,6 +15,7 @@ export const metadata: Metadata = pageMetadata({
 export default async function NewAgreementPage() {
   const gate = await requireAdmin();
   if (!gate.ok) {
+    if (gate.status === 401) redirect("/");
     return (
       <div className="p-6">
         <div className="text-lg font-semibold">Forbidden</div>

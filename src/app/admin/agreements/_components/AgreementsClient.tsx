@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { FileDown } from "lucide-react";
+import { Check, FileDown } from "lucide-react";
 import { useRole } from "@/lib/auth/useRole";
 
 // Unified Input Style
@@ -76,6 +76,7 @@ export default function AgreementsClient() {
   const plate = searchParams.get("plate") ?? "";
   const date = searchParams.get("date") ?? "";
   const endDate = searchParams.get("endDate") ?? "";
+  const depositFilter = searchParams.get("deposit") ?? "";
 
   useEffect(() => {
     setLoading(true);
@@ -83,6 +84,11 @@ export default function AgreementsClient() {
     fetch(`/admin/agreements/api?${qs.toString()}`)
       .then((res) => res.json())
       .then((json) => {
+        // If user is logged out / unauthenticated, send them to login page
+        if (!json?.ok && json?.status === 401) {
+          router.replace("/");
+          return;
+        }
         if (json.ok) setData({ ...json, rows: json.rows || [] });
         setLoading(false);
       })
@@ -101,6 +107,35 @@ export default function AgreementsClient() {
     router.replace(pathname);
   };
 
+
+
+const toggleDepositRefunded = async (id: string, value: boolean) => {
+  // optimistic update
+  setData((prev: any) => ({
+    ...prev,
+    rows: (prev.rows || []).map((r: any) =>
+      r.id === id ? { ...r, deposit_refunded: value } : r
+    ),
+  }));
+  try {
+    const res = await fetch("/admin/agreements/api", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "toggle_deposit_refunded", id, value }),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.error || "Update failed");
+  } catch (e: any) {
+    // rollback
+    setData((prev: any) => ({
+      ...prev,
+      rows: (prev.rows || []).map((r: any) =>
+        r.id === id ? { ...r, deposit_refunded: !value } : r
+      ),
+    }));
+    alert("ERROR: " + (e?.message || "Unknown"));
+  }
+};
   const forceDelete = async (id: string) => {
     setDeletingId(id);
     try {
@@ -144,7 +179,7 @@ export default function AgreementsClient() {
 
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50">
         {/* ✅ Mobile Grid Fix: grid-cols-2 instead of 1 */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
           <div className="col-span-2 md:col-span-1">
             <label className={labelClass}>Search</label>
             <input
@@ -202,7 +237,22 @@ export default function AgreementsClient() {
               ))}
             </select>
           </div>
-          <div className="col-span-2 md:col-span-1 flex items-end">
+          
+<div className="col-span-1">
+  <label className={labelClass}>Deposit</label>
+  <select
+    className={inputClass}
+    value={depositFilter}
+    onChange={(e) => updateFilter("deposit", e.target.value)}
+  >
+    <option value="">All</option>
+    <option value="only">With Deposit</option>
+    <option value="not_paid">Deposit Not Refunded</option>
+    <option value="paid">Deposit Refunded</option>
+  </select>
+</div>
+
+<div className="col-span-2 md:col-span-1 flex items-end">
             <Button
               variant="ghost"
               size="sm"
@@ -224,6 +274,7 @@ export default function AgreementsClient() {
                 <th className="px-4 py-3">Car</th>
                 <th className="px-4 py-3">Period</th>
                 <th className="px-4 py-3">Total</th>
+                <th className="px-4 py-3">Deposit</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
@@ -232,7 +283,7 @@ export default function AgreementsClient() {
               {loading ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="p-12 text-center text-gray-400 italic"
                   >
                     Loading records...
@@ -241,7 +292,7 @@ export default function AgreementsClient() {
               ) : rows.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="p-12 text-center text-gray-400 italic"
                   >
                     No agreements found matching criteria.
@@ -278,11 +329,34 @@ export default function AgreementsClient() {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-bold text-gray-900">
-                      RM {row.total_price}
-                    </td>
+  RM {row.total_price}
+</td>
                     <td className="px-4 py-3">
-                      <StatusBadge status={row.status} />
+                      <div className="flex items-center gap-3">
+                        <div className="font-bold text-gray-900">
+                          RM {row.deposit_price || "0.00"}
+                        </div>
+
+                        {Number(row.deposit_price || 0) > 0 ? (
+                          row.deposit_refunded ? (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-lg">
+                              <Check className="w-3.5 h-3.5" /> Refunded
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                              Not refunded
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-[10px] text-gray-400 uppercase tracking-wide">
+                            —
+                          </span>
+                        )}
+                      </div>
                     </td>
+<td className="px-4 py-3">
+  <StatusBadge status={row.status} />
+</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {row.whatsapp_url && (

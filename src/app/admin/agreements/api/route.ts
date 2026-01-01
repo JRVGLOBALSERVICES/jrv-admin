@@ -9,7 +9,8 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { uploadPdfBufferToCloudinary } from "@/lib/cloudinary/uploadPdf";
 
 function jsonError(message: string, status = 400) {
-  return NextResponse.json({ ok: false, error: message }, { status });
+  // Include status in the JSON so client can reliably redirect on 401
+  return NextResponse.json({ ok: false, error: message, status }, { status });
 }
 
 function must(v: any, msg: string) {
@@ -118,7 +119,7 @@ export async function GET(req: Request) {
       .select(
         `
         id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
-        total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id, ic_url,
+        total_price, deposit_price, deposit_refunded, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id, ic_url,
         cars:car_id ( id, plate_number, catalog_id, car_catalog:catalog_id ( make, model ) )
       `
       )
@@ -155,7 +156,8 @@ export async function GET(req: Request) {
   const plate = asStr(url.searchParams.get("plate"));
   const dateParam = asStr(url.searchParams.get("date"));
   const endDateParam = asStr(url.searchParams.get("endDate"));
-  const actor = asStr(url.searchParams.get("actor"));
+    const depositFilter = asStr(url.searchParams.get("deposit"));
+const actor = asStr(url.searchParams.get("actor"));
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
   const { data: carsRows, error: carsErr } = await supabase
@@ -192,7 +194,7 @@ export async function GET(req: Request) {
     .select(
       `
       id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
-      total_price, deposit_price, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, car_id,
+      total_price, deposit_price, deposit_refunded, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id,
       cars:car_id ( id, plate_number, car_catalog:catalog_id ( make, model ) )
     `,
       { count: "exact" }
@@ -205,6 +207,15 @@ export async function GET(req: Request) {
     query = query.eq("status", status);
   } else {
     query = query.neq("status", "Deleted").neq("status", "Cancelled");
+  }
+
+  // Deposit filter (based on deposit_price and deposit_refunded)
+  if (depositFilter === "only") {
+    query = query.gt("deposit_price", 0);
+  } else if (depositFilter === "not_paid") {
+    query = query.gt("deposit_price", 0).eq("deposit_refunded", false);
+  } else if (depositFilter === "paid") {
+    query = query.gt("deposit_price", 0).eq("deposit_refunded", true);
   }
 
   if (dateParam) {
@@ -296,6 +307,42 @@ export async function POST(req: Request) {
   try {
     if (!action) throw new Error("Missing action");
 
+    if (action === "toggle_deposit_refunded") {
+      const id = asStr(body?.id);
+      const value = Boolean(body?.value);
+      if (!id) throw new Error("Missing agreement id");
+
+      const { data: beforeRow } = await supabaseAdmin
+        .from("agreements")
+        .select("id, deposit_refunded, deposit_price")
+        .eq("id", id)
+        .maybeSingle();
+
+      const { error } = await supabaseAdmin
+        .from("agreements")
+        .update({
+          deposit_refunded: value,
+          editor_email: actorEmail,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id);
+
+      if (error) throw new Error(error.message);
+
+      await logAgreement({
+        supabase,
+        agreement_id: id,
+        actor_email: actorEmail,
+        actor_id: actorId,
+        action: "deposit_refunded_toggled",
+        before: beforeRow ?? { id },
+        after: { deposit_refunded: value },
+      });
+
+      return NextResponse.json({ ok: true });
+    }
+
+
     if (action === "delete") {
       if (actorRole !== "superadmin")
         return jsonError("Forbidden: Superadmin only", 403);
@@ -358,6 +405,7 @@ export async function POST(req: Request) {
         date_end: fmtHuman(must(payload.date_end_iso, "End date required")),
         total_price: toMoneyString(must(payload.total_price, "Price required")),
         deposit_price: toMoneyString(payload.deposit_price),
+        deposit_refunded: Boolean(payload.deposit_refunded),
         agent_email: asStr(payload.agent_email),
         ic_url: payload.ic_url || null, // ✅ Pass IC for Preview
       };
@@ -403,13 +451,19 @@ export async function POST(req: Request) {
         booking_duration_days: Number(payload.booking_duration_days) || 0,
         total_price: toMoneyString(payload.total_price),
         deposit_price: toMoneyString(payload.deposit_price),
+        deposit_refunded: Boolean(payload.deposit_refunded),
         status: payload.status || "New",
         creator_email: isEdit ? undefined : actorEmail,
+        editor_email: isEdit ? actorEmail : null,
         updated_at: new Date().toISOString(),
         ic_url: payload.ic_url || null, // ✅ Save IC URL to DB
       };
 
-      if (!isEdit) dbData.created_at = new Date().toISOString();
+      if (!isEdit) {
+        dbData.created_at = new Date().toISOString();
+        dbData.deposit_refunded = false; // always false on create
+        dbData.editor_email = null;
+      }
 
       const pdfData = {
         logo_url: "https://jrv-admin.vercel.app/logo.png",

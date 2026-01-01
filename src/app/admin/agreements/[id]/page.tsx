@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { AgreementForm } from "../_components/AgreementForm";
@@ -55,6 +55,7 @@ export default async function EditAgreementPage({
 
   const gate = await requireAdmin();
   if (!gate.ok) {
+    if (gate.status === 401) redirect("/");
     return <div className="p-6 text-red-600">{gate.message}</div>;
   }
 
@@ -74,8 +75,12 @@ export default async function EditAgreementPage({
       date_end,
       total_price,
       deposit_price,
+      deposit_refunded,
       agreement_url,
-      ic_url
+      ic_url,
+      creator_email,
+      editor_email,
+      updated_at
     `
     )
     .eq("id", id)
@@ -105,7 +110,11 @@ export default async function EditAgreementPage({
 
         total_price: row.total_price ?? "0",
         deposit_price: row.deposit_price ?? "0",
+        deposit_refunded: (row as any).deposit_refunded ?? false,
         agreement_url: row.agreement_url ?? null,
+        creator_email: (row as any).creator_email ?? null,
+        editor_email: (row as any).editor_email ?? null,
+        updated_at: (row as any).updated_at ?? null,
         ic_url: row.ic_url ?? null, // ✅ PASSING IT DOWN
       }}
     />

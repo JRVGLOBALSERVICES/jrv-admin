@@ -10,7 +10,6 @@ export async function GET(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
 
-  if (gate.role !== "superadmin") return jsonError("Forbidden", 403);
 
   const supabase = await createSupabaseServer();
   const url = new URL(req.url);

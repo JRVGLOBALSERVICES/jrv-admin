@@ -32,6 +32,12 @@ const labelClass =
   "text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5";
 
 type InitialAgreement = {
+  creator_email?: string | null;
+  editor_email?: string | null;
+  deposit_refunded?: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+
   id?: string;
   customer_name?: string;
   id_number?: string;
@@ -56,6 +62,19 @@ function toMoney(v: any) {
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
+function fmtDate(iso: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
+
 function nowTimeHHmm() {
   const d = new Date(Date.now() + 8 * 60 * 60 * 1000);
   return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
@@ -209,6 +228,9 @@ export function AgreementForm({
   const [endTime, setEndTime] = useState(initial?.end_time ?? nowTimeHHmm());
   const [total, setTotal] = useState(String(initial?.total_price ?? "0"));
   const [deposit, setDeposit] = useState(String(initial?.deposit_price ?? "0"));
+  const [depositRefunded, setDepositRefunded] = useState<boolean>(
+    Boolean(initial?.deposit_refunded)
+  );
   const [status, setStatus] = useState(initial?.status ?? "New");
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(
@@ -476,6 +498,7 @@ export function AgreementForm({
         date_end_iso: endIso,
         total_price: total,
         deposit_price: deposit,
+        deposit_refunded: depositRefunded,
         status: overrideStatus || status,
         agent_email: agentEmail,
         ic_url: url,
@@ -657,6 +680,34 @@ export function AgreementForm({
           </Link>
         </div>
       </div>
+
+{/* AUDIT INFO */}
+<div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div>
+      <div className={labelClass}>
+        <User className="w-4 h-4" /> Created By
+      </div>
+      <div className="text-sm font-bold text-gray-800">
+        {(initial?.creator_email || agentEmail || "—").toString()}
+      </div>
+    </div>
+
+    {isEdit && initial?.editor_email ? (
+      <div>
+        <div className={labelClass}>
+          <Clock className="w-4 h-4" /> Last Edited
+        </div>
+        <div className="text-sm font-bold text-gray-800">
+          {initial.editor_email}
+        </div>
+        <div className="text-[11px] text-gray-500">
+          {initial.updated_at ? fmtDate(initial.updated_at) : "—"}
+        </div>
+      </div>
+    ) : null}
+  </div>
+</div>
 
       <Card className="p-0 overflow-hidden shadow-xl shadow-gray-200/50 border border-gray-100">
         <div className="p-6 space-y-6">
@@ -858,6 +909,18 @@ export function AgreementForm({
                 value={deposit}
                 onChange={(e) => setDeposit(e.target.value)}
               />
+
+{isEdit && toMoney(deposit) > 0 ? (
+  <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-700">
+    <input
+      type="checkbox"
+      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+      checked={depositRefunded}
+      onChange={(e) => setDepositRefunded(e.target.checked)}
+    />
+    Deposit refunded
+  </label>
+) : null}
             </div>
           </div>
 
