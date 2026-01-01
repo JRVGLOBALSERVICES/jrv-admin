@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 
@@ -45,15 +45,20 @@ export default function LoginPage() {
       json = JSON.parse(raw);
     } catch {}
 
-    setLoading(false);
-
     if (!res.ok) {
+      // ✅ Only stop loading if there was an error
+      setLoading(false);
       setErr(json?.error || "Login failed");
       return;
     }
 
+    // ✅ Success: Keep loading TRUE while we redirect.
+    // This prevents the user from clicking the button again.
+
     const params = new URLSearchParams(window.location.search);
     const returnTo = params.get("returnTo");
+
+    // Use replace to prevent back-button returning to login
     router.replace(returnTo?.startsWith("/admin") ? returnTo : "/admin");
     router.refresh();
   };
@@ -133,13 +138,14 @@ export default function LoginPage() {
           {/* SUBMIT */}
           <Button
             type="submit"
+            disabled={loading} // Disable button while loading
             loading={loading}
-            className="w-full py-3 text-white font-semibold rounded-lg shadow-lg"
+            className="w-full py-3 text-white font-semibold rounded-lg shadow-lg disabled:opacity-70 disabled:cursor-not-allowed"
             style={{
               background: `linear-gradient(90deg, ${ORANGE}, ${PINK})`,
             }}
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Redirecting..." : "Sign In"}
           </Button>
 
           {/* Footer */}

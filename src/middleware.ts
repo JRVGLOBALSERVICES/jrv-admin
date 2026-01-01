@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 export async function middleware(req: NextRequest) {
-  const { pathname, origin, search } = req.nextUrl;
+  const { pathname, search } = req.nextUrl;
 
   // Only protect /admin routes
   if (!pathname.startsWith("/admin")) return NextResponse.next();
@@ -35,36 +35,36 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  // helper: redirect to / with returnTo
+  // Helper: redirect to login while preserving the return URL
   const redirectToLogin = () => {
-    const returnTo = encodeURIComponent(`${pathname}${search || ""}`);
-    return NextResponse.redirect(new URL(`/?returnTo=${returnTo}`, req.url));
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = "/";
+    loginUrl.searchParams.set("returnTo", pathname + (search || ""));
+    return NextResponse.redirect(loginUrl);
   };
 
   // 1) Auth session check
   const { data: authData } = await supabase.auth.getUser();
   if (!authData.user) return redirectToLogin();
 
-  // 2) Admin validation: if /admin/me has no data -> kick to /
+  // 2) Admin validation: Check DB directly (Faster & Reliable)
   try {
-    const meRes = await fetch(`${origin}/admin/me`, {
-      headers: {
-        cookie: req.headers.get("cookie") || "",
-        accept: "application/json",
-      },
-      cache: "no-store",
-    });
+    const { data: adminUser, error } = await supabase
+      .from("admin_users")
+      .select("role, status")
+      .eq("user_id", authData.user.id)
+      .maybeSingle();
 
-    if (!meRes.ok) return redirectToLogin();
-
-    const me = await meRes.json();
-
-    // Your /admin/me returns: { user, role, status }
-    if (!me?.user || !me?.role || !me?.status) return redirectToLogin();
-
-    // optional: enforce active admins only
-    if (me.status !== "active") return redirectToLogin();
-  } catch {
+    // If DB error, no record found, no role, or not active -> kick out
+    if (
+      error ||
+      !adminUser ||
+      !adminUser.role ||
+      adminUser.status !== "active"
+    ) {
+      return redirectToLogin();
+    }
+  } catch (err) {
     return redirectToLogin();
   }
 

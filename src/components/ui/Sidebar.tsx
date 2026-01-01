@@ -134,6 +134,12 @@ export function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  const handleLogout = () => {
+    // Force a hard navigation to the logout route to ensure cookies are cleared cleanly
+    // and to avoid Next.js prefetching issues with Links
+    window.location.href = "/admin/logout";
+  };
+
   const mainItems: Item[] = useMemo(
     () => [
       {
@@ -361,17 +367,16 @@ export function Sidebar() {
           </nav>
 
           <div className="border-t p-3">
-            <Link href="/admin/logout" className={collapsed ? "block" : ""}>
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className={collapsed ? "w-full justify-center px-0" : "w-full"}
-                sound="on"
-              >
-                {collapsed ? "⎋" : "Logout"}
-              </Button>
-            </Link>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={handleLogout}
+              className={collapsed ? "w-full justify-center px-0" : "w-full"}
+              sound="on"
+            >
+              {collapsed ? "⎋" : "Logout"}
+            </Button>
           </div>
         </div>
       </aside>
