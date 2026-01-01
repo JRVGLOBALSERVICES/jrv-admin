@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { baseMetadata } from "@/lib/seo";
 // ✅ Import the button
-import GlobalShareButton from "@/components/ui/GlobalShareButton";
+import GlobalShareButton from "../components/ui/GlobalShareButton";
 
 export const metadata: Metadata = {
   ...baseMetadata(),
