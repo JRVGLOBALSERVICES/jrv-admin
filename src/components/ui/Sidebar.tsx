@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Button } from "@/components/ui/Button";
+import { Button } from "../../components/ui/Button";
 import { useRole } from "@/lib/auth/useRole";
 
 function Icon({ d }: { d: string }) {
