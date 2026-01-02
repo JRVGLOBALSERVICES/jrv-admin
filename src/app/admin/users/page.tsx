@@ -14,16 +14,14 @@ export const metadata: Metadata = pageMetadata({
 
 export default async function AdminUsersPage() {
   const supabase = await createSupabaseServer();
-
+  
   // 1. If not logged in redirect to /
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { data: { session } } = await supabase.auth.getSession();
   if (!session) {
     redirect("/");
   }
 
-  // 2. If not superadmin redirect to /dashboard
+  // 2. If not superadmin (gate.ok is false) redirect to /dashboard
   const gate = await requireSuperadmin();
   if (!gate.ok) {
     redirect("/dashboard");
