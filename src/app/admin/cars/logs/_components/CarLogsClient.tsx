@@ -1,8 +1,16 @@
-// src/app/admin/cars/logs/_components/CarLogsClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import {
+  Search,
+  Filter,
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 
 const ACTIONS = ["", "CREATE_CAR", "UPDATE_CAR", "DELETE_CAR"] as const;
 
@@ -19,22 +27,7 @@ function buildUrl(path: string, params: Record<string, any>) {
   return qs ? `${path}?${qs}` : path;
 }
 
-export default function CarLogsClient({
-  initial,
-  meta,
-  options,
-}: {
-  initial: {
-    q: string;
-    action: string;
-    car_id: string;
-    actor_user_id: string;
-    page: number;
-    page_size: number;
-  };
-  meta: { total: number; totalPages: number };
-  options: { actors: ActorOption[]; cars: CarOption[] };
-}) {
+export default function CarLogsClient({ initial, meta, options }: any) {
   const router = useRouter();
   const path = usePathname();
 
@@ -44,36 +37,7 @@ export default function CarLogsClient({
   const [actorId, setActorId] = useState(initial.actor_user_id);
   const [pageSize, setPageSize] = useState(initial.page_size);
 
-  const page = initial.page;
-  const totalPages = meta.totalPages;
-
-  const nextUrl = useMemo(
-    () =>
-      buildUrl(path, {
-        q,
-        action,
-        car_id: carId,
-        actor_user_id: actorId,
-        page: Math.min(totalPages, page + 1),
-        page_size: pageSize,
-      }),
-    [path, q, action, carId, actorId, page, totalPages, pageSize]
-  );
-
-  const prevUrl = useMemo(
-    () =>
-      buildUrl(path, {
-        q,
-        action,
-        car_id: carId,
-        actor_user_id: actorId,
-        page: Math.max(1, page - 1),
-        page_size: pageSize,
-      }),
-    [path, q, action, carId, actorId, page, pageSize]
-  );
-
-  const apply = () => {
+  const apply = () =>
     router.push(
       buildUrl(path, {
         q: q.trim(),
@@ -84,67 +48,53 @@ export default function CarLogsClient({
         page_size: pageSize,
       })
     );
-  };
-
   const clear = () => {
     setQ("");
     setAction("");
     setCarId("");
     setActorId("");
-    router.push(buildUrl(path, { page: 1, page_size: 25 }));
+    router.push(path);
   };
 
-  const carsSorted = useMemo(() => {
-    const list = (options.cars ?? []).slice();
-    list.sort((a, b) =>
-      String(a.plate_number ?? "").localeCompare(String(b.plate_number ?? ""))
-    );
-    return list;
-  }, [options.cars]);
-
   return (
-    <div className="rounded-xl border bg-white p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm font-medium">Filters</div>
-          <div className="text-xs opacity-70">
-            Total: {meta.total} • Page {page} / {totalPages}
-          </div>
+    <Card className="p-5 border-gray-200 shadow-sm bg-white overflow-hidden">
+      <div className="flex items-center justify-between mb-4">
+        <div className="font-bold text-sm text-gray-700 flex items-center gap-2 uppercase tracking-tight">
+          <Filter size={18} className="text-blue-500" /> Filter Logs
         </div>
-
         <div className="flex items-center gap-2">
-          <button
-            onClick={clear}
-            className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
-            type="button"
-          >
-            Clear
-          </button>
-          <button
-            onClick={apply}
-            className="rounded-lg bg-black px-3 py-2 text-sm text-white hover:bg-black/90"
-            type="button"
-          >
+          <Button onClick={clear} variant="secondary" size="sm">
+            <RotateCcw size={14} className="mr-1" /> Reset
+          </Button>
+          <Button onClick={apply} size="sm">
             Apply
-          </button>
+          </Button>
         </div>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-        <div className="md:col-span-2">
-          <div className="text-xs opacity-60 mb-1">Search (action or UUID)</div>
-          <input
-            className="w-full border rounded-lg px-3 py-2"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="e.g. UPDATE_CAR or UUID"
-          />
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="md:col-span-2 space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">
+            Search
+          </label>
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-2.5 text-gray-400"
+              size={14}
+            />
+            <input
+              className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm outline-none"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Action or UUID..."
+            />
+          </div>
         </div>
-
-        <div>
-          <div className="text-xs opacity-60 mb-1">Action</div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">
+            Action
+          </label>
           <select
-            className="w-full border rounded-lg px-3 py-2 bg-white"
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
             value={action}
             onChange={(e) => setAction(e.target.value)}
           >
@@ -155,43 +105,46 @@ export default function CarLogsClient({
             ))}
           </select>
         </div>
-
-        <div>
-          <div className="text-xs opacity-60 mb-1">Actor (Email)</div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">
+            Actor
+          </label>
           <select
-            className="w-full border rounded-lg px-3 py-2 bg-white"
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
             value={actorId}
             onChange={(e) => setActorId(e.target.value)}
           >
-            <option value="">All</option>
-            {(options.actors ?? []).map((a) => (
+            <option value="">All Actors</option>
+            {options.actors.map((a: any) => (
               <option key={a.user_id} value={a.user_id}>
                 {a.email || a.user_id}
               </option>
             ))}
           </select>
         </div>
-
-        <div>
-          <div className="text-xs opacity-60 mb-1">Car (Plate)</div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">
+            Car
+          </label>
           <select
-            className="w-full border rounded-lg px-3 py-2 bg-white"
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
             value={carId}
             onChange={(e) => setCarId(e.target.value)}
           >
-            <option value="">All</option>
-            {carsSorted.map((c) => (
+            <option value="">All Cars</option>
+            {options.cars.map((c: any) => (
               <option key={c.id} value={c.id}>
                 {c.plate_number || c.id}
               </option>
             ))}
           </select>
         </div>
-
-        <div>
-          <div className="text-xs opacity-60 mb-1">Page size</div>
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase">
+            Rows
+          </label>
           <select
-            className="w-full border rounded-lg px-3 py-2 bg-white"
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
             value={pageSize}
             onChange={(e) => setPageSize(Number(e.target.value))}
           >
@@ -203,25 +156,37 @@ export default function CarLogsClient({
           </select>
         </div>
       </div>
-
-      <div className="flex items-center gap-2 justify-end">
-        <button
-          type="button"
-          onClick={() => router.push(prevUrl)}
-          disabled={page <= 1}
-          className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50 hover:bg-black/5"
-        >
-          Prev
-        </button>
-        <button
-          type="button"
-          onClick={() => router.push(nextUrl)}
-          disabled={page >= totalPages}
-          className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50 hover:bg-black/5"
-        >
-          Next
-        </button>
+      <div className="flex items-center justify-between mt-5 pt-4 border-t">
+        <div className="text-xs text-gray-400 italic">
+          Page {initial.page} of {meta.totalPages}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() =>
+              router.push(
+                buildUrl(path, { ...initial, page: initial.page - 1 })
+              )
+            }
+            disabled={initial.page <= 1}
+            variant="secondary"
+            size="sm"
+          >
+            <ChevronLeft size={16} />
+          </Button>
+          <Button
+            onClick={() =>
+              router.push(
+                buildUrl(path, { ...initial, page: initial.page + 1 })
+              )
+            }
+            disabled={initial.page >= meta.totalPages}
+            variant="secondary"
+            size="sm"
+          >
+            <ChevronRight size={16} />
+          </Button>
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
