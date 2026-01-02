@@ -1,14 +1,13 @@
-import type { Metadata } from "next";
-import { pageMetadata } from "@/lib/seo";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
 import { redirect } from "next/navigation";
 import UsersClient from "./_components/UsersClient";
-import { Users, ShieldCheck } from "lucide-react";
+import { ShieldAlert, UserCog } from "lucide-react";
+import { pageMetadata } from "@/lib/seo";
 
-export const metadata: Metadata = pageMetadata({
-  title: "Admin Users",
-  description: "Manage admin and superadmin users for JRV Car Rental.",
+export const metadata = pageMetadata({
+  title: "Admin Management",
+  description: "Manage system administrators and roles.",
   path: "/admin/users",
   index: false,
 });
@@ -16,17 +15,13 @@ export const metadata: Metadata = pageMetadata({
 export default async function AdminUsersPage() {
   const supabase = await createSupabaseServer();
   
-  // 1. Session Check (Redirect to root if guest)
+  // 1. Session Protection
   const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    redirect("/");
-  }
+  if (!session) redirect("/");
 
-  // 2. Role Check (Redirect to dashboard if not superadmin)
+  // 2. Superadmin Gate
   const gate = await requireSuperadmin();
-  if (!gate.ok) {
-    redirect("/dashboard");
-  }
+  if (!gate.ok) redirect("/dashboard");
 
   // 3. Fetch Data
   const { data: users, error } = await supabase
@@ -39,78 +34,79 @@ export default async function AdminUsersPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 flex items-center gap-2 uppercase tracking-tight">
-            <Users className="text-blue-600" size={28} />
+          <div className="text-2xl font-black text-gray-900 flex items-center gap-2 uppercase tracking-tight">
+            <ShieldAlert className="text-blue-600" size={28} />
             Admin Management
-          </h1>
-          <p className="text-sm text-gray-500 font-medium">
-            Control access levels for the JRV Admin Portal.
+          </div>
+          <p className="text-sm text-gray-500 font-medium italic">
+            Control system access levels and permissions.
           </p>
         </div>
+        
+        {/* ✅ UsersClient called once as a global control */}
+        <UsersClient />
       </div>
 
-      {/* Stats/Info (Optional) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-blue-50 border border-blue-100 p-4 rounded-xl">
-          <div className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Total Admins</div>
-          <div className="text-2xl font-black text-blue-900">{users?.length || 0}</div>
-        </div>
-      </div>
-
+      {/* Table Container with Mobile Scroll Fix */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        {/* MOBILE SCROLL FIX START */}
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left min-w-[800px]">
-            <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100 uppercase text-[10px] tracking-widest">
+            <thead className="bg-gray-50 text-gray-400 font-bold border-b border-gray-100 uppercase text-[10px] tracking-widest">
               <tr>
-                <th className="p-4">Admin Email</th>
-                <th className="p-4 w-40">Role</th>
-                <th className="p-4 w-48">Added On</th>
-                <th className="p-4 w-32 text-right">Actions</th>
+                <th className="p-4">Administrator Email</th>
+                <th className="p-4">Access Level</th>
+                <th className="p-4">Joined Date</th>
+                <th className="p-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {users?.map((user) => (
-                <tr key={user.user_id} className="hover:bg-gray-50/50 transition-colors">
-                  <td className="p-4">
-                    <div className="font-bold text-gray-900">{user.email}</div>
-                    <div className="text-[10px] text-gray-400 font-mono">{user.user_id}</div>
+                <tr key={user.user_id} className="hover:bg-gray-50/50 transition-colors align-middle">
+                  <td className="p-4 font-bold text-gray-900 whitespace-nowrap">
+                    {user.email}
                   </td>
                   <td className="p-4">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-black uppercase border ${
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wider border ${
                       user.role === 'superadmin' 
-                        ? 'bg-purple-50 text-purple-700 border-purple-100' 
-                        : 'bg-blue-50 text-blue-700 border-blue-100'
+                        ? 'bg-purple-50 border-purple-100 text-purple-700' 
+                        : 'bg-blue-50 border-blue-100 text-blue-700'
                     }`}>
-                      {user.role === 'superadmin' && <ShieldCheck size={10} />}
                       {user.role}
                     </span>
                   </td>
-                  <td className="p-4 text-xs text-gray-500 font-medium whitespace-nowrap">
+                  <td className="p-4 text-[11px] text-gray-400 font-mono whitespace-nowrap">
                     {new Date(user.created_at).toLocaleDateString("en-MY", {
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric'
+                        year: 'numeric',
+                        month: 'short',
+                        day: 'numeric'
                     })}
                   </td>
                   <td className="p-4 text-right">
-                    {/* Handled by client component for modals/actions */}
-                    <UsersClient user={user} />
+                     <button className="inline-flex items-center gap-1 text-blue-600 font-black text-[10px] uppercase hover:underline">
+                       <UserCog size={12} />
+                       Manage
+                     </button>
                   </td>
                 </tr>
               ))}
-              {(!users || users.length === 0) && (
+              
+              {!users?.length && (
                 <tr>
                   <td colSpan={4} className="p-12 text-center text-gray-400 italic">
-                    No admin users found.
+                    No administrators found.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-        {/* MOBILE SCROLL FIX END */}
       </div>
+
+      {error && (
+        <div className="p-4 rounded-lg bg-red-50 border border-red-100 text-red-700 text-xs font-bold uppercase">
+          ⚠️ {error.message}
+        </div>
+      )}
     </div>
   );
 }
