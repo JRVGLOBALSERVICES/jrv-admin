@@ -229,7 +229,7 @@ export function Sidebar() {
       },
       {
         href: "/admin/audit",
-        label: "Audit Logs",
+        label: "Admin Audit Logs",
         color: "text-slate-500",
         icon: (
           <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />

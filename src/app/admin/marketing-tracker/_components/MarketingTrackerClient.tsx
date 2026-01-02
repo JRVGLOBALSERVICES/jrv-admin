@@ -1,7 +1,6 @@
-// src/app/admin/marketing-tracker/_components/MarketingTrackerClient.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -73,7 +72,7 @@ export default function MarketingTrackerClient({
         <div className="font-bold text-sm text-gray-700 flex items-center gap-2 uppercase tracking-tight">
           <Filter size={18} className="text-blue-500" /> Filter Logs
           <span className="ml-2 normal-case font-medium text-gray-400">
-            ({meta.total} records found)
+            ({meta.total} records)
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -100,7 +99,7 @@ export default function MarketingTrackerClient({
               className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 ring-blue-500 outline-none transition"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Title, Email..."
+              placeholder="Search..."
             />
           </div>
         </div>
@@ -159,7 +158,6 @@ export default function MarketingTrackerClient({
         </div>
       </div>
 
-      {/* Pagination Bar */}
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-50">
         <div className="text-xs font-medium text-gray-500 italic">
           Page {initial.page} of {meta.totalPages}
