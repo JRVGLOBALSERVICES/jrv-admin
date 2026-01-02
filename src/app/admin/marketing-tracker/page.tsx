@@ -16,7 +16,7 @@ export default async function MarketingTrackerPage({
   if (!session) redirect("/");
 
   const gate = await requireSuperadmin();
-  if (!gate.ok) redirect("/dashboard");
+  if (!gate.ok) redirect("/admin");
 
   const sp = await searchParams;
 

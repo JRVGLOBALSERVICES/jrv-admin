@@ -33,7 +33,7 @@ export default async function CarLogsPage({ searchParams }: { searchParams: Prom
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) redirect("/");
   const gate = await requireSuperadmin();
-  if (!gate.ok) redirect("/dashboard");
+  if (!gate.ok) redirect("/admin");
 
   const [logsRes, adminsRes, carsRes] = await Promise.all([
     supabase.from("car_audit_logs").select("*", { count: "exact" }).order("created_at", { ascending: false }),

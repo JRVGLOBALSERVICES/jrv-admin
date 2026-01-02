@@ -56,7 +56,7 @@ export default async function NotificationsPage() {
   // 2. Superadmin Gate: Redirect to dashboard if not superadmin
   const gate = await requireSuperadmin();
   if (!gate.ok) {
-    redirect("/dashboard");
+    redirect("/admin");
   }
 
   // 3) Fetch Logs

@@ -24,7 +24,7 @@ export default async function AuditPage() {
 
   // 2. Superadmin check for dashboard redirect
   const gate = await requireSuperadmin();
-  if (!gate.ok) redirect("/dashboard");
+  if (!gate.ok) redirect("/admin");
 
   const { data: logs, error } = await supabase
     .from("admin_audit_logs")

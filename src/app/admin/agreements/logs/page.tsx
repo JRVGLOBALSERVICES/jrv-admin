@@ -33,7 +33,7 @@ export default async function AgreementLogsPage(props: PageProps) {
   // 2. Role Check: If not superadmin, redirect to dashboard
   const gate = await requireSuperadmin();
   if (!gate.ok) {
-    redirect("/dashboard");
+    redirect("/admin");
   }
 
   const searchParams = await props.searchParams;
