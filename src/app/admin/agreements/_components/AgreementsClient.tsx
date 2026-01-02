@@ -406,17 +406,28 @@ export default function AgreementsClient() {
                           </Button>
                         </Link>
                         {isSuperadmin && (
-                          <button
-                            type="button"
+                          // <button
+                          //   type="button"
+                          //   onClick={(e) => {
+                          //     e.preventDefault();
+                          //     forceDelete(row.id);
+                          //   }}
+                          //   disabled={deletingId === row.id}
+                          //   className="ml-1 bg-red-50 text-red-600 text-[10px] font-bold px-2 py-1.5 rounded hover:bg-red-100 disabled:opacity-50"
+                          // >
+                          //   {deletingId === row.id ? "..." : "DEL"}
+                          // </button>
+                          <Button
                             onClick={(e) => {
                               e.preventDefault();
                               forceDelete(row.id);
                             }}
                             disabled={deletingId === row.id}
-                            className="ml-1 bg-red-50 text-red-600 text-[10px] font-bold px-2 py-1.5 rounded hover:bg-red-100 disabled:opacity-50"
+                            variant="tertiary"
+                            className="ml-1 text-black bg-red-50 text-[10px] font-bold px-2 py-1.5 rounded hover:bg-red-100 disabled:opacity-50"
                           >
-                            {deletingId === row.id ? "..." : "DEL"}
-                          </button>
+                            {deletingId === row.id ? "..." : "DELETE"}
+                          </Button>
                         )}
                       </div>
                     </td>
