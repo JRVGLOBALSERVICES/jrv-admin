@@ -9,10 +9,35 @@ import {
   Font,
 } from "@react-pdf/renderer";
 
-// ✅ LOAD FONT FROM URL (Safe for Vercel/Serverless)
+// ✅ 1. DYNAMIC URL HELPER
+// Uses NEXT_PUBLIC_APP_URL to find the fonts (e.g. https://jrv-admin.vercel.app)
+const getBaseUrl = () => {
+  let url = process.env.NEXT_PUBLIC_APP_URL;
+
+  if (!url) {
+    if (process.env.NEXT_PUBLIC_SITE_URL)
+      url = process.env.NEXT_PUBLIC_SITE_URL;
+    else url = "http://localhost:3000";
+  }
+
+  return url.replace(/\/$/, ""); // Remove trailing slash if present
+};
+
+const BASE_URL = getBaseUrl();
+
+// ✅ 2. REGISTER FONTS
+// Ensure Inter_28pt-Regular.ttf and Inter_28pt-Bold.ttf are in /public/fonts/
+Font.register({
+  family: "Inter",
+  fonts: [
+    { src: `${BASE_URL}/fonts/Inter_28pt-Regular.ttf` },
+    { src: `${BASE_URL}/fonts/Inter_28pt-Bold.ttf`, fontWeight: "bold" },
+  ],
+});
+
 Font.register({
   family: "Signature",
-  src: "https://jrv-admin.vercel.app/fonts/Pacifico-Regular.ttf",
+  src: `${BASE_URL}/fonts/Pacifico-Regular.ttf`,
 });
 
 export type AgreementPdfData = {
@@ -54,7 +79,7 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 14,
     paddingHorizontal: 28,
-    fontFamily: "Helvetica",
+    fontFamily: "Inter",
     fontSize: 9,
     color: "#111",
   },
@@ -63,18 +88,25 @@ const styles = StyleSheet.create({
   title: {
     textAlign: "center",
     fontSize: 16,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Inter",
+    fontWeight: "bold",
     marginBottom: 10,
     letterSpacing: 0.4,
   },
   kv: { alignItems: "center", marginBottom: 6 },
   kvLine: {
     textAlign: "center",
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Inter",
+    fontWeight: "bold",
     fontSize: 11,
     marginBottom: 6,
   },
-  kvValue: { fontFamily: "Helvetica", fontSize: 11 },
+  kvValue: {
+    fontFamily: "Inter",
+    fontWeight: "normal",
+    fontSize: 11,
+    textTransform: "uppercase",
+  },
   para: {
     marginVertical: 6,
     lineHeight: 1.22,
@@ -90,7 +122,8 @@ const styles = StyleSheet.create({
   sectionTitle: {
     textAlign: "center",
     fontSize: 16,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Inter",
+    fontWeight: "bold",
     marginBottom: 8,
   },
   termsGrid: { flexDirection: "row", gap: 12 },
@@ -124,7 +157,8 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sigLabel: {
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Inter",
+    fontWeight: "bold",
     fontSize: 8.5,
     letterSpacing: 0.3,
   },
@@ -154,7 +188,8 @@ const styles = StyleSheet.create({
     left: "10%",
     width: "80%",
     fontSize: 50,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Inter",
+    fontWeight: "bold",
     color: "red",
     opacity: 0.3,
     transform: "rotate(-45deg)",
@@ -192,10 +227,7 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.topLogoWrap}>
-          <Image
-            style={styles.logo}
-            src="https://jrv-admin.vercel.app/logo.png"
-          />
+          <Image style={styles.logo} src={`${BASE_URL}/logo.png`} />
         </View>
         <Text style={styles.title}>JRV RENTAL AGREEMENT</Text>
         <View style={styles.kv}>
@@ -256,7 +288,6 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
             <Text style={styles.sigLabel}>AGENT SIGNATURE</Text>
           </View>
           <View style={styles.sigCol}>
-            {/* Client Signature - Intentionally Blank/Transparent */}
             {data.agent_email ? (
               <Text style={styles.sigText2}>
                 {agentInitial(data.agent_email)}

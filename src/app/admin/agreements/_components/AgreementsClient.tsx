@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Check, FileDown } from "lucide-react";
 import { useRole } from "@/lib/auth/useRole";
+import { useDebouncedCallback } from "use-debounce"; // 1. Import this
 
 // Unified Input Style
 const inputClass =
@@ -71,12 +72,27 @@ export default function AgreementsClient() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const page = Number(searchParams.get("page") ?? 1);
-  const q = searchParams.get("q") ?? "";
+  // Get initial value from URL
+  const initialQ = searchParams.get("q") ?? "";
+
+  // 2. Local state for immediate typing response
+  const [searchTerm, setSearchTerm] = useState(initialQ);
+
   const status = searchParams.get("status") ?? "";
   const plate = searchParams.get("plate") ?? "";
   const date = searchParams.get("date") ?? "";
   const endDate = searchParams.get("endDate") ?? "";
   const depositFilter = searchParams.get("deposit") ?? "";
+
+  // 3. Debounced callback for URL updates
+  const debouncedSearch = useDebouncedCallback((value: string) => {
+    updateFilter("q", value);
+  }, 500);
+
+  // Sync local state if URL changes from outside (e.g. back button)
+  useEffect(() => {
+    setSearchTerm(initialQ);
+  }, [initialQ]);
 
   useEffect(() => {
     setLoading(true);
@@ -84,7 +100,6 @@ export default function AgreementsClient() {
     fetch(`/admin/agreements/api?${qs.toString()}`)
       .then((res) => res.json())
       .then((json) => {
-        // If user is logged out / unauthenticated, send them to login page
         if (!json?.ok && json?.status === 401) {
           router.replace("/");
           return;
@@ -104,11 +119,11 @@ export default function AgreementsClient() {
   };
 
   const clearFilters = () => {
+    setSearchTerm(""); // Clear local input
     router.replace(pathname);
   };
 
   const toggleDepositRefunded = async (id: string, value: boolean) => {
-    // optimistic update
     setData((prev: any) => ({
       ...prev,
       rows: (prev.rows || []).map((r: any) =>
@@ -124,7 +139,6 @@ export default function AgreementsClient() {
       const json = await res.json();
       if (!res.ok || !json.ok) throw new Error(json.error || "Update failed");
     } catch (e: any) {
-      // rollback
       setData((prev: any) => ({
         ...prev,
         rows: (prev.rows || []).map((r: any) =>
@@ -134,6 +148,7 @@ export default function AgreementsClient() {
       alert("ERROR: " + (e?.message || "Unknown"));
     }
   };
+
   const forceDelete = async (id: string) => {
     setDeletingId(id);
     try {
@@ -176,17 +191,21 @@ export default function AgreementsClient() {
       </div>
 
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50">
-        {/* ✅ Mobile Grid Fix: grid-cols-2 instead of 1 */}
         <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
           <div className="col-span-2 md:col-span-1">
             <label className={labelClass}>Search</label>
+            {/* 4. Updated Input Field */}
             <input
-              placeholder="Name, mobile..."
+              placeholder="Name, mobile, IC..."
               className={inputClass}
-              value={q}
-              onChange={(e) => updateFilter("q", e.target.value)}
+              value={searchTerm} // Use local state
+              onChange={(e) => {
+                setSearchTerm(e.target.value); // Immediate UI update
+                debouncedSearch(e.target.value); // Delayed server update
+              }}
             />
           </div>
+          {/* ... Rest of your inputs remain exactly the same ... */}
           <div className="col-span-1">
             <label className={labelClass}>Start Date</label>
             <input

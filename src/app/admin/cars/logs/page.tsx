@@ -1,10 +1,10 @@
-// src/app/admin/cars/logs/page.tsx
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
 import CarLogsClient from "./_components/CarLogsClient";
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
+import { ArrowRight, Check, X } from "lucide-react";
 
 export const metadata: Metadata = pageMetadata({
   title: "Car Audit Logs",
@@ -38,6 +38,39 @@ function clampInt(v: string, min: number, max: number, fallback: number) {
   return Math.min(max, Math.max(min, Math.floor(n)));
 }
 
+// --- META VIEWER HELPER ---
+function MetaView({ meta }: { meta: any }) {
+  if (!meta || Object.keys(meta).length === 0)
+    return <span className="text-gray-300 text-xs">—</span>;
+
+  // If meta has "diff" or "changes" structure, flatten it here if needed.
+  // Assuming meta is a simple Key-Value pair of the logged data.
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {Object.entries(meta).map(([k, v]) => {
+        if (k === "updated_at" || k === "created_at") return null; // Hide timestamps
+
+        let displayVal = String(v);
+        if (typeof v === "boolean") displayVal = v ? "Yes" : "No";
+        if (k.includes("price")) displayVal = `RM ${v}`;
+
+        return (
+          <div
+            key={k}
+            className="inline-flex items-center gap-1.5 text-[11px] px-2 py-1 bg-gray-50 border border-gray-100 rounded-md text-gray-700"
+          >
+            <span className="font-bold text-gray-500 uppercase">
+              {k.replace(/_/g, " ")}:
+            </span>
+            <span className="font-medium text-gray-900">{displayVal}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default async function CarLogsPage({
   searchParams,
 }: {
@@ -45,22 +78,15 @@ export default async function CarLogsPage({
 }) {
   const sp = await searchParams;
 
-  const gate = await requireAdmin();
+  const gate = await requireSuperadmin();
   if (!gate.ok) {
-    return (
-      <div className="p-6">
-        <div className="text-lg font-semibold">Forbidden</div>
-        <div className="mt-2 rounded-lg border p-3 text-sm text-red-600">
-          {gate.message}
-        </div>
-      </div>
-    );
+    return <div className="p-6 text-red-600">Access Denied</div>;
   }
 
   const q = asString(sp.q).trim();
   const action = asString(sp.action).trim();
-  const carId = asString(sp.car_id).trim(); // stored as car UUID
-  const actorId = asString(sp.actor_user_id).trim(); // stored as user UUID
+  const carId = asString(sp.car_id).trim();
+  const actorId = asString(sp.actor_user_id).trim();
 
   const page = clampInt(asString(sp.page), 1, 9999, 1);
   const pageSize = clampInt(asString(sp.page_size), 10, 100, 25);
@@ -69,19 +95,14 @@ export default async function CarLogsPage({
 
   const supabase = await createSupabaseServer();
 
-  // ===== dropdown options =====
-  // Actors: show only those who ever appear in logs (so dropdown is clean)
+  // Fetch dropdown data...
   const { data: actorIdsRaw } = await supabase
     .from("car_audit_logs")
     .select("actor_user_id")
-    .order("created_at", { ascending: false })
-    .limit(5000);
-
+    .limit(1000);
   const actorIds = Array.from(
     new Set(
-      (actorIdsRaw ?? [])
-        .map((x: any) => String(x.actor_user_id))
-        .filter(Boolean)
+      actorIdsRaw?.map((x: any) => String(x.actor_user_id)).filter(Boolean)
     )
   );
 
@@ -92,21 +113,14 @@ export default async function CarLogsPage({
       .select("user_id,email")
       .in("user_id", actorIds);
     actorOptions = (data ?? []) as ActorOption[];
-    actorOptions.sort((a, b) =>
-      String(a.email ?? "").localeCompare(String(b.email ?? ""))
-    );
   }
 
-  // Cars: use plate number dropdown (maps to car_id)
   const { data: carsForDropdown } = await supabase
     .from("cars")
     .select("id,plate_number")
-    .order("created_at", { ascending: false })
-    .limit(2000);
-
+    .limit(1000);
   const carOptions = (carsForDropdown ?? []) as CarOption[];
 
-  // ===== logs query =====
   let query = supabase
     .from("car_audit_logs")
     .select("id, created_at, actor_user_id, action, car_id, meta", {
@@ -117,74 +131,31 @@ export default async function CarLogsPage({
   if (action) query = query.eq("action", action);
   if (carId) query = query.eq("car_id", carId);
   if (actorId) query = query.eq("actor_user_id", actorId);
-
-  // simple q search
-  if (q) {
-    const looksUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(q);
-
-    if (looksUuid) {
-      query = query.or(`car_id.eq.${q},actor_user_id.eq.${q}`);
-    } else {
-      query = query.ilike("action", `%${q}%`);
-    }
-  }
+  if (q) query = query.ilike("action", `%${q}%`);
 
   const { data, error, count } = await query.range(from, to);
-
   const rows = (data ?? []) as CarAuditRow[];
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  // ===== map actor id -> email for display =====
+  // Resolve Emails & Plates map
   const actorEmailMap = new Map<string, string>();
-  {
-    const idsInRows = Array.from(
-      new Set(rows.map((r) => r.actor_user_id).filter(Boolean))
-    );
-    if (idsInRows.length) {
-      const { data: au } = await supabase
-        .from("admin_users")
-        .select("user_id,email")
-        .in("user_id", idsInRows);
-
-      (au ?? []).forEach((r: any) => {
-        actorEmailMap.set(String(r.user_id), String(r.email ?? ""));
-      });
-    }
-  }
-
-  // ===== map car id -> plate for display =====
+  actorOptions.forEach((a) => actorEmailMap.set(a.user_id, a.email || ""));
   const plateMap = new Map<string, string>();
-  {
-    const idsInRows = Array.from(
-      new Set(rows.map((r) => r.car_id).filter(Boolean))
-    ) as string[];
-    if (idsInRows.length) {
-      const { data: cs } = await supabase
-        .from("cars")
-        .select("id,plate_number")
-        .in("id", idsInRows);
-
-      (cs ?? []).forEach((r: any) => {
-        plateMap.set(String(r.id), String(r.plate_number ?? ""));
-      });
-    }
-  }
+  carOptions.forEach((c) => plateMap.set(c.id, c.plate_number || ""));
 
   return (
     <div className="p-4 md:p-6 space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xl font-semibold">Car Logs</div>
-          <div className="text-sm opacity-70">
-            Audit trail for CREATE / UPDATE / DELETE.
+          <div className="text-xl font-bold text-gray-900">Car Logs</div>
+          <div className="text-sm text-gray-500">
+            Audit trail for fleet changes.
           </div>
         </div>
-
         <Link
           href="/admin/cars"
-          className="rounded-lg border px-3 py-2 text-sm hover:bg-black/5"
+          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 transition"
         >
           ← Back to Cars
         </Link>
@@ -199,115 +170,73 @@ export default async function CarLogsPage({
           page,
           page_size: pageSize,
         }}
-        meta={{
-          total,
-          totalPages,
-        }}
-        options={{
-          actors: actorOptions,
-          cars: carOptions,
-        }}
+        meta={{ total, totalPages }}
+        options={{ actors: actorOptions, cars: carOptions }}
       />
 
       {error ? (
-        <div className="rounded-lg border p-3 text-sm text-red-600">
-          {error.message}
-        </div>
+        <div className="text-red-600 p-4 border rounded">{error.message}</div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border bg-white">
-          <table className="min-w-300 w-full text-sm">
-            <thead className="bg-black/3">
-              <tr className="text-left">
-                <th className="p-3">Time</th>
-                <th className="p-3">Action</th>
-                <th className="p-3">Car</th>
-                <th className="p-3">Actor</th>
-                <th className="p-3">Meta</th>
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+          <table className="w-full text-sm text-left">
+            <thead className="bg-gray-50 text-gray-500 font-medium border-b border-gray-100">
+              <tr>
+                <th className="p-3 w-40">Time</th>
+                <th className="p-3 w-32">Action</th>
+                <th className="p-3 w-32">Car</th>
+                <th className="p-3 w-48">Actor</th>
+                <th className="p-3">Details</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-100">
               {rows.map((r) => {
-                const carLink = r.car_id ? `/admin/cars/${r.car_id}` : null;
-                const plate = r.car_id ? plateMap.get(r.car_id) : "";
-                const actorEmail = actorEmailMap.get(r.actor_user_id) || "";
-
+                const plate = plateMap.get(r.car_id || "") || r.car_id;
+                const email =
+                  actorEmailMap.get(r.actor_user_id) || r.actor_user_id;
                 return (
-                  <tr key={r.id} className="border-t align-top">
-                    <td className="p-3 whitespace-nowrap">
-                      {new Date(r.created_at).toLocaleString()}
+                  <tr
+                    key={r.id}
+                    className="hover:bg-gray-50/50 transition-colors align-top"
+                  >
+                    <td className="p-3 text-xs text-gray-500 font-mono">
+                      {new Date(r.created_at).toLocaleString("en-MY", {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "numeric",
+                      })}
                     </td>
-
                     <td className="p-3">
                       <span
-                        className={[
-                          "inline-flex rounded-full px-2 py-0.5 text-xs border",
-                          r.action === "DELETE_CAR"
-                            ? "border-red-200 text-red-700 bg-red-50"
-                            : r.action === "UPDATE_CAR"
-                            ? "border-amber-200 text-amber-800 bg-amber-50"
-                            : "border-emerald-200 text-emerald-800 bg-emerald-50",
-                        ].join(" ")}
+                        className={`inline-flex rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider border ${
+                          r.action.includes("DELETE")
+                            ? "bg-red-50 text-red-700 border-red-100"
+                            : r.action.includes("UPDATE")
+                            ? "bg-amber-50 text-amber-700 border-amber-100"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-100"
+                        }`}
                       >
-                        {r.action}
+                        {r.action.replace(/_CAR/g, "")}
                       </span>
                     </td>
-
-                    <td className="p-3">
-                      {r.car_id ? (
-                        <div className="space-y-1">
-                          <div className="font-medium">{plate || "—"}</div>
-                          {carLink ? (
-                            <Link
-                              className="underline text-xs opacity-80"
-                              href={carLink}
-                            >
-                              {r.car_id}
-                            </Link>
-                          ) : (
-                            <div className="text-xs opacity-60">{r.car_id}</div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="opacity-60">—</span>
-                      )}
+                    <td className="p-3 font-bold text-gray-700 text-xs">
+                      {plate || "—"}
                     </td>
-
+                    <td className="p-3 text-xs text-gray-600">{email}</td>
                     <td className="p-3">
-                      {actorEmail ? (
-                        <div className="space-y-1">
-                          <div className="font-medium">{actorEmail}</div>
-                          <div className="font-mono text-xs opacity-70">
-                            {r.actor_user_id}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="font-mono text-xs">
-                          {r.actor_user_id}
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="p-3">
-                      <details className="max-w-180">
-                        <summary className="cursor-pointer text-xs underline opacity-80">
-                          View JSON
-                        </summary>
-                        <pre className="mt-2 whitespace-pre-wrap wrap-break-word text-xs bg-black/3 rounded-lg p-3">
-                          {JSON.stringify(r.meta ?? {}, null, 2)}
-                        </pre>
-                      </details>
+                      {/* ✅ USE NEW META VIEWER */}
+                      <MetaView meta={r.meta} />
                     </td>
                   </tr>
                 );
               })}
-
-              {!rows.length ? (
+              {!rows.length && (
                 <tr>
-                  <td colSpan={5} className="p-6 opacity-60">
+                  <td colSpan={5} className="p-8 text-center text-gray-400">
                     No logs found.
                   </td>
                 </tr>
-              ) : null}
+              )}
             </tbody>
           </table>
         </div>

@@ -90,7 +90,8 @@ async function syncCarsFromAgreementsNow(nowIso: string) {
   if (setAvailErr) console.error("setAvailErr:", setAvailErr);
 }
 
-export async function GET() {
+// ✅ UPDATED: Accept 'req' to read searchParams
+export async function GET(req: Request) {
   if (process.env.ENABLE_SLACK !== "true") {
     return NextResponse.json({ ok: true, message: "Disabled" });
   }
@@ -100,6 +101,16 @@ export async function GET() {
       { ok: false, error: "Missing Slack webhook" },
       { status: 500 }
     );
+  }
+
+  // ✅ TEST LOGIC RESTORED
+  const url = new URL(req.url);
+  if (url.searchParams.get("test") === "true") {
+    await sendSlackMessage(
+      REMINDER_WEBHOOK,
+      "🔔 *Test Notification*: The notification system is online and connected."
+    );
+    return NextResponse.json({ ok: true, test: "sent" });
   }
 
   const now = new Date();

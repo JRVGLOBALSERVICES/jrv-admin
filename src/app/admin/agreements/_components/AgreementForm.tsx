@@ -40,7 +40,6 @@ type InitialAgreement = {
   deposit_refunded?: boolean | null;
   created_at?: string;
   updated_at?: string;
-
   id?: string;
   customer_name?: string;
   id_number?: string;
@@ -65,19 +64,6 @@ function toMoney(v: any) {
 function pad2(n: number) {
   return String(n).padStart(2, "0");
 }
-function fmtDate(iso: string) {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-MY", {
-    timeZone: "Asia/Kuala_Lumpur",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  });
-}
-
 function nowTimeHHmm() {
   const d = new Date(Date.now() + 8 * 60 * 60 * 1000);
   return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
@@ -121,8 +107,19 @@ function suggestPrice(car: any, days: number) {
   }
   return total;
 }
+function fmtDate(iso: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString("en-MY", {
+    timeZone: "Asia/Kuala_Lumpur",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
-// Safe Sound Hook
 function useSfx() {
   const audioRefs = useRef<{ [key: string]: HTMLAudioElement }>({});
   useEffect(() => {
@@ -136,16 +133,11 @@ function useSfx() {
   }, []);
   const play = (key: string) => {
     try {
-      const audio = audioRefs.current[key];
-      if (audio) {
-        audio.currentTime = 0;
-        audio.play().catch(() => {});
-      }
+      audioRefs.current[key]?.play().catch(() => {});
     } catch {}
   };
   return { play };
 }
-
 async function checkBlacklist(type: string, value: string) {
   try {
     const res = await fetch("/admin/blacklist/check", {
@@ -158,7 +150,6 @@ async function checkBlacklist(type: string, value: string) {
     return null;
   }
 }
-
 async function checkHistory(ic: string, mobile: string) {
   try {
     const res = await fetch("/admin/agreements/api/check-history", {
@@ -172,7 +163,7 @@ async function checkHistory(ic: string, mobile: string) {
   }
 }
 
-// ✅ UPDATED: Smart Edge Detection + Auto Crop + Enhancement
+// ✅ CLIENT-SIDE IMAGE PROCESSING (Smart Crop + Contrast)
 async function processImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -189,14 +180,13 @@ async function processImage(file: File): Promise<string> {
         canvas.height = h;
         ctx.drawImage(img, 0, 0);
 
-        // 1. Scan for Content (Bounding Box)
-        // We assume the corners are background. We scan for pixels that differ significantly.
+        // 1. Detect Edges (Simple Contrast Check)
         const imageData = ctx.getImageData(0, 0, w, h);
         const data = imageData.data;
         const bgR = data[0],
           bgG = data[1],
-          bgB = data[2]; // Top-left pixel as reference
-        const threshold = 40; // Sensitivity to difference
+          bgB = data[2];
+        const threshold = 40;
 
         let minX = w,
           minY = h,
@@ -204,15 +194,12 @@ async function processImage(file: File): Promise<string> {
           maxY = 0;
         let found = false;
 
-        // Scan every 5th pixel for speed
         for (let y = 0; y < h; y += 5) {
           for (let x = 0; x < w; x += 5) {
             const i = (y * w + x) * 4;
             const r = data[i],
               g = data[i + 1],
               b = data[i + 2];
-
-            // If pixel is different from background
             if (
               Math.abs(r - bgR) > threshold ||
               Math.abs(g - bgG) > threshold ||
@@ -227,7 +214,6 @@ async function processImage(file: File): Promise<string> {
           }
         }
 
-        // Fallback: If no distinct edges found (solid image), use full image
         if (!found || maxX <= minX || maxY <= minY) {
           minX = 0;
           maxX = w;
@@ -235,7 +221,7 @@ async function processImage(file: File): Promise<string> {
           maxY = h;
         }
 
-        // Add small padding to the detected box
+        // Add padding
         const pad = 15;
         minX = Math.max(0, minX - pad);
         minY = Math.max(0, minY - pad);
@@ -245,8 +231,7 @@ async function processImage(file: File): Promise<string> {
         const boxW = maxX - minX;
         const boxH = maxY - minY;
 
-        // 2. Adjust for MyKad Aspect Ratio (1.58:1) within the detected box
-        // We crop "inwards" from the detected box to fit the ratio
+        // 2. Adjust Aspect Ratio (MyKad is ~1.58)
         const targetRatio = 1.58;
         let finalW = boxW;
         let finalH = boxH;
@@ -254,16 +239,14 @@ async function processImage(file: File): Promise<string> {
         let finalY = minY;
 
         if (boxW / boxH > targetRatio) {
-          // Box is too wide compared to card -> Narrow width (Center it)
           finalW = boxH * targetRatio;
           finalX = minX + (boxW - finalW) / 2;
         } else {
-          // Box is too tall -> Shorten height (Center it)
           finalH = boxW / targetRatio;
           finalY = minY + (boxH - finalH) / 2;
         }
 
-        // 3. Draw Final Cropped Image
+        // 3. Draw Cropped
         const finalCanvas = document.createElement("canvas");
         finalCanvas.width = finalW;
         finalCanvas.height = finalH;
@@ -282,19 +265,17 @@ async function processImage(file: File): Promise<string> {
           finalH
         );
 
-        // 4. Apply Grayscale & Contrast
+        // 4. Enhance Contrast
         const finalData = finalCtx.getImageData(0, 0, finalW, finalH);
         const d = finalData.data;
         for (let i = 0; i < d.length; i += 4) {
           const avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
-          // Contrast Stretch
           const contrast = 1.25;
           const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
           const color = factor * (avg - 128) + 128;
-
-          d[i] = color; // R
-          d[i + 1] = color; // G
-          d[i + 2] = color; // B
+          d[i] = color;
+          d[i + 1] = color;
+          d[i + 2] = color;
         }
         finalCtx.putImageData(finalData, 0, 0);
 
@@ -340,7 +321,7 @@ export function AgreementForm({
   const [deleteStage, setDeleteStage] = useState<"idle" | "confirm">("idle");
   const [cars, setCars] = useState<any[]>([]);
 
-  // State
+  // Form State
   const [carId, setCarId] = useState(initial?.car_id ?? "");
   const [customerName, setCustomerName] = useState(
     (initial?.customer_name ?? "").toUpperCase()
@@ -350,12 +331,14 @@ export function AgreementForm({
   );
   const [mobile, setMobile] = useState(initial?.mobile ?? "");
 
-  const [icFile, setIcFile] = useState<File | null>(null);
+  // Files
+  const [icFile, setIcFile] = useState<File | null>(null); // For Saving
   const [icPreview, setIcPreview] = useState<string | null>(
     initial?.ic_url ?? null
   );
+  const [originalIcFile, setOriginalIcFile] = useState<File | null>(null); // For Scanning
 
-  // AI Modal State
+  // AI Modal
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [originalIcPreview, setOriginalIcPreview] = useState<string | null>(
     null
@@ -397,8 +380,6 @@ export function AgreementForm({
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [totalTouched, setTotalTouched] = useState(false);
-
-  // PDF Regen State
   const [regeneratePdf, setRegeneratePdf] = useState(true);
 
   const selectedCar = useMemo(
@@ -455,7 +436,6 @@ export function AgreementForm({
       setTotal(suggestPrice(selectedCar, durationDays).toFixed(2));
   }, [selectedCar, durationDays, totalTouched]);
 
-  // Handlers
   const handleMobileBlur = async () => {
     if (mobile.length < 5) return;
     setCheckingMobile(true);
@@ -474,7 +454,6 @@ export function AgreementForm({
       setMobileStatus("safe");
     }
   };
-
   const handleIdBlur = async () => {
     if (idNumber.length < 5) return;
     setCheckingId(true);
@@ -509,24 +488,35 @@ export function AgreementForm({
   };
 
   const handleScan = async () => {
-    if (!icFile) return setErr("Upload IC first.");
+    // ✅ Scan the ORIGINAL file for accuracy
+    const fileToScan = originalIcFile || icFile;
+    if (!fileToScan) return setErr("Upload IC first.");
     setBusy(true);
     try {
       const fd = new FormData();
-      fd.append("file", icFile);
+      fd.append("file", fileToScan);
       const res = await fetch("/api/ocr/scan", { method: "POST", body: fd });
       const j = await res.json();
-      if (!j.ok) throw new Error(j.error);
+      if (!j.ok && !j.data) throw new Error(j.error || "Scan failed");
 
-      if (j.data.name) setCustomerName(j.data.name.toUpperCase());
-      if (j.data.id_number) {
+      if (j.data?.name) setCustomerName(j.data.name.toUpperCase());
+      if (j.data?.id_number) {
         const scanId = j.data.id_number.toUpperCase();
         setIdNumber(scanId);
-        const bl = await checkBlacklist("ic", scanId);
+        setCheckingId(true);
+        const [bl, hist] = await Promise.all([
+          checkBlacklist("ic", scanId),
+          checkHistory(scanId, ""),
+        ]);
+        setCheckingId(false);
         if (bl) {
           setIdStatus("danger");
           setBlacklistAlert({ type: "IC", value: scanId, reason: bl.reason });
           play("fail");
+        } else if (hist) {
+          setHistoryMatch(hist);
+          setIdStatus("safe");
+          play("ok");
         } else {
           setIdStatus("safe");
           play("ok");
@@ -542,16 +532,16 @@ export function AgreementForm({
     }
   };
 
-  // ✅ Image Selection Trigger
   const handleIcSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const f = e.target.files[0];
       setPendingIcFile(f);
+      setOriginalIcFile(f); // Keep original for OCR
 
       const origUrl = URL.createObjectURL(f);
       setOriginalIcPreview(origUrl);
 
-      // Run the Smart Crop/Enhance
+      // ✅ INSTANT CLIENT-SIDE AI CROP
       const processedUrl = await processImage(f);
       setProcessedIcPreview(processedUrl);
 
@@ -561,12 +551,10 @@ export function AgreementForm({
 
   const handleAiChoice = (useAi: boolean) => {
     if (useAi && processedIcPreview && pendingIcFile) {
-      // Use the AI processed image
       const newFile = dataURLtoFile(processedIcPreview, pendingIcFile.name);
       setIcFile(newFile);
       setIcPreview(processedIcPreview);
     } else if (pendingIcFile && originalIcPreview) {
-      // Use original
       setIcFile(pendingIcFile);
       setIcPreview(originalIcPreview);
     }
@@ -582,7 +570,6 @@ export function AgreementForm({
     if (toMoney(total) <= 0) return "Total Price is required";
     return null;
   };
-
   const handleShare = async () => {
     const url = window.location.href;
     const text = `JRV Admin: Review Agreement for ${
@@ -597,30 +584,20 @@ export function AgreementForm({
         console.log("Share cancelled", err);
       }
     }
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(
-      text + "\n" + url
-    )}`;
-    window.open(waUrl, "_blank");
+    window.open(
+      `https://wa.me/?text=${encodeURIComponent(text + "\n" + url)}`,
+      "_blank"
+    );
     play("click");
   };
-
   const preview = async () => {
     const v = validate();
     if (v) return setErr(v);
-    const bl1 = await checkBlacklist("mobile", mobile);
-    if (bl1) return setErr("Mobile is Blacklisted.");
-    const bl2 = await checkBlacklist("ic", idNumber);
-    if (bl2) return setErr("IC is Blacklisted.");
-
     setBusy(true);
     try {
       let url = initial?.ic_url ?? null;
-      if (icFile) {
-        url = await uploadImage(icFile);
-      } else if (icPreview && icPreview.startsWith("http")) {
-        url = icPreview;
-      }
-
+      if (icFile) url = await uploadImage(icFile);
+      else if (icPreview && icPreview.startsWith("http")) url = icPreview;
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
         body: JSON.stringify({
@@ -642,7 +619,6 @@ export function AgreementForm({
       });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
-
       if (j.preview_url) {
         setPreviewUrl(j.preview_url);
         setConfirmOpen(true);
@@ -655,21 +631,14 @@ export function AgreementForm({
       setBusy(false);
     }
   };
-
   const executeSave = async (overrideStatus?: string) => {
     const v = validate();
     if (v) return setErr(v);
     setBusy(true);
     try {
-      const bl1 = await checkBlacklist("mobile", mobile);
-      if (bl1) throw new Error("Mobile Blacklisted");
-      const bl2 = await checkBlacklist("ic", idNumber);
-      if (bl2) throw new Error("IC Blacklisted");
-
       let url = initial?.ic_url ?? null;
       if (icFile) url = await uploadImage(icFile);
       else if (icPreview && icPreview.startsWith("http")) url = icPreview;
-
       const payload = {
         id: initial?.id,
         customer_name: customerName,
@@ -688,7 +657,6 @@ export function AgreementForm({
         ic_url: url,
         skip_pdf: !regeneratePdf && isEdit,
       };
-
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
         body: JSON.stringify({
@@ -698,7 +666,6 @@ export function AgreementForm({
       });
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
-
       play("ok");
       if (j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
       window.location.href = onDoneHref;
@@ -709,7 +676,6 @@ export function AgreementForm({
       setBusy(false);
     }
   };
-
   const handleDeleteClick = async () => {
     if (!initial?.id) return;
     if (deleteStage === "idle") {
@@ -725,9 +691,7 @@ export function AgreementForm({
     });
     window.location.href = onDoneHref;
   };
-
   const handleRestoreClick = async () => await executeSave("Editted");
-
   const statusOptions = isSuperadmin
     ? ["New", "Editted", "Cancelled", "Deleted", "Completed"]
     : ["New", "Editted", "Cancelled"];
@@ -751,8 +715,65 @@ export function AgreementForm({
           </div>
         </div>
       )}
+      {blacklistAlert && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl border-l-4 border-red-600 shadow-2xl max-w-md w-full">
+            <div className="flex items-center gap-3 text-red-700 font-bold mb-3">
+              <ShieldAlert /> Blacklist Warning
+            </div>
+            <p className="text-gray-800">
+              The {blacklistAlert.type}{" "}
+              <span className="bg-red-100 font-mono px-1 rounded">
+                {blacklistAlert.value}
+              </span>{" "}
+              is blacklisted.
+            </p>
+            <div className="bg-red-50 p-3 rounded-lg text-xs text-red-800 mt-3 border border-red-100">
+              <strong>Reason:</strong> {blacklistAlert.reason}
+            </div>
+            <Button
+              onClick={() => setBlacklistAlert(null)}
+              className="w-full mt-4 bg-red-600 text-white hover:bg-red-700"
+            >
+              Acknowledge
+            </Button>
+          </div>
+        </div>
+      )}
+      {historyMatch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-blue-100">
+            <div className="flex items-center gap-3 text-blue-700 font-bold mb-3">
+              <History /> Found Existing Customer
+            </div>
+            <div className="bg-blue-50 p-4 rounded-xl space-y-1 text-sm text-blue-900 mb-4">
+              <div>
+                <strong>Name:</strong> {historyMatch.customer_name}
+              </div>
+              <div>
+                <strong>IC:</strong> {historyMatch.id_number}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => setHistoryMatch(null)}
+                variant="ghost"
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmHistoryUse}
+                className="flex-1 bg-blue-600 text-white"
+              >
+                Use Data
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
-      {/* ✅ AI EDITOR MODAL */}
+      {/* AI MODAL */}
       {aiModalOpen && (
         <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
@@ -763,7 +784,6 @@ export function AgreementForm({
               </h3>
             </div>
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* ORIGINAL */}
               <div className="space-y-3">
                 <div className="text-center text-xs font-bold text-gray-500 uppercase">
                   Original
@@ -784,8 +804,6 @@ export function AgreementForm({
                   Use Original
                 </Button>
               </div>
-
-              {/* AI PROCESSED */}
               <div className="space-y-3">
                 <div className="text-center text-xs font-bold text-indigo-500 uppercase flex items-center justify-center gap-2">
                   <Sparkles className="w-3 h-3" /> AI Cropped & Enhanced
@@ -814,70 +832,7 @@ export function AgreementForm({
         </div>
       )}
 
-      {blacklistAlert && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl border-l-4 border-red-600 shadow-2xl max-w-md w-full">
-            <div className="flex items-center gap-3 text-red-700 font-bold mb-3">
-              <ShieldAlert /> Blacklist Warning
-            </div>
-            <p className="text-gray-800">
-              The {blacklistAlert.type}{" "}
-              <span className="bg-red-100 font-mono px-1 rounded">
-                {blacklistAlert.value}
-              </span>{" "}
-              is blacklisted.
-            </p>
-            <div className="bg-red-50 p-3 rounded-lg text-xs text-red-800 mt-3 border border-red-100">
-              <strong>Reason:</strong> {blacklistAlert.reason}
-            </div>
-            <Button
-              onClick={() => setBlacklistAlert(null)}
-              className="w-full mt-4 bg-red-600 text-white hover:bg-red-700"
-            >
-              Acknowledge
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {historyMatch && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-md w-full border border-blue-100">
-            <div className="flex items-center gap-3 text-blue-700 font-bold mb-3">
-              <History /> Found Existing Customer
-            </div>
-            <div className="bg-blue-50 p-4 rounded-xl space-y-1 text-sm text-blue-900 mb-4">
-              <div>
-                <strong>Name:</strong> {historyMatch.customer_name}
-              </div>
-              <div>
-                <strong>IC:</strong> {historyMatch.id_number}
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={() => setHistoryMatch(null)}
-                variant="ghost"
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  setCustomerName(historyMatch.customer_name.toUpperCase());
-                  setIdNumber(historyMatch.id_number.toUpperCase());
-                  if (historyMatch.ic_url) setIcPreview(historyMatch.ic_url);
-                  setHistoryMatch(null);
-                }}
-                className="flex-1 bg-blue-600 text-white"
-              >
-                Use Data
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-3 w-full md:w-auto">
           <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
@@ -927,7 +882,7 @@ export function AgreementForm({
         </div>
       </div>
 
-      {/* AUDIT INFO */}
+      {/* FORM */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -938,7 +893,6 @@ export function AgreementForm({
               {(initial?.creator_email || agentEmail || "—").toString()}
             </div>
           </div>
-
           {isEdit && initial?.editor_email ? (
             <div>
               <div className={labelClass}>
@@ -991,8 +945,14 @@ export function AgreementForm({
                   onClick={handleScan}
                   variant="secondary"
                   size="sm"
-                  className="bg-white border-blue-200 text-indigo-600 hover:bg-indigo-50 shadow-sm text-xs font-bold"
+                  className="bg-white border-blue-200 text-indigo-600 hover:bg-indigo-50 shadow-sm text-xs font-bold p-6"
+                  disabled={busy}
                 >
+                  {busy ? (
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  ) : (
+                    <ScanLine className="w-4 h-4 mr-2" />
+                  )}{" "}
                   Scan & Autofill
                 </Button>
               </div>
@@ -1148,7 +1108,6 @@ export function AgreementForm({
                 value={deposit}
                 onChange={(e) => setDeposit(e.target.value)}
               />
-
               {isEdit && toMoney(deposit) > 0 ? (
                 <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-700">
                   <input
@@ -1156,7 +1115,7 @@ export function AgreementForm({
                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                     checked={depositRefunded}
                     onChange={(e) => setDepositRefunded(e.target.checked)}
-                  />
+                  />{" "}
                   Deposit refunded
                 </label>
               ) : null}
@@ -1178,7 +1137,6 @@ export function AgreementForm({
                 ))}
               </select>
             </div>
-
             <div className="flex flex-col w-full md:w-auto gap-3">
               {isEdit && (
                 <label className="flex items-center gap-2 text-xs font-bold text-gray-500 select-none cursor-pointer self-end">
@@ -1188,24 +1146,22 @@ export function AgreementForm({
                     onChange={(e) => setRegeneratePdf(e.target.checked)}
                     className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                   />
-                  <FileText className="w-3 h-3" />
-                  Regenerate PDF & Link?
+                  <FileText className="w-3 h-3" /> Regenerate PDF & Link?
                 </label>
               )}
-
               <div className="flex gap-3">
                 <Button
                   onClick={() => preview()}
                   loading={busy}
                   variant="secondary"
-                  className="flex-1 md:flex-none shadow-sm p-6"
+                  className="flex-1 md:flex-none shadow-sm"
                 >
                   Preview PDF
                 </Button>
                 <Button
                   onClick={() => executeSave()}
                   loading={busy}
-                  className="p-6 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+                  className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
                 >
                   Save & WhatsApp
                 </Button>
@@ -1215,7 +1171,6 @@ export function AgreementForm({
         </div>
       </Card>
 
-      {/* PDF PREVIEW MODAL */}
       {confirmOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-0 md:p-4">
           <div className="bg-white w-full h-full md:h-[85vh] md:max-w-4xl md:rounded-xl flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300">

@@ -9,7 +9,6 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { uploadPdfBufferToCloudinary } from "@/lib/cloudinary/uploadPdf";
 
 function jsonError(message: string, status = 400) {
-  // Include status in the JSON so client can reliably redirect on 401
   return NextResponse.json({ ok: false, error: message, status }, { status });
 }
 
@@ -71,7 +70,7 @@ async function syncCarStatus(carId: string) {
     .from("agreements")
     .select("id")
     .eq("car_id", carId)
-    .not("status", "in", `(\"Deleted\",\"Cancelled\",\"Completed\")`)
+    .not("status", "in", `("Deleted","Cancelled","Completed")`)
     .gt("date_end", nowIso)
     .limit(1);
 
@@ -406,7 +405,7 @@ export async function POST(req: Request) {
         deposit_price: toMoneyString(payload.deposit_price),
         deposit_refunded: Boolean(payload.deposit_refunded),
         agent_email: asStr(payload.agent_email),
-        ic_url: payload.ic_url || null, // ✅ Pass IC for Preview
+        ic_url: payload.ic_url || null,
       };
 
       const pdfBuffer = await renderToBuffer(
@@ -428,16 +427,31 @@ export async function POST(req: Request) {
       let prevCarId: string | null = null;
       let existingAgreementUrl = null;
       let existingWhatsappUrl = null;
+      let prevRow: any = null;
 
       if (isEdit && id) {
+        // ✅ FETCH ALL (*) to ensure log is full
         const { data: prev } = await supabaseAdmin
           .from("agreements")
-          .select("car_id, agreement_url, whatsapp_url")
+          .select("*")
           .eq("id", id)
           .maybeSingle();
+        prevRow = prev;
         prevCarId = prev?.car_id ? asStr(prev.car_id) : null;
         existingAgreementUrl = prev?.agreement_url;
         existingWhatsappUrl = prev?.whatsapp_url;
+      }
+
+      // ✅ LOGIC: If updated, force status to "Editted"
+      let newStatus = payload.status || "New";
+      if (isEdit) {
+        if (
+          newStatus !== "Cancelled" &&
+          newStatus !== "Completed" &&
+          newStatus !== "Deleted"
+        ) {
+          newStatus = "Editted";
+        }
       }
 
       const dbData: any = {
@@ -456,26 +470,24 @@ export async function POST(req: Request) {
         total_price: toMoneyString(payload.total_price),
         deposit_price: toMoneyString(payload.deposit_price),
         deposit_refunded: Boolean(payload.deposit_refunded),
-        status: payload.status || "New",
+        status: newStatus,
         creator_email: isEdit ? undefined : actorEmail,
         editor_email: isEdit ? actorEmail : null,
         updated_at: new Date().toISOString(),
-        ic_url: payload.ic_url || null, // ✅ Save IC URL to DB
+        ic_url: payload.ic_url || null,
       };
 
       if (!isEdit) {
         dbData.created_at = new Date().toISOString();
-        dbData.deposit_refunded = false; // always false on create
+        dbData.deposit_refunded = false;
         dbData.editor_email = null;
       }
 
-      // ✅ SKIP PDF LOGIC
+      // Skip PDF Logic
       if (payload.skip_pdf && isEdit) {
-        // Keep existing URLs
         dbData.agreement_url = existingAgreementUrl;
         dbData.whatsapp_url = existingWhatsappUrl;
       } else {
-        // GENERATE NEW PDF
         const pdfData = {
           logo_url: "https://jrv-admin.vercel.app/logo.png",
           ...dbData,
@@ -528,6 +540,7 @@ export async function POST(req: Request) {
         actor_email: actorEmail,
         actor_id: actorId,
         action: isEdit ? "updated" : "created",
+        before: isEdit ? prevRow : null, // ✅ Correctly passes the full before object
         after: dbData,
       });
 

@@ -1,9 +1,10 @@
 // src/app/admin/notifications/page.tsx
 
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
 import { pageMetadata } from "@/lib/seo";
 import NotificationControls from "./_components/NotificationControls";
+import { redirect } from "next/navigation";
 
 export const metadata = pageMetadata({
   title: "Notification Logs",
@@ -14,7 +15,6 @@ export const metadata = pageMetadata({
 const APP_TZ = "Asia/Kuala_Lumpur";
 
 function fmtDate(d: string) {
-  // ✅ Force Malaysia time, consistent on Vercel + localhost
   return new Date(d).toLocaleString("en-MY", {
     timeZone: APP_TZ,
     month: "short",
@@ -26,7 +26,6 @@ function fmtDate(d: string) {
 }
 
 function getRelativeTime(d: string) {
-  // ✅ This is correct (epoch ms math works everywhere)
   const diff = new Date(d).getTime() - Date.now();
   const mins = Math.ceil(diff / 60000);
   const hours = Math.ceil(mins / 60);
@@ -44,12 +43,18 @@ type QueueItem = {
 };
 
 export default async function NotificationsPage() {
-  const gate = await requireAdmin();
-  if (!gate.ok) return <div className="p-6 text-red-600">Access Denied</div>;
-  if (gate.role !== "superadmin")
+  const gate = await requireSuperadmin();
+  if (!gate.ok) {
+    if (gate.status === 401) redirect("/");
     return (
-      <div className="p-6 text-red-600">Access Denied: Superadmin Only</div>
+      <div className="p-6">
+        <div className="text-lg font-semibold">Forbidden</div>
+        <div className="mt-2 rounded-lg border p-3 text-sm text-red-600">
+          {gate.message} (Superadmin Access Required)
+        </div>
+      </div>
     );
+  }
 
   const supabase = await createSupabaseServer();
 
@@ -115,8 +120,10 @@ export default async function NotificationsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Notification Center</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-2xl font-black text-gray-900 tracking-tight">
+            Notification Center
+          </h1>
+          <p className="text-sm text-gray-500 font-medium">
             Monitoring 48h Notification Window (MYT)
           </p>
         </div>
@@ -126,46 +133,51 @@ export default async function NotificationsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* LEFT: SENT LOGS */}
-        <div className="bg-white border rounded-xl shadow-sm overflow-hidden flex flex-col h-150">
-          <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden flex flex-col h-150">
+          <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Sent Log
             </h3>
-            <span className="text-xs text-gray-500">Last 48 Hours</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              Last 48 Hours
+            </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-0">
+          <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
             <table className="w-full text-sm text-left">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0 z-10">
+              <thead className="bg-gray-50 text-gray-400 text-[10px] font-bold uppercase sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-2">Time</th>
-                  <th className="px-4 py-2">Type</th>
-                  <th className="px-4 py-2 text-right">Car</th>
+                  <th className="px-4 py-3">Time</th>
+                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3 text-right">Car</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-gray-50">
                 {logs?.map((log) => (
-                  <tr key={log.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                  <tr
+                    key={log.id}
+                    className="hover:bg-gray-50/50 transition-colors"
+                  >
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap text-xs font-mono">
                       {fmtDate(log.sent_at)}
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`px-2 py-1 rounded text-[10px] font-bold uppercase ${
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
                           log.reminder_type === "EXPIRED"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-blue-50 text-blue-600"
+                            ? "bg-red-50 border-red-100 text-red-600"
+                            : "bg-blue-50 border-blue-100 text-blue-600"
                         }`}
                       >
                         {log.reminder_type}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="font-medium text-gray-900">
+                      <div className="font-bold text-gray-900 text-xs">
                         {log.plate_number}
                       </div>
-                      <div className="text-[10px] text-gray-500">
+                      <div className="text-[10px] text-gray-400">
                         {log.car_model}
                       </div>
                     </td>
@@ -177,38 +189,44 @@ export default async function NotificationsPage() {
         </div>
 
         {/* RIGHT: UPCOMING QUEUE */}
-        <div className="bg-white border rounded-xl shadow-sm overflow-hidden flex flex-col h-150">
-          <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-            <h3 className="font-bold text-gray-800 flex items-center gap-2">
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden flex flex-col h-150">
+          <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
+            <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide">
               <span className="text-lg">📅</span>
               Upcoming Queue
             </h3>
-            <span className="text-xs text-gray-500">Next 48 Hours</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              Next 48 Hours
+            </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-0">
+          <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
             <table className="w-full text-sm text-left">
-              <thead className="bg-gray-50 text-gray-500 text-xs uppercase sticky top-0 z-10">
+              <thead className="bg-gray-50 text-gray-400 text-[10px] font-bold uppercase sticky top-0 z-10">
                 <tr>
-                  <th className="px-4 py-2">Scheduled For</th>
-                  <th className="px-4 py-2">Alert Type</th>
-                  <th className="px-4 py-2 text-right">Car</th>
+                  <th className="px-4 py-3">Scheduled For</th>
+                  <th className="px-4 py-3">Alert Type</th>
+                  <th className="px-4 py-3 text-right">Car</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-gray-50">
                 {upcomingQueue.map((item, i) => (
-                  <tr key={i} className="hover:bg-amber-50/30">
-                    <td className="px-4 py-3 text-gray-600">
-                      <div className="font-medium text-gray-900">
+                  <tr
+                    key={i}
+                    className="hover:bg-amber-50/40 transition-colors"
+                  >
+                    {/* ✅ FIXED: Now uses 'font-mono' and standard text colors to match Sent Log */}
+                    <td className="px-4 py-3">
+                      <div className="text-gray-600 whitespace-nowrap text-xs font-mono">
                         {fmtDate(item.scheduledFor)}
                       </div>
-                      <div className="text-[10px] text-amber-600 font-semibold">
+                      <div className="text-[10px] text-amber-600 font-bold uppercase tracking-wide mt-0.5">
                         {getRelativeTime(item.scheduledFor)}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <span
-                        className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
                           item.type === "EXPIRED"
                             ? "bg-red-50 border-red-100 text-red-600"
                             : "bg-gray-50 border-gray-200 text-gray-600"
@@ -217,11 +235,11 @@ export default async function NotificationsPage() {
                         {item.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="font-medium text-gray-900">
+                    <td className="px-4 py-3 text-right align-top">
+                      <div className="font-bold text-gray-900 text-xs">
                         {item.plate}
                       </div>
-                      <div className="text-[10px] text-gray-500">
+                      <div className="text-[10px] text-gray-400">
                         {item.model}
                       </div>
                     </td>
