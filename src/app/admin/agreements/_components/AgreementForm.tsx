@@ -26,6 +26,7 @@ import {
   Wand2,
   Sparkles,
   FileText,
+  ArrowLeft,
 } from "lucide-react";
 
 // --- STYLES ---
@@ -163,7 +164,7 @@ async function checkHistory(ic: string, mobile: string) {
   }
 }
 
-// ✅ CLIENT-SIDE IMAGE PROCESSING (Smart Crop + Contrast)
+// CLIENT-SIDE IMAGE PROCESSING
 async function processImage(file: File): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -180,7 +181,6 @@ async function processImage(file: File): Promise<string> {
         canvas.height = h;
         ctx.drawImage(img, 0, 0);
 
-        // 1. Detect Edges (Simple Contrast Check)
         const imageData = ctx.getImageData(0, 0, w, h);
         const data = imageData.data;
         const bgR = data[0],
@@ -221,7 +221,6 @@ async function processImage(file: File): Promise<string> {
           maxY = h;
         }
 
-        // Add padding
         const pad = 15;
         minX = Math.max(0, minX - pad);
         minY = Math.max(0, minY - pad);
@@ -231,7 +230,6 @@ async function processImage(file: File): Promise<string> {
         const boxW = maxX - minX;
         const boxH = maxY - minY;
 
-        // 2. Adjust Aspect Ratio (MyKad is ~1.58)
         const targetRatio = 1.58;
         let finalW = boxW;
         let finalH = boxH;
@@ -246,7 +244,6 @@ async function processImage(file: File): Promise<string> {
           finalY = minY + (boxH - finalH) / 2;
         }
 
-        // 3. Draw Cropped
         const finalCanvas = document.createElement("canvas");
         finalCanvas.width = finalW;
         finalCanvas.height = finalH;
@@ -265,7 +262,6 @@ async function processImage(file: File): Promise<string> {
           finalH
         );
 
-        // 4. Enhance Contrast
         const finalData = finalCtx.getImageData(0, 0, finalW, finalH);
         const d = finalData.data;
         for (let i = 0; i < d.length; i += 4) {
@@ -321,7 +317,6 @@ export function AgreementForm({
   const [deleteStage, setDeleteStage] = useState<"idle" | "confirm">("idle");
   const [cars, setCars] = useState<any[]>([]);
 
-  // Form State
   const [carId, setCarId] = useState(initial?.car_id ?? "");
   const [customerName, setCustomerName] = useState(
     (initial?.customer_name ?? "").toUpperCase()
@@ -331,14 +326,12 @@ export function AgreementForm({
   );
   const [mobile, setMobile] = useState(initial?.mobile ?? "");
 
-  // Files
-  const [icFile, setIcFile] = useState<File | null>(null); // For Saving
+  const [icFile, setIcFile] = useState<File | null>(null);
   const [icPreview, setIcPreview] = useState<string | null>(
     initial?.ic_url ?? null
   );
-  const [originalIcFile, setOriginalIcFile] = useState<File | null>(null); // For Scanning
+  const [originalIcFile, setOriginalIcFile] = useState<File | null>(null);
 
-  // AI Modal
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [originalIcPreview, setOriginalIcPreview] = useState<string | null>(
     null
@@ -488,7 +481,6 @@ export function AgreementForm({
   };
 
   const handleScan = async () => {
-    // ✅ Scan the ORIGINAL file for accuracy
     const fileToScan = originalIcFile || icFile;
     if (!fileToScan) return setErr("Upload IC first.");
     setBusy(true);
@@ -536,12 +528,11 @@ export function AgreementForm({
     if (e.target.files?.[0]) {
       const f = e.target.files[0];
       setPendingIcFile(f);
-      setOriginalIcFile(f); // Keep original for OCR
+      setOriginalIcFile(f);
 
       const origUrl = URL.createObjectURL(f);
       setOriginalIcPreview(origUrl);
 
-      // ✅ INSTANT CLIENT-SIDE AI CROP
       const processedUrl = await processImage(f);
       setProcessedIcPreview(processedUrl);
 
@@ -698,7 +689,6 @@ export function AgreementForm({
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
-      {/* ALERTS */}
       {err && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white p-6 rounded-2xl border-l-4 border-red-500 shadow-2xl max-w-sm w-full">
@@ -773,7 +763,6 @@ export function AgreementForm({
         </div>
       )}
 
-      {/* AI MODAL */}
       {aiModalOpen && (
         <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
@@ -832,7 +821,6 @@ export function AgreementForm({
         </div>
       )}
 
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-3 w-full md:w-auto">
           <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
@@ -873,16 +861,19 @@ export function AgreementForm({
                 {deleteStage === "confirm" ? "Confirm?" : "Delete"}
               </Button>
             ))}
-          <Link
-            href={onDoneHref}
-            className="text-sm font-medium text-gray-500 hover:text-black transition"
+          <Button
+            onClick={handleDeleteClick}
+            loading={busy}
+            variant="secondary"
+            className="bg-white border-blue-200 text-indigo-600 hover:bg-indigo-50 shadow-sm text-xs font-bold p-6"
           >
-            Cancel & Back
-          </Link>
+            <Link href={onDoneHref} className="flex items-center gap-2">
+              <ArrowLeft className="w-4 h-4" /> Cancel & Exit
+            </Link>
+          </Button>
         </div>
       </div>
 
-      {/* FORM */}
       <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -912,35 +903,34 @@ export function AgreementForm({
       <Card className="p-0 overflow-hidden shadow-xl shadow-gray-200/50 border border-gray-100">
         <div className="p-6 space-y-6">
           <div className="bg-linear-to-br from-blue-50/50 to-indigo-50/30 p-5 rounded-2xl border border-blue-100/50 flex flex-col md:flex-row gap-6">
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="relative w-full md:w-48 h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:scale-[1.02] transition-all shadow-sm group overflow-hidden"
-            >
-              {icPreview ? (
-                <img src={icPreview} className="w-full h-full object-cover" />
-              ) : (
-                <div className="text-center space-y-1">
-                  <div className="p-2 bg-blue-50 rounded-full inline-flex text-blue-400 group-hover:text-indigo-500 transition-colors">
-                    <Upload className="w-5 h-5" />
+            <div className="w-full md:w-48 flex flex-col gap-3">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="relative w-full h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:scale-[1.02] transition-all shadow-sm group overflow-hidden"
+              >
+                {icPreview ? (
+                  <img src={icPreview} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="text-center space-y-1">
+                    <div className="p-2 bg-blue-50 rounded-full inline-flex text-blue-400 group-hover:text-indigo-500 transition-colors">
+                      <Upload className="w-5 h-5" />
+                    </div>
+                    <div className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">
+                      Upload IC
+                    </div>
                   </div>
-                  <div className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">
-                    Upload IC
-                  </div>
-                </div>
-              )}
-              <input
-                type="file"
-                accept="image/*"
-                ref={fileInputRef}
-                hidden
-                onChange={handleIcSelect}
-              />
-            </div>
-            <div className="flex-1 space-y-4">
-              <div className="flex justify-between items-center">
-                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
-                  <ScanLine className="w-4 h-4" /> Customer Details
-                </h3>
+                )}
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={fileInputRef}
+                  hidden
+                  onChange={handleIcSelect}
+                />
+              </div>
+
+              {/* ✅ Fixed: Wrapped in div to strictly enforce hiding on desktop */}
+              <div className="md:hidden w-full justify-center flex">
                 <Button
                   onClick={handleScan}
                   variant="secondary"
@@ -955,6 +945,32 @@ export function AgreementForm({
                   )}{" "}
                   Scan & Autofill
                 </Button>
+              </div>
+            </div>
+
+            <div className="flex-1 space-y-4">
+              <div className="flex justify-between items-center">
+                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                  <ScanLine className="w-4 h-4" /> Customer Details
+                </h3>
+
+                {/* ✅ Fixed: Wrapped in div to strictly enforce hiding on mobile */}
+                <div className="hidden md:block">
+                  <Button
+                    onClick={handleScan}
+                    variant="secondary"
+                    size="sm"
+                    className="bg-white border-blue-200 text-indigo-600 hover:bg-indigo-50 shadow-sm text-xs font-bold p-6"
+                    disabled={busy}
+                  >
+                    {busy ? (
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    ) : (
+                      <ScanLine className="w-4 h-4 mr-2" />
+                    )}{" "}
+                    Scan & Autofill
+                  </Button>
+                </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -999,7 +1015,7 @@ export function AgreementForm({
               </div>
             </div>
           </div>
-
+          {/* ... Rest of component remains the same ... */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div>
               <label className={labelClass}>
@@ -1154,14 +1170,14 @@ export function AgreementForm({
                   onClick={() => preview()}
                   loading={busy}
                   variant="secondary"
-                  className="flex-1 md:flex-none shadow-sm"
+                  className="flex-1 md:flex-none shadow-sm p-6"
                 >
                   Preview PDF
                 </Button>
                 <Button
                   onClick={() => executeSave()}
                   loading={busy}
-                  className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+                  className="p-6 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
                 >
                   Save & WhatsApp
                 </Button>
