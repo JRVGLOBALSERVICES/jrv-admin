@@ -1,11 +1,19 @@
+// src/app/admin/marketing-tracker/_components/MarketingTrackerClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button"; // ✅ Import
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import {
+  Search,
+  Filter,
+  ChevronLeft,
+  ChevronRight,
+  RotateCcw,
+} from "lucide-react";
 
-const ACTIONS = ["", "create_post", "update_post", "delete_post"] as const;
-type ActorOption = { email: string | null };
+const ACTIONS = ["create_post", "update_post", "delete_post"] as const;
 
 function buildUrl(path: string, params: Record<string, any>) {
   const sp = new URLSearchParams();
@@ -18,88 +26,171 @@ function buildUrl(path: string, params: Record<string, any>) {
 }
 
 export default function MarketingTrackerClient({
-  initial = { q: "", action: "", actor_email: "", page: 1, page_size: 25 },
-  meta = { total: 0, totalPages: 1 },
-  options = { actors: [] },
+  initial,
+  meta,
+  options,
 }: {
-  initial?: { q: string; action: string; actor_email: string; page: number; page_size: number };
-  meta?: { total: number; totalPages: number };
-  options?: { actors: ActorOption[] };
+  initial: {
+    q: string;
+    action: string;
+    actor_email: string;
+    page: number;
+    page_size: number;
+  };
+  meta: { total: number; totalPages: number };
+  options: { actors: { email: string }[] };
 }) {
   const router = useRouter();
   const path = usePathname();
 
-  const [q, setQ] = useState(initial.q ?? "");
-  const [action, setAction] = useState(initial.action ?? "");
-  const [actorEmail, setActorEmail] = useState(initial.actor_email ?? "");
-  const [pageSize, setPageSize] = useState(initial.page_size ?? 25);
-
-  const page = initial.page ?? 1;
-  const totalPages = meta.totalPages ?? 1;
-
-  const nextUrl = useMemo(
-    () => buildUrl(path, { q, action, actor_email: actorEmail, page: Math.min(totalPages, page + 1), page_size: pageSize }),
-    [path, q, action, actorEmail, page, totalPages, pageSize]
-  );
-
-  const prevUrl = useMemo(
-    () => buildUrl(path, { q, action, actor_email: actorEmail, page: Math.max(1, page - 1), page_size: pageSize }),
-    [path, q, action, actorEmail, page, pageSize]
-  );
+  const [q, setQ] = useState(initial.q);
+  const [action, setAction] = useState(initial.action);
+  const [actorEmail, setActorEmail] = useState(initial.actor_email);
+  const [pageSize, setPageSize] = useState(initial.page_size);
 
   const apply = () => {
-    router.push(buildUrl(path, { q: q.trim(), action, actor_email: actorEmail.trim(), page: 1, page_size: pageSize }));
+    router.push(
+      buildUrl(path, {
+        q: q.trim(),
+        action,
+        actor_email: actorEmail.trim(),
+        page: 1,
+        page_size: pageSize,
+      })
+    );
   };
 
   const clear = () => {
-    setQ(""); setAction(""); setActorEmail("");
-    router.push(buildUrl(path, { page: 1, page_size: 25 }));
+    setQ("");
+    setAction("");
+    setActorEmail("");
+    router.push(path);
   };
 
   return (
-    <div className="rounded-xl border bg-white p-4 space-y-3">
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm font-medium">Filters</div>
-          <div className="text-xs opacity-70">Total: {meta.total} • Page {page} / {totalPages}</div>
+    <Card className="p-5 border-gray-200 shadow-sm bg-white overflow-hidden">
+      <div className="flex items-center justify-between mb-4">
+        <div className="font-bold text-sm text-gray-700 flex items-center gap-2 uppercase tracking-tight">
+          <Filter size={18} className="text-blue-500" /> Filter Logs
+          <span className="ml-2 normal-case font-medium text-gray-400">
+            ({meta.total} records found)
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={clear} variant="secondary" size="sm">Clear</Button>
-          <Button onClick={apply} size="sm">Apply</Button>
+          <Button onClick={clear} variant="secondary" size="sm" className="p-6">
+            <RotateCcw size={14} className="mr-1" /> Reset
+          </Button>
+          <Button onClick={apply} size="sm" className="p-6">
+            Apply Filters
+          </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="md:col-span-1">
-          <div className="text-xs opacity-60 mb-1">Search Details</div>
-          <input className="w-full border rounded-lg px-3 py-2 h-10 outline-none focus:ring-2 focus:ring-black/20" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search JSON details..." />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+            Search Keywords
+          </label>
+          <div className="relative">
+            <Search
+              className="absolute left-3 top-2.5 text-gray-400"
+              size={14}
+            />
+            <input
+              className="w-full border rounded-lg pl-9 pr-3 py-2 text-sm focus:ring-2 ring-blue-500 outline-none transition"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Title, Email..."
+            />
+          </div>
         </div>
-        <div>
-          <div className="text-xs opacity-60 mb-1">Action</div>
-          <select className="w-full border rounded-lg px-3 py-2 bg-white h-10" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">All</option>
-            {ACTIONS.map((a) => <option key={a} value={a}>{a || "All"}</option>)}
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+            Action Type
+          </label>
+          <select
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+          >
+            <option value="">All Actions</option>
+            {ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {a.replace(/_/g, " ")}
+              </option>
+            ))}
           </select>
         </div>
-        <div>
-          <div className="text-xs opacity-60 mb-1">Actor (Email)</div>
-          <select className="w-full border rounded-lg px-3 py-2 bg-white h-10" value={actorEmail} onChange={(e) => setActorEmail(e.target.value)}>
-            <option value="">All</option>
-            {(options.actors ?? []).map((a) => <option key={a.email ?? ""} value={a.email ?? ""}>{a.email || "—"}</option>)}
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+            Actor (Email)
+          </label>
+          <select
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            value={actorEmail}
+            onChange={(e) => setActorEmail(e.target.value)}
+          >
+            <option value="">All Actors</option>
+            {options.actors.map((a) => (
+              <option key={a.email} value={a.email}>
+                {a.email}
+              </option>
+            ))}
           </select>
         </div>
-        <div>
-          <div className="text-xs opacity-60 mb-1">Page size</div>
-          <select className="w-full border rounded-lg px-3 py-2 bg-white h-10" value={pageSize} onChange={(e) => setPageSize(Number(e.target.value))}>
-            {[10, 25, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+
+        <div className="space-y-1">
+          <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+            Per Page
+          </label>
+          <select
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
+            value={pageSize}
+            onChange={(e) => setPageSize(Number(e.target.value))}
+          >
+            {[10, 25, 50, 100].map((n) => (
+              <option key={n} value={n}>
+                {n} rows
+              </option>
+            ))}
           </select>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 justify-end">
-        <Button onClick={() => router.push(prevUrl)} disabled={page <= 1} variant="secondary" size="sm">Prev</Button>
-        <Button onClick={() => router.push(nextUrl)} disabled={page >= totalPages} variant="secondary" size="sm">Next</Button>
+      {/* Pagination Bar */}
+      <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-50">
+        <div className="text-xs font-medium text-gray-500 italic">
+          Page {initial.page} of {meta.totalPages}
+        </div>
+        <div className="flex gap-2">
+          <Button
+            onClick={() =>
+              router.push(
+                buildUrl(path, { ...initial, page: initial.page - 1 })
+              )
+            }
+            disabled={initial.page <= 1}
+            variant="secondary"
+            size="sm"
+          >
+            <ChevronLeft size={16} />
+          </Button>
+          <Button
+            onClick={() =>
+              router.push(
+                buildUrl(path, { ...initial, page: initial.page + 1 })
+              )
+            }
+            disabled={initial.page >= meta.totalPages}
+            variant="secondary"
+            size="sm"
+          >
+            <ChevronRight size={16} />
+          </Button>
+        </div>
       </div>
-    </div>
+    </Card>
   );
 }
