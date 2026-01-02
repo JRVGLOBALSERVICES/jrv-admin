@@ -1,26 +1,34 @@
 import type { Metadata, Viewport } from "next";
+// ✅ Import the font
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { baseMetadata } from "@/lib/seo";
 import GlobalShareButton from "../components/ui/GlobalShareButton";
-// ✅ Import the new refresh button
 import FloatingRefresh from "../components/ui/FloatingRefresh";
+
+// ✅ Configure the font
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter", // We will use this variable in Tailwind
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   ...baseMetadata(),
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    statusBarStyle: "black-translucent", // Makes the content go under the status bar (full screen feel)
+    statusBarStyle: "black-translucent",
     title: "JRV Admin",
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#FF3057", // Matches your brand pink
+  themeColor: "#FF3057",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  userScalable: false, // Prevents zooming issues on inputs
+  userScalable: false,
 };
 
 export default function RootLayout({
@@ -30,13 +38,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="bg-gray-50 min-h-screen">
+      {/* ✅ Apply the font class to the body */}
+      <body className={`${inter.variable} font-sans bg-gray-50 min-h-screen`}>
         {children}
-
-        {/* ✅ Existing Share Button */}
         <GlobalShareButton />
-
-        {/* ✅ New iOS Hard Refresh Button */}
         <FloatingRefresh />
       </body>
     </html>

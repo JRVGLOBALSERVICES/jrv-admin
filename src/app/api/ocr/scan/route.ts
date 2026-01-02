@@ -28,7 +28,7 @@ const BLACKLIST_WORDS = [
   "MALAYSIA", "KAD", "PENGENALAN", "IDENTITY", "CARD", "MYKAD", 
   "GOVERNMENT", "KERAJAAN", "WARGANEGARA", "LELAKI", "PEREMPUAN", 
   "ISLAM", "KRISTIAN", "BUDDHA", "HINDU", "JANTINA", "AGAMA", "ALAMAT",
-  "W/N", "ASAL", "TARIKH", "TEMPAT", "LAHIR"
+  "W/N", "ASAL", "TARIKH", "TEMPAT", "LAHIR", "CONTOH", "FOR", "USE", "UNTUK"
 ];
 
 export async function POST(req: Request) {
