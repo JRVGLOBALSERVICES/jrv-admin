@@ -99,7 +99,7 @@ export default async function MarketingTrackerPage({
     <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <div className="text-4xl italic font-mono font-bold text-gray-900 flex items-center gap-2">
             <ShieldAlert className="text-blue-600" size={28} />
             Marketing Tracker
           </div>

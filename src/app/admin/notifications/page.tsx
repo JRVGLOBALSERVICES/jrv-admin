@@ -1,15 +1,15 @@
-// src/app/admin/notifications/page.tsx
-
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { requireSuperadmin } from "@/lib/auth/requireSuperadmin";
 import { pageMetadata } from "@/lib/seo";
 import NotificationControls from "./_components/NotificationControls";
 import { redirect } from "next/navigation";
+import { ShieldCheck } from "lucide-react";
 
 export const metadata = pageMetadata({
   title: "Notification Logs",
   description: "Monitor sent and upcoming automated reminders.",
   path: "/admin/notifications",
+  index: false, // ✅ Admin pages should not be indexed
 });
 
 const APP_TZ = "Asia/Kuala_Lumpur";
@@ -43,29 +43,30 @@ type QueueItem = {
 };
 
 export default async function NotificationsPage() {
-  const gate = await requireSuperadmin();
-  if (!gate.ok) {
-    if (gate.status === 401) redirect("/");
-    return (
-      <div className="p-6">
-        <div className="text-lg font-semibold">Forbidden</div>
-        <div className="mt-2 rounded-lg border p-3 text-sm text-red-600">
-          {gate.message} (Superadmin Access Required)
-        </div>
-      </div>
-    );
-  }
-
   const supabase = await createSupabaseServer();
 
-  // 1) Fetch Logs
+  // 1. Session Check: Redirect to root if not logged in
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) {
+    redirect("/");
+  }
+
+  // 2. Superadmin Gate: Redirect to dashboard if not superadmin
+  const gate = await requireSuperadmin();
+  if (!gate.ok) {
+    redirect("/dashboard");
+  }
+
+  // 3) Fetch Logs
   const { data: logs } = await supabase
     .from("notification_logs")
     .select("*")
     .order("sent_at", { ascending: false })
     .limit(100);
 
-  // 2) Fetch Active Agreements (48h window)
+  // 4) Fetch Active Agreements (48h window)
   const now = new Date();
   const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
 
@@ -78,7 +79,7 @@ export default async function NotificationsPage() {
     .lte("date_end", in48h.toISOString())
     .order("date_end", { ascending: true });
 
-  // 3) Generate Queue
+  // 5) Generate Queue logic
   const upcomingQueue: QueueItem[] = [];
   const checkpoints = [120, 60, 30, 10, 0];
 
@@ -120,12 +121,13 @@ export default async function NotificationsPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-            Notification Center
-          </h1>
-          <p className="text-sm text-gray-500 font-medium">
+          <div className="text-4xl italic font-mono font-bold text-gray-900 flex items-center gap-2">
+            <ShieldCheck className="text-blue-600" size={28} /> Notification
+            Center
+          </div>
+          <div className="text-sm text-gray-500">
             Monitoring 48h Notification Window (MYT)
-          </p>
+          </div>
         </div>
 
         <NotificationControls />
@@ -140,11 +142,11 @@ export default async function NotificationsPage() {
               Sent Log
             </h3>
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-              Last 48 Hours
+              Recent Activity
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-0 scrollbar-hide">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-400 text-[10px] font-bold uppercase sticky top-0 z-10">
                 <tr>
@@ -200,7 +202,7 @@ export default async function NotificationsPage() {
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-0 scrollbar-hide">
             <table className="w-full text-sm text-left">
               <thead className="bg-gray-50 text-gray-400 text-[10px] font-bold uppercase sticky top-0 z-10">
                 <tr>
@@ -215,7 +217,6 @@ export default async function NotificationsPage() {
                     key={i}
                     className="hover:bg-amber-50/40 transition-colors"
                   >
-                    {/* ✅ FIXED: Now uses 'font-mono' and standard text colors to match Sent Log */}
                     <td className="px-4 py-3">
                       <div className="text-gray-600 whitespace-nowrap text-xs font-mono">
                         {fmtDate(item.scheduledFor)}

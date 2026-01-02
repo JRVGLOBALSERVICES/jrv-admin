@@ -3,7 +3,9 @@ import { LogTable } from "./LogTable";
 import { pageMetadata } from "@/lib/seo";
 import type { Metadata } from "next";
 import { LogToolbar } from "./LogToolbar";
-
+import { requireSuperadmin } from "@/lib/auth/requireSuperadmin"; // ✅ Import your gate
+import { redirect } from "next/navigation"; // ✅ Import redirect
+import { ShieldCheck } from "lucide-react";
 export const metadata: Metadata = pageMetadata({
   title: "Agreement Logs",
   description: "View create/update/delete actions for agreements.",
@@ -13,30 +15,38 @@ export const metadata: Metadata = pageMetadata({
 
 export const dynamic = "force-dynamic";
 
-// 1. Update the type definition to wrap searchParams in a Promise
 type PageProps = {
   searchParams: Promise<{ q?: string; action?: string }>;
 };
 
-// 2. Change signature to accept 'props'
 export default async function AgreementLogsPage(props: PageProps) {
-  // 3. Await the searchParams before accessing properties
-  const searchParams = await props.searchParams;
-
   const supabase = await createSupabaseServer();
 
-  // 1. Start Query
+  // 1. Session Check: If not logged in, redirect to root
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) {
+    redirect("/");
+  }
+
+  // 2. Role Check: If not superadmin, redirect to dashboard
+  const gate = await requireSuperadmin();
+  if (!gate.ok) {
+    redirect("/dashboard");
+  }
+
+  const searchParams = await props.searchParams;
+
+  // 3. Data Fetching Logic
   let query = supabase
     .from("agreement_logs")
     .select("*")
     .order("created_at", { ascending: false })
     .limit(100);
 
-  // 2. Apply Search (Agreement ID or Actor Email)
-  // Now valid because searchParams is a plain object
   if (searchParams.q) {
     const term = searchParams.q;
-    // Check if term is a valid UUID to search by ID, otherwise search email
     const isUuid =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
         term
@@ -49,12 +59,10 @@ export default async function AgreementLogsPage(props: PageProps) {
     }
   }
 
-  // 3. Apply Action Filter
   if (searchParams.action) {
     query = query.eq("action", searchParams.action);
   }
 
-  // 4. Fetch
   const { data: logs, error } = await query;
 
   if (error) {
@@ -65,17 +73,15 @@ export default async function AgreementLogsPage(props: PageProps) {
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">
-            Audit Logs
-          </h1>
-          <p className="text-sm text-gray-500">
+          <div className="text-4xl italic font-mono font-bold text-gray-900 flex items-center gap-2">
+            <ShieldCheck className="text-blue-600" size={28} /> Agreement Logs
+          </div>
+          <div className="text-sm text-gray-500">
             Track all changes, updates, and deletions history.
-          </p>
+          </div>
         </div>
       </div>
 
-      {/* ✅ Add Toolbar Here */}
-      {/* Note: If LogToolbar needs to read URL params, you might need to pass them down explicitly now */}
       <LogToolbar />
 
       <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">

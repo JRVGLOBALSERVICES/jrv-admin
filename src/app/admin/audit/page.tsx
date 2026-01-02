@@ -61,7 +61,7 @@ export default async function AuditPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <div className="text-4xl italic font-mono font-bold text-gray-900 flex items-center gap-2">
             <ShieldAlert className="text-blue-600" size={28} />
             User Audit Logs
           </div>
