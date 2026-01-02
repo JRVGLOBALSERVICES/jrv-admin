@@ -23,6 +23,9 @@ import {
   History,
   AlertTriangle,
   Share2,
+  Wand2,
+  Sparkles,
+  FileText,
 } from "lucide-react";
 
 // --- STYLES ---
@@ -169,6 +172,152 @@ async function checkHistory(ic: string, mobile: string) {
   }
 }
 
+// ✅ UPDATED: Smart Edge Detection + Auto Crop + Enhancement
+async function processImage(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return resolve(e.target?.result as string);
+
+        const w = img.width;
+        const h = img.height;
+        canvas.width = w;
+        canvas.height = h;
+        ctx.drawImage(img, 0, 0);
+
+        // 1. Scan for Content (Bounding Box)
+        // We assume the corners are background. We scan for pixels that differ significantly.
+        const imageData = ctx.getImageData(0, 0, w, h);
+        const data = imageData.data;
+        const bgR = data[0],
+          bgG = data[1],
+          bgB = data[2]; // Top-left pixel as reference
+        const threshold = 40; // Sensitivity to difference
+
+        let minX = w,
+          minY = h,
+          maxX = 0,
+          maxY = 0;
+        let found = false;
+
+        // Scan every 5th pixel for speed
+        for (let y = 0; y < h; y += 5) {
+          for (let x = 0; x < w; x += 5) {
+            const i = (y * w + x) * 4;
+            const r = data[i],
+              g = data[i + 1],
+              b = data[i + 2];
+
+            // If pixel is different from background
+            if (
+              Math.abs(r - bgR) > threshold ||
+              Math.abs(g - bgG) > threshold ||
+              Math.abs(b - bgB) > threshold
+            ) {
+              if (x < minX) minX = x;
+              if (x > maxX) maxX = x;
+              if (y < minY) minY = y;
+              if (y > maxY) maxY = y;
+              found = true;
+            }
+          }
+        }
+
+        // Fallback: If no distinct edges found (solid image), use full image
+        if (!found || maxX <= minX || maxY <= minY) {
+          minX = 0;
+          maxX = w;
+          minY = 0;
+          maxY = h;
+        }
+
+        // Add small padding to the detected box
+        const pad = 15;
+        minX = Math.max(0, minX - pad);
+        minY = Math.max(0, minY - pad);
+        maxX = Math.min(w, maxX + pad);
+        maxY = Math.min(h, maxY + pad);
+
+        const boxW = maxX - minX;
+        const boxH = maxY - minY;
+
+        // 2. Adjust for MyKad Aspect Ratio (1.58:1) within the detected box
+        // We crop "inwards" from the detected box to fit the ratio
+        const targetRatio = 1.58;
+        let finalW = boxW;
+        let finalH = boxH;
+        let finalX = minX;
+        let finalY = minY;
+
+        if (boxW / boxH > targetRatio) {
+          // Box is too wide compared to card -> Narrow width (Center it)
+          finalW = boxH * targetRatio;
+          finalX = minX + (boxW - finalW) / 2;
+        } else {
+          // Box is too tall -> Shorten height (Center it)
+          finalH = boxW / targetRatio;
+          finalY = minY + (boxH - finalH) / 2;
+        }
+
+        // 3. Draw Final Cropped Image
+        const finalCanvas = document.createElement("canvas");
+        finalCanvas.width = finalW;
+        finalCanvas.height = finalH;
+        const finalCtx = finalCanvas.getContext("2d");
+        if (!finalCtx) return resolve(e.target?.result as string);
+
+        finalCtx.drawImage(
+          img,
+          finalX,
+          finalY,
+          finalW,
+          finalH,
+          0,
+          0,
+          finalW,
+          finalH
+        );
+
+        // 4. Apply Grayscale & Contrast
+        const finalData = finalCtx.getImageData(0, 0, finalW, finalH);
+        const d = finalData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const avg = (d[i] + d[i + 1] + d[i + 2]) / 3;
+          // Contrast Stretch
+          const contrast = 1.25;
+          const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+          const color = factor * (avg - 128) + 128;
+
+          d[i] = color; // R
+          d[i + 1] = color; // G
+          d[i + 2] = color; // B
+        }
+        finalCtx.putImageData(finalData, 0, 0);
+
+        resolve(finalCanvas.toDataURL("image/jpeg", 0.9));
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataURLtoFile(dataurl: string, filename: string) {
+  const arr = dataurl.split(",");
+  const mime = arr[0].match(/:(.*?);/)?.[1];
+  const bstr = atob(arr[1]);
+  let n = bstr.length;
+  const u8arr = new Uint8Array(n);
+  while (n--) {
+    u8arr[n] = bstr.charCodeAt(n);
+  }
+  return new File([u8arr], filename, { type: mime });
+}
+
 export function AgreementForm({
   mode,
   initial,
@@ -183,7 +332,6 @@ export function AgreementForm({
   const isSuperadmin = roleState?.role === "superadmin";
   const { play } = useSfx();
 
-  // ✅ Fix: Define these variables based on props
   const isEdit = mode === "edit";
   const isDeleted = initial?.status === "Deleted";
 
@@ -206,6 +354,17 @@ export function AgreementForm({
   const [icPreview, setIcPreview] = useState<string | null>(
     initial?.ic_url ?? null
   );
+
+  // AI Modal State
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [originalIcPreview, setOriginalIcPreview] = useState<string | null>(
+    null
+  );
+  const [processedIcPreview, setProcessedIcPreview] = useState<string | null>(
+    null
+  );
+  const [pendingIcFile, setPendingIcFile] = useState<File | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [checkingMobile, setCheckingMobile] = useState(false);
@@ -239,12 +398,14 @@ export function AgreementForm({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [totalTouched, setTotalTouched] = useState(false);
 
+  // PDF Regen State
+  const [regeneratePdf, setRegeneratePdf] = useState(true);
+
   const selectedCar = useMemo(
     () => cars.find((c) => c.id === carId) ?? null,
     [cars, carId]
   );
 
-  // Sync Initial Data
   useEffect(() => {
     if (initial) {
       if (initial.car_id) setCarId(initial.car_id);
@@ -263,7 +424,6 @@ export function AgreementForm({
     }
   }, [initial]);
 
-  // Load Cars
   useEffect(() => {
     (async () => {
       const url = new URL("/admin/cars/api", window.location.origin);
@@ -382,12 +542,36 @@ export function AgreementForm({
     }
   };
 
-  const handleIcSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ✅ Image Selection Trigger
+  const handleIcSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files?.[0]) {
       const f = e.target.files[0];
-      setIcFile(f);
-      setIcPreview(URL.createObjectURL(f));
+      setPendingIcFile(f);
+
+      const origUrl = URL.createObjectURL(f);
+      setOriginalIcPreview(origUrl);
+
+      // Run the Smart Crop/Enhance
+      const processedUrl = await processImage(f);
+      setProcessedIcPreview(processedUrl);
+
+      setAiModalOpen(true);
     }
+  };
+
+  const handleAiChoice = (useAi: boolean) => {
+    if (useAi && processedIcPreview && pendingIcFile) {
+      // Use the AI processed image
+      const newFile = dataURLtoFile(processedIcPreview, pendingIcFile.name);
+      setIcFile(newFile);
+      setIcPreview(processedIcPreview);
+    } else if (pendingIcFile && originalIcPreview) {
+      // Use original
+      setIcFile(pendingIcFile);
+      setIcPreview(originalIcPreview);
+    }
+    setAiModalOpen(false);
+    setPendingIcFile(null);
   };
 
   const validate = () => {
@@ -502,6 +686,7 @@ export function AgreementForm({
         status: overrideStatus || status,
         agent_email: agentEmail,
         ic_url: url,
+        skip_pdf: !regeneratePdf && isEdit,
       };
 
       const res = await fetch("/admin/agreements/api", {
@@ -550,7 +735,6 @@ export function AgreementForm({
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
       {/* ALERTS */}
-      {/* ✅ Use z-[60] to ensure this error pops over everything else */}
       {err && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white p-6 rounded-2xl border-l-4 border-red-500 shadow-2xl max-w-sm w-full">
@@ -564,6 +748,68 @@ export function AgreementForm({
             >
               Okay
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ AI EDITOR MODAL */}
+      {aiModalOpen && (
+        <div className="fixed inset-0 z-70 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
+            <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3">
+              <Wand2 className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-bold text-indigo-900">
+                AI Enhancement Suggestion
+              </h3>
+            </div>
+            <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* ORIGINAL */}
+              <div className="space-y-3">
+                <div className="text-center text-xs font-bold text-gray-500 uppercase">
+                  Original
+                </div>
+                <div className="aspect-[1.58/1] bg-gray-100 rounded-lg overflow-hidden border border-gray-200 shadow-inner">
+                  {originalIcPreview && (
+                    <img
+                      src={originalIcPreview}
+                      className="w-full h-full object-contain"
+                    />
+                  )}
+                </div>
+                <Button
+                  onClick={() => handleAiChoice(false)}
+                  variant="secondary"
+                  className="w-full"
+                >
+                  Use Original
+                </Button>
+              </div>
+
+              {/* AI PROCESSED */}
+              <div className="space-y-3">
+                <div className="text-center text-xs font-bold text-indigo-500 uppercase flex items-center justify-center gap-2">
+                  <Sparkles className="w-3 h-3" /> AI Cropped & Enhanced
+                </div>
+                <div className="aspect-[1.58/1] bg-indigo-50 rounded-lg overflow-hidden border-2 border-indigo-200 shadow-inner relative">
+                  {processedIcPreview ? (
+                    <img
+                      src={processedIcPreview}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-300" />
+                    </div>
+                  )}
+                </div>
+                <Button
+                  onClick={() => handleAiChoice(true)}
+                  className="w-full bg-indigo-600 text-white hover:bg-indigo-700"
+                >
+                  Use AI Suggestion
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -681,46 +927,43 @@ export function AgreementForm({
         </div>
       </div>
 
-{/* AUDIT INFO */}
-<div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <div>
-      <div className={labelClass}>
-        <User className="w-4 h-4" /> Created By
-      </div>
-      <div className="text-sm font-bold text-gray-800">
-        {(initial?.creator_email || agentEmail || "—").toString()}
-      </div>
-    </div>
+      {/* AUDIT INFO */}
+      <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <div className={labelClass}>
+              <User className="w-4 h-4" /> Created By
+            </div>
+            <div className="text-sm font-bold text-gray-800">
+              {(initial?.creator_email || agentEmail || "—").toString()}
+            </div>
+          </div>
 
-    {isEdit && initial?.editor_email ? (
-      <div>
-        <div className={labelClass}>
-          <Clock className="w-4 h-4" /> Last Edited
-        </div>
-        <div className="text-sm font-bold text-gray-800">
-          {initial.editor_email}
-        </div>
-        <div className="text-[11px] text-gray-500">
-          {initial.updated_at ? fmtDate(initial.updated_at) : "—"}
+          {isEdit && initial?.editor_email ? (
+            <div>
+              <div className={labelClass}>
+                <Clock className="w-4 h-4" /> Last Edited
+              </div>
+              <div className="text-sm font-bold text-gray-800">
+                {initial.editor_email}
+              </div>
+              <div className="text-[11px] text-gray-500">
+                {initial.updated_at ? fmtDate(initial.updated_at) : "—"}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
-    ) : null}
-  </div>
-</div>
 
       <Card className="p-0 overflow-hidden shadow-xl shadow-gray-200/50 border border-gray-100">
         <div className="p-6 space-y-6">
           <div className="bg-linear-to-br from-blue-50/50 to-indigo-50/30 p-5 rounded-2xl border border-blue-100/50 flex flex-col md:flex-row gap-6">
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="relative w-full md:w-48 h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:scale-[1.02] transition-all shadow-sm group"
+              className="relative w-full md:w-48 h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:scale-[1.02] transition-all shadow-sm group overflow-hidden"
             >
               {icPreview ? (
-                <img
-                  src={icPreview}
-                  className="w-full h-full object-contain p-2"
-                />
+                <img src={icPreview} className="w-full h-full object-cover" />
               ) : (
                 <div className="text-center space-y-1">
                   <div className="p-2 bg-blue-50 rounded-full inline-flex text-blue-400 group-hover:text-indigo-500 transition-colors">
@@ -733,14 +976,10 @@ export function AgreementForm({
               )}
               <input
                 type="file"
+                accept="image/*"
                 ref={fileInputRef}
                 hidden
-                onChange={(e) => {
-                  if (e.target.files?.[0]) {
-                    setIcFile(e.target.files[0]);
-                    setIcPreview(URL.createObjectURL(e.target.files[0]));
-                  }
-                }}
+                onChange={handleIcSelect}
               />
             </div>
             <div className="flex-1 space-y-4">
@@ -910,21 +1149,20 @@ export function AgreementForm({
                 onChange={(e) => setDeposit(e.target.value)}
               />
 
-{isEdit && toMoney(deposit) > 0 ? (
-  <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-700">
-    <input
-      type="checkbox"
-      className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-      checked={depositRefunded}
-      onChange={(e) => setDepositRefunded(e.target.checked)}
-    />
-    Deposit refunded
-  </label>
-) : null}
+              {isEdit && toMoney(deposit) > 0 ? (
+                <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={depositRefunded}
+                    onChange={(e) => setDepositRefunded(e.target.checked)}
+                  />
+                  Deposit refunded
+                </label>
+              ) : null}
             </div>
           </div>
 
-          {/* ✅ FIXED LAYOUT: Status top, Buttons below on Mobile */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-6 border-t border-gray-100">
             <div className="w-full md:w-48">
               <label className={labelClass}>Status</label>
@@ -941,22 +1179,37 @@ export function AgreementForm({
               </select>
             </div>
 
-            <div className="flex w-full md:w-auto gap-3">
-              <Button
-                onClick={() => preview()}
-                loading={busy}
-                variant="secondary"
-                className="flex-1 md:flex-none shadow-sm"
-              >
-                Preview PDF
-              </Button>
-              <Button
-                onClick={() => executeSave()}
-                loading={busy}
-                className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
-              >
-                Save & WhatsApp
-              </Button>
+            <div className="flex flex-col w-full md:w-auto gap-3">
+              {isEdit && (
+                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 select-none cursor-pointer self-end">
+                  <input
+                    type="checkbox"
+                    checked={regeneratePdf}
+                    onChange={(e) => setRegeneratePdf(e.target.checked)}
+                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  <FileText className="w-3 h-3" />
+                  Regenerate PDF & Link?
+                </label>
+              )}
+
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => preview()}
+                  loading={busy}
+                  variant="secondary"
+                  className="flex-1 md:flex-none shadow-sm p-6"
+                >
+                  Preview PDF
+                </Button>
+                <Button
+                  onClick={() => executeSave()}
+                  loading={busy}
+                  className="p-6 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+                >
+                  Save & WhatsApp
+                </Button>
+              </div>
             </div>
           </div>
         </div>

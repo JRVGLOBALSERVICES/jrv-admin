@@ -156,8 +156,8 @@ export async function GET(req: Request) {
   const plate = asStr(url.searchParams.get("plate"));
   const dateParam = asStr(url.searchParams.get("date"));
   const endDateParam = asStr(url.searchParams.get("endDate"));
-    const depositFilter = asStr(url.searchParams.get("deposit"));
-const actor = asStr(url.searchParams.get("actor"));
+  const depositFilter = asStr(url.searchParams.get("deposit"));
+  const actor = asStr(url.searchParams.get("actor"));
   const filtersOnly = url.searchParams.get("filtersOnly") === "1";
 
   const { data: carsRows, error: carsErr } = await supabase
@@ -342,7 +342,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true });
     }
 
-
     if (action === "delete") {
       if (actorRole !== "superadmin")
         return jsonError("Forbidden: Superadmin only", 403);
@@ -427,13 +426,18 @@ export async function POST(req: Request) {
       const id = isEdit ? must(payload.id, "Missing ID") : undefined;
 
       let prevCarId: string | null = null;
+      let existingAgreementUrl = null;
+      let existingWhatsappUrl = null;
+
       if (isEdit && id) {
         const { data: prev } = await supabaseAdmin
           .from("agreements")
-          .select("car_id")
+          .select("car_id, agreement_url, whatsapp_url")
           .eq("id", id)
           .maybeSingle();
         prevCarId = prev?.car_id ? asStr(prev.car_id) : null;
+        existingAgreementUrl = prev?.agreement_url;
+        existingWhatsappUrl = prev?.whatsapp_url;
       }
 
       const dbData: any = {
@@ -465,32 +469,40 @@ export async function POST(req: Request) {
         dbData.editor_email = null;
       }
 
-      const pdfData = {
-        logo_url: "https://jrv-admin.vercel.app/logo.png",
-        ...dbData,
-        mobile: normalizePhoneInternational(payload.mobile),
-        date_start: fmtHuman(dbData.date_start),
-        date_end: fmtHuman(dbData.date_end),
-        agent_email: asStr(payload.agent_email) || actorEmail,
-        ic_url: dbData.ic_url, // ✅ Pass IC URL to PDF
-      };
+      // ✅ SKIP PDF LOGIC
+      if (payload.skip_pdf && isEdit) {
+        // Keep existing URLs
+        dbData.agreement_url = existingAgreementUrl;
+        dbData.whatsapp_url = existingWhatsappUrl;
+      } else {
+        // GENERATE NEW PDF
+        const pdfData = {
+          logo_url: "https://jrv-admin.vercel.app/logo.png",
+          ...dbData,
+          mobile: normalizePhoneInternational(payload.mobile),
+          date_start: fmtHuman(dbData.date_start),
+          date_end: fmtHuman(dbData.date_end),
+          agent_email: asStr(payload.agent_email) || actorEmail,
+          ic_url: dbData.ic_url,
+        };
 
-      const pdfBuffer = await renderToBuffer(
-        createElement(AgreementPdf as any, { data: pdfData }) as any
-      );
-      const publicId = `${pdfData.mobile.replace("+", "")}_${
-        dbData.id_number
-      }_${dbData.plate_number}_${Date.now()}`;
-      const up = await uploadPdfBufferToCloudinary({
-        buffer: Buffer.from(pdfBuffer),
-        publicId,
-      });
+        const pdfBuffer = await renderToBuffer(
+          createElement(AgreementPdf as any, { data: pdfData }) as any
+        );
+        const publicId = `${pdfData.mobile.replace("+", "")}_${
+          dbData.id_number
+        }_${dbData.plate_number}_${Date.now()}`;
+        const up = await uploadPdfBufferToCloudinary({
+          buffer: Buffer.from(pdfBuffer),
+          publicId,
+        });
 
-      dbData.agreement_url = up.secure_url;
-      dbData.whatsapp_url = buildWhatsAppUrl(
-        pdfData.mobile,
-        `Your rental agreement: ${up.secure_url}`
-      );
+        dbData.agreement_url = up.secure_url;
+        dbData.whatsapp_url = buildWhatsAppUrl(
+          pdfData.mobile,
+          `Your rental agreement: ${up.secure_url}`
+        );
+      }
 
       let res;
       if (isEdit) {
@@ -515,7 +527,7 @@ export async function POST(req: Request) {
         agreement_id: res.data.id,
         actor_email: actorEmail,
         actor_id: actorId,
-        action: isEdit ? "updated_regenerated" : "created",
+        action: isEdit ? "updated" : "created",
         after: dbData,
       });
 

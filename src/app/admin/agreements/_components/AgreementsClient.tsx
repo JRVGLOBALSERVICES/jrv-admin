@@ -107,35 +107,33 @@ export default function AgreementsClient() {
     router.replace(pathname);
   };
 
-
-
-const toggleDepositRefunded = async (id: string, value: boolean) => {
-  // optimistic update
-  setData((prev: any) => ({
-    ...prev,
-    rows: (prev.rows || []).map((r: any) =>
-      r.id === id ? { ...r, deposit_refunded: value } : r
-    ),
-  }));
-  try {
-    const res = await fetch("/admin/agreements/api", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "toggle_deposit_refunded", id, value }),
-    });
-    const json = await res.json();
-    if (!res.ok || !json.ok) throw new Error(json.error || "Update failed");
-  } catch (e: any) {
-    // rollback
+  const toggleDepositRefunded = async (id: string, value: boolean) => {
+    // optimistic update
     setData((prev: any) => ({
       ...prev,
       rows: (prev.rows || []).map((r: any) =>
-        r.id === id ? { ...r, deposit_refunded: !value } : r
+        r.id === id ? { ...r, deposit_refunded: value } : r
       ),
     }));
-    alert("ERROR: " + (e?.message || "Unknown"));
-  }
-};
+    try {
+      const res = await fetch("/admin/agreements/api", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "toggle_deposit_refunded", id, value }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || "Update failed");
+    } catch (e: any) {
+      // rollback
+      setData((prev: any) => ({
+        ...prev,
+        rows: (prev.rows || []).map((r: any) =>
+          r.id === id ? { ...r, deposit_refunded: !value } : r
+        ),
+      }));
+      alert("ERROR: " + (e?.message || "Unknown"));
+    }
+  };
   const forceDelete = async (id: string) => {
     setDeletingId(id);
     try {
@@ -237,27 +235,27 @@ const toggleDepositRefunded = async (id: string, value: boolean) => {
               ))}
             </select>
           </div>
-          
-<div className="col-span-1">
-  <label className={labelClass}>Deposit</label>
-  <select
-    className={inputClass}
-    value={depositFilter}
-    onChange={(e) => updateFilter("deposit", e.target.value)}
-  >
-    <option value="">All</option>
-    <option value="only">With Deposit</option>
-    <option value="not_paid">Deposit Not Refunded</option>
-    <option value="paid">Deposit Refunded</option>
-  </select>
-</div>
 
-<div className="col-span-2 md:col-span-1 flex items-end">
+          <div className="col-span-1">
+            <label className={labelClass}>Deposit</label>
+            <select
+              className={inputClass}
+              value={depositFilter}
+              onChange={(e) => updateFilter("deposit", e.target.value)}
+            >
+              <option value="">All</option>
+              <option value="only">With Deposit</option>
+              <option value="not_paid">Deposit Not Refunded</option>
+              <option value="paid">Deposit Refunded</option>
+            </select>
+          </div>
+
+          <div className="col-span-2 md:col-span-1 flex items-end">
             <Button
               variant="ghost"
               size="sm"
               onClick={clearFilters}
-              className="h-10 w-full text-red-500 hover:bg-red-50 hover:text-red-600"
+              className="col-span-2 md:col-span-1 md:w-auto h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700 mb-px"
             >
               Clear
             </Button>
@@ -329,8 +327,8 @@ const toggleDepositRefunded = async (id: string, value: boolean) => {
                       </div>
                     </td>
                     <td className="px-4 py-3 font-bold text-gray-900">
-  RM {row.total_price}
-</td>
+                      RM {row.total_price}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         <div className="font-bold text-gray-900">
@@ -354,9 +352,9 @@ const toggleDepositRefunded = async (id: string, value: boolean) => {
                         )}
                       </div>
                     </td>
-<td className="px-4 py-3">
-  <StatusBadge status={row.status} />
-</td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={row.status} />
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {row.whatsapp_url && (

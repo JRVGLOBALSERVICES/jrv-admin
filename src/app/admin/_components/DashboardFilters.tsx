@@ -13,9 +13,12 @@ type Period =
   | "all"
   | "custom";
 
-// ✅ Unified "Glossy" Input Style (matches Site Events)
 const inputClass =
   "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 h-10";
+
+// ✅ Helper for mobile labels
+const labelClass =
+  "block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 md:hidden";
 
 export default function DashboardFilters({
   plates,
@@ -126,56 +129,71 @@ export default function DashboardFilters({
         <div className="flex flex-col md:flex-row gap-3">
           {/* Dropdowns - Grid on Mobile */}
           <div className="grid grid-cols-2 gap-2 md:flex md:w-auto w-full">
-            <select
-              value={model}
-              onChange={(e) => updateParams({ model: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">All Models</option>
-              {models.map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            <div className="w-full">
+              <label className={labelClass}>Model</label>
+              <select
+                value={model}
+                onChange={(e) => updateParams({ model: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">All Models</option>
+                {models.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <select
-              value={plate}
-              onChange={(e) => updateParams({ plate: e.target.value })}
-              className={inputClass}
-            >
-              <option value="">All Plates</option>
-              {plates.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
+            <div className="w-full">
+              <label className={labelClass}>Plate</label>
+              <select
+                value={plate}
+                onChange={(e) => updateParams({ plate: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">All Plates</option>
+                {plates.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="w-px h-10 bg-gray-100 hidden md:block" />
 
           {/* Custom Date - Grid on Mobile */}
-          <div className="grid grid-cols-[1fr_1fr_auto] md:flex md:items-center gap-2 w-full md:w-auto">
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className={inputClass}
-            />
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className={inputClass}
-            />
+          {/* ✅ UPDATED: grid-cols-2 allows inputs side-by-side, button spans full width below */}
+          <div className="grid grid-cols-2 md:flex md:items-end gap-2 w-full md:w-auto">
+            <div className="w-full">
+              <label className={labelClass}>Start Date</label>
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="w-full">
+              <label className={labelClass}>End Date</label>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+
+            {/* ✅ Button moves to row 2 on mobile (col-span-2) */}
             <Button
               onClick={handleDateApply}
               disabled={!customStart || !customEnd}
               size="sm"
               // @ts-ignore
               sound="on"
-              className="h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700"
+              className="col-span-2 md:col-span-1 md:w-auto h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700 mb-px"
             >
               Go
             </Button>
