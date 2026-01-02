@@ -17,15 +17,15 @@ export type CarListRow = {
   status: string | null;
   location: string | null;
   body_type: string | null;
-
   daily_price: number | null;
   price_3_days: number | null;
   weekly_price: number | null;
   monthly_price: number | null;
-
   primary_image_url: string | null;
   images: string[] | null;
-
+  is_featured: boolean | null;
+  promo_price: number | null;
+  promo_label: string | null;
   car_catalog: { make: string | null; model: string | null } | null;
 };
 
@@ -42,7 +42,7 @@ export default async function CarsPage() {
       `
       id, plate_number, status, location, body_type,
       daily_price, price_3_days, weekly_price, monthly_price,
-      primary_image_url, images,
+      primary_image_url, images, is_featured, promo_price, promo_label,
       car_catalog:catalog_id ( make, model )
     `
     )

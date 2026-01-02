@@ -34,6 +34,9 @@ type CarPayload = {
   android_auto: boolean;
   apple_carplay: boolean;
   notes?: string | null;
+  is_featured: boolean;
+  promo_price: number | null;
+  promo_label: string | null;
 };
 
 const toNumOrNull = (v: any) => {
@@ -55,8 +58,6 @@ export async function GET(req: Request) {
     return jsonError("Invalid mode", 400);
   }
 
-  // ✅ Only return cars that can be selected for NEW agreements:
-  //    status=available AND has catalog_id
   let query = supabase
     .from("cars")
     .select(
@@ -180,6 +181,9 @@ export async function POST(req: Request) {
     android_auto: !!payload.android_auto,
     apple_carplay: !!payload.apple_carplay,
     notes: payload.notes ?? null,
+    is_featured: !!payload.is_featured,
+    promo_price: toNumOrNull(payload.promo_price),
+    promo_label: payload.promo_label ?? null,
   };
 
   if (!clean.plate_number) return jsonError("Plate number required");
