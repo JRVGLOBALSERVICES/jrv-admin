@@ -139,7 +139,9 @@ export default function UsersClient() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Email</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+              Email
+            </label>
             <input
               className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 ring-blue-500 outline-none transition"
               placeholder="email@jrv.com"
@@ -148,7 +150,9 @@ export default function UsersClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Phone</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+              Phone
+            </label>
             <input
               className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 ring-blue-500 outline-none transition"
               placeholder="Optional"
@@ -157,7 +161,9 @@ export default function UsersClient() {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Role</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+              Role
+            </label>
             <select
               className="w-full border rounded-lg px-3 py-2 text-sm bg-white"
               value={cRole}
@@ -168,7 +174,9 @@ export default function UsersClient() {
             </select>
           </div>
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">Temporary Password</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">
+              Temporary Password
+            </label>
             <input
               className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 ring-blue-500 outline-none transition"
               placeholder="Min 6 chars"
@@ -199,7 +207,7 @@ export default function UsersClient() {
       {/* Scrollable Table Wrapper */}
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left min-w-[800px]">
+          <table className="w-full text-sm text-left min-w-200">
             <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100 uppercase text-[10px] tracking-widest">
               <tr>
                 <th className="p-4">Identity</th>
@@ -211,31 +219,44 @@ export default function UsersClient() {
             <tbody className="divide-y divide-gray-100">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="p-12 text-center text-gray-400 animate-pulse uppercase text-xs font-bold tracking-widest">
+                  <td
+                    colSpan={4}
+                    className="p-12 text-center text-gray-400 animate-pulse uppercase text-xs font-bold tracking-widest"
+                  >
                     Fetching users...
                   </td>
                 </tr>
               ) : !sorted.length ? (
                 <tr>
-                  <td colSpan={4} className="p-12 text-center text-gray-400 font-medium italic">
+                  <td
+                    colSpan={4}
+                    className="p-12 text-center text-gray-400 font-medium italic"
+                  >
                     No admin users found.
                   </td>
                 </tr>
               ) : (
                 sorted.map((u) => (
-                  <tr key={u.user_id} className="hover:bg-gray-50/50 transition-colors">
+                  <tr
+                    key={u.user_id}
+                    className="hover:bg-gray-50/50 transition-colors"
+                  >
                     <td className="p-4">
-                      <div className="font-bold text-gray-900 whitespace-nowrap">{u.email}</div>
+                      <div className="font-bold text-gray-900 whitespace-nowrap">
+                        {u.email}
+                      </div>
                       <div className="text-[10px] text-gray-400 font-medium">
                         {u.phone ?? "No phone recorded"}
                       </div>
                     </td>
                     <td className="p-4">
-                      <span className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${
-                        u.role === "superadmin"
-                          ? "bg-blue-50 text-blue-700 border-blue-100"
-                          : "bg-gray-50 text-gray-600 border-gray-100"
-                      }`}>
+                      <span
+                        className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${
+                          u.role === "superadmin"
+                            ? "bg-blue-50 text-blue-700 border-blue-100"
+                            : "bg-gray-50 text-gray-600 border-gray-100"
+                        }`}
+                      >
                         {u.role}
                       </span>
                     </td>
@@ -319,7 +340,11 @@ export default function UsersClient() {
               type="password"
             />
             <div className="flex gap-2 pt-2">
-              <Button className="flex-1 font-bold uppercase" variant="secondary" onClick={() => setPwUserId(null)}>
+              <Button
+                className="flex-1 font-bold uppercase"
+                variant="secondary"
+                onClick={() => setPwUserId(null)}
+              >
                 Cancel
               </Button>
               <Button

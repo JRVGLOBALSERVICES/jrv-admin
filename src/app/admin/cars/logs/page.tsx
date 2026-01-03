@@ -91,7 +91,7 @@ export default async function CarLogsPage({ searchParams }: { searchParams: Prom
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
         {/* MOBILE SCROLL FIX START */}
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left min-w-[1000px]">
+          <table className="w-full text-sm text-left min-w-250">
             <thead className="bg-gray-50 text-gray-400 font-bold border-b border-gray-100 uppercase text-[10px] tracking-widest">
               <tr>
                 <th className="p-4 w-40">Timestamp</th>

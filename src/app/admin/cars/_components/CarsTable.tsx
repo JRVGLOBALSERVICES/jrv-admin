@@ -7,22 +7,13 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import type { CarListRow } from "../page";
 
-// Unified Styles from Agreements
+// Unified Styles
 const inputClass =
   "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 h-10";
 const labelClass =
   "text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block";
 
-const LOCATIONS = [
-  "All",
-  "Seremban",
-  "Seremban 2",
-  "Seremban 3",
-  "Nilai",
-  "Port Dickson",
-  "KLIA",
-  "Kuala Lumpur",
-] as const;
+// --- Constants ---
 
 const STATUS = [
   "All",
@@ -42,6 +33,12 @@ const BODY = [
   "SUV",
   "Sports",
 ] as const;
+
+// New Filters
+const FEATURED_OPTIONS = ["All", "Featured Only", "Standard Only"] as const;
+const PRICE_TYPES = ["All", "Promo Only", "Regular Price"] as const;
+
+// --- Helper Functions ---
 
 function rm(v?: number | null) {
   if (v == null) return "—";
@@ -64,18 +61,29 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// --- Main Component ---
+
 export default function CarsTable({ rows }: { rows: CarListRow[] }) {
+  // Search State
   const [searchTerm, setSearchTerm] = useState("");
   const [q, setQ] = useState("");
-  const [location, setLocation] = useState<(typeof LOCATIONS)[number]>("All");
+
+  // Filter States
+  const [model, setModel] = useState<string>("All");
   const [status, setStatus] = useState<(typeof STATUS)[number]>("All");
   const [bodyType, setBodyType] = useState<(typeof BODY)[number]>("All");
-  const [model, setModel] = useState<string>("All");
+
+  // Replaced Location with Featured & Added Price Type
+  const [featuredFilter, setFeaturedFilter] =
+    useState<(typeof FEATURED_OPTIONS)[number]>("All");
+  const [priceFilter, setPriceFilter] =
+    useState<(typeof PRICE_TYPES)[number]>("All");
 
   const debouncedSearch = useDebouncedCallback((value: string) => {
     setQ(value);
   }, 500);
 
+  // Extract unique models for the dropdown
   const models = useMemo(() => {
     const all = rows
       .map((r) => (r.car_catalog?.model ?? "").trim())
@@ -83,29 +91,53 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
     return ["All", ...Array.from(new Set(all)).sort()];
   }, [rows]);
 
+  // Filtering Logic
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
+
     return rows.filter((r) => {
       const m = (r.car_catalog?.model ?? "").trim();
       const mk = (r.car_catalog?.make ?? "").trim();
       const plate = (r.plate_number ?? "").trim();
-      const loc = (r.location ?? "").trim();
       const st = (r.status ?? "").trim();
       const body = (r.body_type ?? "").trim();
 
-      if (location !== "All" && loc !== location) return false;
+      const isFeatured = r.is_featured;
+      const hasPromo = r.promo_price !== null && r.promo_price > 0;
+
+      // Dropdown Checks
+      if (model !== "All" && m !== model) return false;
       if (status !== "All" && st !== status) return false;
       if (bodyType !== "All" && body !== bodyType) return false;
-      if (model !== "All" && m !== model) return false;
-      if (!needle) return true;
 
+      // Featured Check
+      if (featuredFilter === "Featured Only" && !isFeatured) return false;
+      if (featuredFilter === "Standard Only" && isFeatured) return false;
+
+      // Promo Price Check
+      if (priceFilter === "Promo Only" && !hasPromo) return false;
+      if (priceFilter === "Regular Price" && hasPromo) return false;
+
+      // Search Text Check
+      if (!needle) return true;
       return `${plate} ${mk} ${m}`.toLowerCase().includes(needle);
     });
-  }, [rows, q, location, status, bodyType, model]);
+  }, [rows, q, model, status, bodyType, featuredFilter, priceFilter]);
+
+  // Reset Handler
+  const handleClear = () => {
+    setSearchTerm("");
+    setQ("");
+    setModel("All");
+    setStatus("All");
+    setBodyType("All");
+    setFeaturedFilter("All");
+    setPriceFilter("All");
+  };
 
   return (
     <div className="p-4 md:p-6 space-y-6">
-      {/* Header Section */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">
@@ -122,14 +154,15 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
         </Link>
       </div>
 
-      {/* Filters Section */}
+      {/* Filters Bar */}
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+        {/* Changed grid-cols-6 to grid-cols-7 to fit new Price filter */}
+        <div className="grid grid-cols-2 md:grid-cols-7 gap-4">
           <div className="col-span-2 md:col-span-1">
             <label className={labelClass}>Search</label>
             <input
               className={inputClass}
-              placeholder="Plate, make, model..."
+              placeholder="Plate, make..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -137,6 +170,7 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
               }}
             />
           </div>
+
           <div>
             <label className={labelClass}>Model</label>
             <select
@@ -151,20 +185,39 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
               ))}
             </select>
           </div>
+
+          {/* Featured Filter */}
           <div>
-            <label className={labelClass}>Location</label>
+            <label className={labelClass}>Featured</label>
             <select
               className={inputClass}
-              value={location}
-              onChange={(e) => setLocation(e.target.value as any)}
+              value={featuredFilter}
+              onChange={(e) => setFeaturedFilter(e.target.value as any)}
             >
-              {LOCATIONS.map((l) => (
-                <option key={l} value={l}>
-                  {l}
+              {FEATURED_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
                 </option>
               ))}
             </select>
           </div>
+
+          {/* Price Type Filter */}
+          <div>
+            <label className={labelClass}>Price Type</label>
+            <select
+              className={inputClass}
+              value={priceFilter}
+              onChange={(e) => setPriceFilter(e.target.value as any)}
+            >
+              {PRICE_TYPES.map((pt) => (
+                <option key={pt} value={pt}>
+                  {pt}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className={labelClass}>Status</label>
             <select
@@ -179,6 +232,7 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
               ))}
             </select>
           </div>
+
           <div>
             <label className={labelClass}>Body Type</label>
             <select
@@ -193,17 +247,11 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
               ))}
             </select>
           </div>
+
           <div className="flex items-end">
             <Button
               variant="ghost"
-              onClick={() => {
-                setSearchTerm("");
-                setQ("");
-                setLocation("All");
-                setStatus("All");
-                setBodyType("All");
-                setModel("All");
-              }}
+              onClick={handleClear}
               className="w-full h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700 hover:text-white"
             >
               Clear
@@ -212,7 +260,7 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
         </div>
       </div>
 
-      {/* Table Section */}
+      {/* Table */}
       <Card className="overflow-hidden border border-gray-100 shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
@@ -243,30 +291,31 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200">
+                        <div className="h-10 w-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 shrink-0">
                           {r.primary_image_url && (
                             <img
                               src={r.primary_image_url}
                               className="h-full w-full object-cover"
+                              alt="Car"
                             />
                           )}
                         </div>
-                        <div>
-                          <div className="font-bold text-gray-900 flex items-center gap-2">
+                        <div className="min-w-0">
+                          <div className="font-bold text-gray-900 flex items-center gap-2 truncate">
                             {r.car_catalog?.model}
                             {r.is_featured && (
-                              <span className="bg-amber-100 text-amber-700 text-[9px] px-1.5 py-0.5 rounded font-black uppercase">
+                              <span className="bg-amber-100 text-amber-700 text-[9px] px-1.5 py-0.5 rounded font-black uppercase shrink-0">
                                 Featured
                               </span>
                             )}
                           </div>
-                          <div className="text-[10px] text-gray-400">
+                          <div className="text-[10px] text-gray-400 truncate">
                             {r.car_catalog?.make} • {r.body_type} • {r.location}
                           </div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 font-bold text-gray-700">
+                    <td className="px-4 py-3 font-bold text-gray-700 whitespace-nowrap">
                       {r.plate_number}
                     </td>
                     <td className="px-4 py-3">
