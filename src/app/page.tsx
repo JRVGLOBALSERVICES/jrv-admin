@@ -78,7 +78,7 @@ export default function LoginPage() {
             <Image src="/logo.png" alt="JRV Admin" width={90} height={90} />
           </div>
           <h1 className="text-2xl font-semibold text-[#FF3057]">Admin Login</h1>
-          <p className="text-sm text-gray-200">Sign in to continue</p>
+          <p className="text-sm text-black">Sign in to continue</p>
         </div>
 
         <form onSubmit={onSubmit} className="space-y-4">
