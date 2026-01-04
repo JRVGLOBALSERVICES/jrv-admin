@@ -554,6 +554,13 @@ export function AgreementForm({
   };
 
   const validate = () => {
+    // --- BLACKLIST CHECK ---
+    if (idStatus === "danger")
+      return "Cannot proceed: IC Number is blacklisted.";
+    if (mobileStatus === "danger")
+      return "Cannot proceed: Mobile Number is blacklisted.";
+    // -----------------------
+
     if (!customerName) return "Customer Name is required";
     if (!idNumber) return "IC / Passport is required";
     if (!mobile) return "Mobile Number is required";
@@ -561,6 +568,7 @@ export function AgreementForm({
     if (toMoney(total) <= 0) return "Total Price is required";
     return null;
   };
+
   const handleShare = async () => {
     const url = window.location.href;
     const text = `JRV Admin: Review Agreement for ${
@@ -1170,14 +1178,20 @@ export function AgreementForm({
                   onClick={() => preview()}
                   loading={busy}
                   variant="secondary"
-                  className="flex-1 md:flex-none shadow-sm p-6"
+                  disabled={
+                    idStatus === "danger" || mobileStatus === "danger" || busy
+                  }
+                  className="flex-1 md:flex-none shadow-sm p-6 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Preview PDF
                 </Button>
                 <Button
                   onClick={() => executeSave()}
                   loading={busy}
-                  className="p-6 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200"
+                  disabled={
+                    idStatus === "danger" || mobileStatus === "danger" || busy
+                  }
+                  className="p-6 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                 >
                   Save & WhatsApp
                 </Button>
