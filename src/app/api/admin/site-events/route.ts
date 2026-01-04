@@ -18,39 +18,12 @@ function decodeMaybe(v: unknown) {
   }
 }
 
-const COUNTRY_MAP: Record<string, string> = {
-  MY: "Malaysia",
-  MALAYSIA: "Malaysia",
-  SG: "Singapore",
-  SINGAPORE: "Singapore",
-  US: "United States",
-  USA: "United States",
-  "UNITED STATES": "United States",
-  ID: "Indonesia",
-  INDONESIA: "Indonesia",
-  IN: "India",
-  INDIA: "India",
-  GB: "United Kingdom",
-  UK: "United Kingdom",
-  "UNITED KINGDOM": "United Kingdom",
-  AU: "Australia",
-  AUSTRALIA: "Australia",
-};
-
 function normalizeCountry(v: unknown) {
-  const s = decodeMaybe(v);
-  if (!s) return "";
-  const key = s.trim().toUpperCase();
-  return COUNTRY_MAP[key] || s;
+  return decodeMaybe(v);
 }
-
 function normalizeRegion(v: unknown) {
-  const s = decodeMaybe(v);
-  if (!s) return "";
-  if (/^\d+$/.test(s.trim())) return "";
-  return s;
+  return decodeMaybe(v);
 }
-
 function normalizeCity(v: unknown) {
   return decodeMaybe(v);
 }
@@ -62,22 +35,10 @@ function parseExactAddress(addr: string | null) {
     .map((s) => s.trim())
     .filter(Boolean);
   if (parts.length === 0) return null;
-
-  const countryRaw = parts[parts.length - 1];
-  const country = normalizeCountry(countryRaw);
-
-  let region = "";
+  const country = parts[parts.length - 1];
   let city = parts[0];
-
-  if (parts.length >= 3) {
-    const potentialRegion = parts[parts.length - 2];
-    region = potentialRegion.replace(/\d+/g, "").trim();
-    city = parts[parts.length - 3] || parts[0];
-  } else if (parts.length === 2) {
-    city = parts[0];
-  }
-
-  return { country, region, city };
+  if (parts.length >= 3) city = parts[parts.length - 3] || parts[0];
+  return { country, region: "", city };
 }
 
 function formatLocation(
@@ -88,22 +49,10 @@ function formatLocation(
   lat?: number | null,
   lng?: number | null
 ) {
-  if (exact) {
-    return exact.split(",").slice(0, 2).join(", ");
-  }
-
-  // If we have GPS data but no address, show coords to avoid "Kuala Lumpur" IP bias
-  if (lat && lng) {
+  if (exact) return exact.split(",").slice(0, 2).join(", ");
+  if (lat && lng)
     return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)} (GPS)`;
-  }
-
   return [city, region, country].filter(Boolean).join(", ") || "Unknown";
-}
-
-function toIsoSafe(s: string) {
-  const d = new Date(s);
-  if (isNaN(d.getTime())) return null;
-  return d.toISOString();
 }
 
 type Filters = {
@@ -124,9 +73,9 @@ async function fetchRows(
   const toIdx = fromIdx + limit - 1;
 
   let q = supabaseAdmin
-    .from("site_events_test") // ✅ Target site_events_test
+    .from("site_events") // ✅ Live Table
     .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, lat, lng, exact_address, isp", // ✅ Include ISP
+      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, lat, lng, exact_address, isp",
       { count: "exact" }
     )
     .gte("created_at", fromIso)
@@ -141,31 +90,14 @@ async function fetchRows(
 
   const { data, error, count } = await q;
   if (error) throw new Error(error.message);
-
   return { rows: (data || []) as SiteEventRow[], total: count || 0 };
 }
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const from = url.searchParams.get("from");
-    const to = url.searchParams.get("to");
-
-    if (!from || !to)
-      return NextResponse.json(
-        { ok: false, error: "Missing from/to" },
-        { status: 400 }
-      );
-
-    const fromIso = toIsoSafe(from);
-    const toIso = toIsoSafe(to);
-
-    if (!fromIso || !toIso)
-      return NextResponse.json(
-        { ok: false, error: "Invalid from/to" },
-        { status: 400 }
-      );
-
+    const from = url.searchParams.get("from") || "";
+    const to = url.searchParams.get("to") || "";
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const limit = Math.min(
       200,
@@ -179,13 +111,7 @@ export async function GET(req: Request) {
       path: url.searchParams.get("path") || undefined,
     };
 
-    const { rows, total } = await fetchRows(
-      fromIso,
-      toIso,
-      filters,
-      page,
-      limit
-    );
+    const { rows, total } = await fetchRows(from, to, filters, page, limit);
 
     const sessionFirst = new Map<string, SiteEventRow>();
     for (const r of rows.slice().reverse()) {
@@ -197,7 +123,6 @@ export async function GET(req: Request) {
       string,
       { trafficFixed: string; campaignKey: string; refName: string }
     >();
-
     for (const [sk, first] of sessionFirst.entries()) {
       const a = inferAcquisitionFromFirstEvent(first);
       sessionMeta.set(sk, {
@@ -210,11 +135,9 @@ export async function GET(req: Request) {
     const out = rows.map((r) => {
       const sk = getSessionKey(r);
       const meta = sessionMeta.get(sk);
-      const propsObj = safeParseProps(r.props);
-
       const gpsGeo = parseExactAddress(r.exact_address || null);
       const cityNorm = gpsGeo?.city || normalizeCity((r as any).city);
-      const regionNorm = gpsGeo?.region || normalizeRegion((r as any).region);
+      const regionNorm = normalizeRegion((r as any).region);
       const countryNorm =
         gpsGeo?.country || normalizeCountry((r as any).country);
 
@@ -227,23 +150,14 @@ export async function GET(req: Request) {
         r.lng
       );
 
-      const modelKey = getModelKey(r);
-
       return {
         ...r,
-        propsObj,
+        propsObj: safeParseProps(r.props),
         trafficFixed: meta?.trafficFixed || "direct",
         campaignKey: meta?.campaignKey || "—",
         refName: meta?.refName || "Direct / None",
-        modelKey: modelKey || "Unknown",
-        city: cityNorm || null,
-        region: regionNorm || null,
-        country: countryNorm || null,
+        modelKey: getModelKey(r) || "Unknown",
         locationLabel,
-        lat: r.lat,
-        lng: r.lng,
-        exact_address: r.exact_address,
-        isp: r.isp,
       };
     });
 
