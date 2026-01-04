@@ -42,6 +42,16 @@ function normalizeCountry(raw: any) {
   return COUNTRY_ALIASES[key] || s;
 }
 
+// ✅ NEW: Helper to extract country from Exact Address
+function extractCountryFromAddr(addr: string | null) {
+  if (!addr) return null;
+  const parts = addr.split(",").map((s) => s.trim());
+  if (parts.length > 0) {
+    return normalizeCountry(parts[parts.length - 1]);
+  }
+  return null;
+}
+
 function isJunkToken(s: string) {
   const x = cleanLabel(s);
   if (!x) return true;
@@ -53,45 +63,58 @@ function isJunkToken(s: string) {
   return false;
 }
 
-function normalizeCityKey(cityRaw: any, regionRaw: any, countryRaw: any) {
-  const city0 = cleanLabel(cityRaw);
-  const region0 = cleanLabel(regionRaw);
-  const country0 = cleanLabel(countryRaw);
-
-  const packed = city0.split(",").map((p) => cleanLabel(p)).filter(Boolean);
-  if (packed.length >= 2) {
-    const city = packed[0];
-    const last = normalizeCountry(packed[packed.length - 1]);
-    if (!city || isJunkToken(city)) return "";
-    if (!last || isJunkToken(last)) return "";
-    return cleanLabel(`${city}, ${last}`);
+function normalizeCityKey(
+  cityRaw: any,
+  regionRaw: any,
+  countryRaw: any,
+  exactAddr?: string | null
+) {
+  // ✅ 1. Use Exact Address if available
+  if (exactAddr) {
+    const parts = exactAddr.split(",").map((s) => s.trim());
+    if (parts.length >= 2) {
+      const country = normalizeCountry(parts[parts.length - 1]);
+      let city = parts[0];
+      if (parts.length >= 4) city = parts[parts.length - 3];
+      return cleanLabel(`${city}, ${country}`);
+    }
   }
 
-  const city = city0;
+  const city0 = cleanLabel(cityRaw);
+  const country0 = cleanLabel(countryRaw);
+  const city = city0.split(",")[0] || city0;
   const country = normalizeCountry(country0);
+
   if (!city || isJunkToken(city)) return "";
   if (!country || isJunkToken(country)) return "";
   return cleanLabel(`${city}, ${country}`);
 }
 
-function normalizeRegionKey(regionRaw: any, cityRaw: any, countryRaw: any) {
-  const region0 = cleanLabel(regionRaw);
-  if (region0 && !isJunkToken(region0) && !/\d/.test(region0)) return region0;
-
-  const city0 = cleanLabel(cityRaw);
-  const parts = city0.split(",").map((p) => cleanLabel(p)).filter(Boolean);
-  if (parts.length >= 3) {
-    const maybeRegion = parts[parts.length - 2];
-    const maybeCountry = normalizeCountry(parts[parts.length - 1]);
-    if (maybeRegion && !isJunkToken(maybeRegion) && maybeCountry) return maybeRegion;
+function normalizeRegionKey(
+  regionRaw: any,
+  cityRaw: any,
+  countryRaw: any,
+  exactAddr?: string | null
+) {
+  // ✅ 1. Use Exact Address if available
+  if (exactAddr) {
+    const parts = exactAddr.split(",").map((s) => s.trim());
+    if (parts.length >= 3) {
+      const country = normalizeCountry(parts[parts.length - 1]);
+      let region = parts[parts.length - 2].replace(/\d+/g, "").trim();
+      if (region && country) return cleanLabel(region);
+    }
   }
 
-  const country = normalizeCountry(countryRaw);
-  if (country && !isJunkToken(country)) return "";
+  const region0 = cleanLabel(regionRaw);
+  if (region0 && !isJunkToken(region0) && !/\d/.test(region0)) return region0;
   return "";
 }
 
-function incCanonical(map: Map<string, { name: string; count: number }>, label: string) {
+function incCanonical(
+  map: Map<string, { name: string; count: number }>,
+  label: string
+) {
   const clean = cleanLabel(label);
   if (!clean || isJunkToken(clean)) return;
   const key = clean.toLowerCase();
@@ -100,7 +123,10 @@ function incCanonical(map: Map<string, { name: string; count: number }>, label: 
   else map.set(key, { name: clean, count: 1 });
 }
 
-function topFromCanonical(map: Map<string, { name: string; count: number }>, limit: number) {
+function topFromCanonical(
+  map: Map<string, { name: string; count: number }>,
+  limit: number
+) {
   return Array.from(map.values())
     .sort((a, b) => b.count - a.count)
     .slice(0, limit);
@@ -134,8 +160,12 @@ function pctChange(curr: number, prev: number) {
 }
 
 function compareBlock(curr: any, prev: any) {
-  const mk = (c: number, p: number) => ({ curr: c, prev: p, delta: c - p, pct: pctChange(c, p) });
-
+  const mk = (c: number, p: number) => ({
+    curr: c,
+    prev: p,
+    delta: c - p,
+    pct: pctChange(c, p),
+  });
   return {
     pageViews: mk(curr.pageViews, prev.pageViews),
     whatsappClicks: mk(curr.whatsappClicks, prev.whatsappClicks),
@@ -160,20 +190,13 @@ function cleanIp(ip?: string | null) {
 function isPublicIp(ip: string) {
   const x = String(ip || "").trim();
   if (!x) return false;
-  if (x === "127.0.0.1" || x === "::1") return false;
-  if (x.startsWith("10.")) return false;
-  if (x.startsWith("192.168.")) return false;
-  if (x.startsWith("172.")) {
-    const p = Number(x.split(".")[1] || "0");
-    if (p >= 16 && p <= 31) return false;
-  }
+  if (x.startsWith("10.") || x.startsWith("192.168.")) return false;
   return true;
 }
 
 async function geoLookup(ip: string) {
   const safe = cleanIp(ip);
   if (!isPublicIp(safe)) return null;
-
   try {
     const r = await fetch(`https://ipwho.is/${encodeURIComponent(safe)}`, {
       cache: "no-store",
@@ -201,11 +224,7 @@ async function enrichGeo(rows: SiteEventRow[]) {
     if (ipNeed.size >= 200) break;
   }
 
-  const ipGeo = new Map<
-    string,
-    { country: string | null; region: string | null; city: string | null }
-  >();
-
+  const ipGeo = new Map<string, any>();
   await Promise.all(
     Array.from(ipNeed).map(async (ip) => {
       const g = await geoLookup(ip);
@@ -225,18 +244,20 @@ async function enrichGeo(rows: SiteEventRow[]) {
   });
 }
 
-function applyRowFilters(
-  rows: SiteEventRow[],
-  filters: { event?: string; device?: string; path?: string }
-) {
+function applyRowFilters(rows: SiteEventRow[], filters: any) {
   const ev = (filters.event || "").trim().toLowerCase();
   const dev = (filters.device || "").trim().toLowerCase();
   const p = (filters.path || "").trim().toLowerCase();
-
   return rows.filter((r) => {
     if (ev && String(r.event_name || "").toLowerCase() !== ev) return false;
     if (dev && String(r.device_type || "").toLowerCase() !== dev) return false;
-    if (p && !String(r.page_path || "").toLowerCase().includes(p)) return false;
+    if (
+      p &&
+      !String(r.page_path || "")
+        .toLowerCase()
+        .includes(p)
+    )
+      return false;
     return true;
   });
 }
@@ -244,8 +265,9 @@ function applyRowFilters(
 async function fetchRows(fromIso: string, toIso: string) {
   const { data, error } = await supabaseAdmin
     .from("site_events")
+    // ✅ ADDED: exact_address
     .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city"
+      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, exact_address"
     )
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
@@ -259,16 +281,13 @@ async function fetchRows(fromIso: string, toIso: string) {
 async function fetchRealtimeActive() {
   const now = new Date();
   const from = new Date(now.getTime() - 5 * 60 * 1000);
-
   const { data, error } = await supabaseAdmin
     .from("site_events")
     .select("session_id, anon_id, created_at")
     .gte("created_at", from.toISOString())
     .lte("created_at", now.toISOString())
     .limit(5000);
-
   if (error) return 0;
-
   const s = new Set<string>();
   for (const r of data || []) {
     const key = (r as any).session_id || (r as any).anon_id || "";
@@ -283,32 +302,24 @@ function buildSessionMeta(metaRows: SiteEventRow[]) {
     (a, b) =>
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
-
   for (const r of sorted) {
     const sk = getSessionKey(r);
     if (!firstBySession.has(sk)) firstBySession.set(sk, r);
   }
-
-  const meta = new Map<
-    string,
-    { traffic: "direct" | "organic" | "paid" | "referral"; refName: string; campaign: string }
-  >();
-
+  const meta = new Map<string, any>();
   for (const [sk, first] of firstBySession.entries()) {
     const acq = inferAcquisitionFromFirstEvent(first);
     const campaign =
       acq.traffic === "paid" ? getCampaignKeyFromSession(first) : "";
-
     meta.set(sk, {
       traffic: acq.traffic,
       refName: acq.refName || "Direct / None",
       campaign:
-        acq.traffic === "paid"
-          ? campaign && campaign !== "—" && campaign !== "-" ? campaign : "Google Ads"
-          : "",
+        acq.traffic === "paid" && campaign && campaign !== "—"
+          ? campaign
+          : "Google Ads",
     });
   }
-
   return meta;
 }
 
@@ -324,47 +335,33 @@ function computeMetrics(
   let pageViews = 0;
   let whatsappClicks = 0;
   let phoneClicks = 0;
-
   const traffic = { direct: 0, organic: 0, paid: 0, referral: 0 };
-
   const modelCounts = new Map<string, number>();
   const refCounts = new Map<string, number>();
   const trafficOverTime = new Map<string, number>();
-
-  const campMap = new Map<
-    string,
-    { count: number; views: number; wa: number; calls: number }
-  >();
-
+  const campMap = new Map<string, any>();
   const countryByTraffic = {
     paid: new Map<string, number>(),
     organic: new Map<string, number>(),
     direct: new Map<string, number>(),
     referral: new Map<string, number>(),
   };
-
   const cityCanonical = new Map<string, { name: string; count: number }>();
   const regionCanonical = new Map<string, { name: string; count: number }>();
 
   for (const r of rowsInRange) {
     const sk = getSessionKey(r);
     const sm = sessionMeta.get(sk);
-
     const trafficFixed = (sm?.traffic || "direct") as
       | "direct"
       | "organic"
       | "paid"
       | "referral";
-
     if (tf && trafficFixed !== tf) continue;
 
     traffic[trafficFixed] = (traffic[trafficFixed] || 0) + 1;
-
     const refName =
-      trafficFixed === "paid"
-        ? "Google Ads"
-        : sm?.refName || "Direct / None";
-
+      trafficFixed === "paid" ? "Google Ads" : sm?.refName || "Direct / None";
     refCounts.set(refName, (refCounts.get(refName) || 0) + 1);
 
     const created = new Date(r.created_at);
@@ -380,16 +377,13 @@ function computeMetrics(
 
     const modelKey = getModelKey(r);
     const isCarDetail = !!(r.page_path || "").match(/^\/cars\/[^/]+\/?$/i);
-
     const countModel =
       en === "model_click" ||
       en === "whatsapp_click" ||
       en === "phone_click" ||
       ((en === "page_view" || en === "site_load") && isCarDetail);
-
-    if (countModel && modelKey) {
+    if (countModel && modelKey)
       modelCounts.set(modelKey, (modelCounts.get(modelKey) || 0) + 1);
-    }
 
     const campaignKey =
       trafficFixed === "paid"
@@ -399,75 +393,77 @@ function computeMetrics(
         : trafficFixed === "referral"
         ? "Referral"
         : "Direct";
-
-    const prev = campMap.get(campaignKey) || { count: 0, views: 0, wa: 0, calls: 0 };
+    const prev = campMap.get(campaignKey) || {
+      count: 0,
+      views: 0,
+      wa: 0,
+      calls: 0,
+    };
     prev.count += 1;
-    if (isCarDetail && (en === "page_view" || en === "site_load")) prev.views += 1;
+    if (isCarDetail && (en === "page_view" || en === "site_load"))
+      prev.views += 1;
     if (en === "whatsapp_click") prev.wa += 1;
     if (en === "phone_click") prev.calls += 1;
     campMap.set(campaignKey, prev);
 
-    const country = normalizeCountry(r.country) || "Unknown";
-    const region = normalizeRegionKey(r.region, r.city, r.country) || "";
-    const cityKey = normalizeCityKey(r.city, r.region, r.country) || "";
+    // ✅ NEW: Prefer Exact Address for country stats
+    let country = normalizeCountry(r.country) || "Unknown";
+    if (r.exact_address) {
+      const extracted = extractCountryFromAddr(r.exact_address);
+      if (extracted) country = extracted;
+    }
+
+    // ✅ NEW: Prefer Exact Address for city/region stats
+    const cityKey = normalizeCityKey(
+      r.city,
+      r.region,
+      r.country,
+      r.exact_address
+    );
+    const regionKey = normalizeRegionKey(
+      r.region,
+      r.city,
+      r.country,
+      r.exact_address
+    );
 
     const bucket = trafficFixed as "paid" | "organic" | "direct" | "referral";
     if (country !== "Unknown" && !isJunkToken(country)) {
-      countryByTraffic[bucket].set(country, (countryByTraffic[bucket].get(country) || 0) + 1);
+      countryByTraffic[bucket].set(
+        country,
+        (countryByTraffic[bucket].get(country) || 0) + 1
+      );
     }
-
     if (cityKey) incCanonical(cityCanonical, cityKey);
-    if (region) incCanonical(regionCanonical, region);
+    if (regionKey) incCanonical(regionCanonical, regionKey);
   }
 
   const topModels = Array.from(modelCounts.entries())
     .map(([key, count]) => ({ key, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 20);
-
   const topReferrers = Array.from(refCounts.entries())
     .map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 20);
-
   const trafficSeries = Array.from(trafficOverTime.entries())
     .sort((a, b) => (a[0] > b[0] ? 1 : -1))
     .slice(-48)
     .map(([t, v]) => ({ t, v }));
-
   const campaigns = Array.from(campMap.entries())
-    .map(([campaign, v]) => {
-      const conversions = v.wa + v.calls;
-      const rate = v.views > 0 ? v.wa / v.views : 0;
-      return {
-        campaign: campaign || "N/A",
-        count: v.count,
-        views: v.views,
-        whatsapp: v.wa,
-        calls: v.calls,
-        conversions,
-        rate,
-      };
-    })
+    .map(([campaign, v]) => ({
+      campaign: campaign || "N/A",
+      ...v,
+      conversions: v.wa + v.calls,
+      rate: v.views > 0 ? v.wa / v.views : 0,
+    }))
     .sort((a, b) => b.conversions - a.conversions || b.count - a.count)
     .slice(0, 20);
-
   const toTop = (m: Map<string, number>) =>
     Array.from(m.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
-
-  const topCountries = {
-    paid: toTop(countryByTraffic.paid),
-    organic: toTop(countryByTraffic.organic),
-    direct: toTop(countryByTraffic.direct),
-    referral: toTop(countryByTraffic.referral),
-  };
-
-  const topCities = topFromCanonical(cityCanonical, 15);
-
-  const topRegions = topFromCanonical(regionCanonical, 10);
 
   return {
     activeUsersRealtime,
@@ -479,19 +475,22 @@ function computeMetrics(
     topReferrers,
     trafficSeries,
     campaigns,
-    topCountries,
-    topCities,
-    topRegions,
+    topCountries: {
+      paid: toTop(countryByTraffic.paid),
+      organic: toTop(countryByTraffic.organic),
+      direct: toTop(countryByTraffic.direct),
+      referral: toTop(countryByTraffic.referral),
+    },
+    topCities: topFromCanonical(cityCanonical, 15),
+    topRegions: topFromCanonical(regionCanonical, 10),
   };
 }
 
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-
     const from = url.searchParams.get("from") || "";
     const to = url.searchParams.get("to") || "";
-
     const filterEvent = url.searchParams.get("event") || "";
     const filterTraffic = url.searchParams.get("traffic") || "";
     const filterDevice = url.searchParams.get("device") || "";
@@ -499,38 +498,67 @@ export async function GET(req: Request) {
 
     const fromIso = toIsoSafe(from);
     const toIso = toIsoSafe(to);
-    if (!fromIso || !toIso) {
-      return NextResponse.json({ ok: false, error: "Invalid from/to" }, { status: 400 });
-    }
+    if (!fromIso || !toIso)
+      return NextResponse.json(
+        { ok: false, error: "Invalid from/to" },
+        { status: 400 }
+      );
 
     const { from: fromD, ms } = clampRange(fromIso, toIso);
     const prevTo = new Date(fromD.getTime());
     const prevFrom = new Date(fromD.getTime() - ms);
+    const metaFromIso = new Date(
+      new Date(fromIso).getTime() - 6 * 60 * 60 * 1000
+    ).toISOString();
+    const prevMetaFromIso = new Date(
+      prevFrom.getTime() - 6 * 60 * 60 * 1000
+    ).toISOString();
 
-    const metaFromIso = new Date(new Date(fromIso).getTime() - 6 * 60 * 60 * 1000).toISOString();
-    const prevMetaFromIso = new Date(prevFrom.getTime() - 6 * 60 * 60 * 1000).toISOString();
-
-    const [activeUsersRealtime, currRowsRaw, currMetaRaw, prevRowsRaw, prevMetaRaw] =
-      await Promise.all([
-        fetchRealtimeActive(),
-        fetchRows(fromIso, toIso),
-        fetchRows(metaFromIso, toIso),
-        fetchRows(prevFrom.toISOString(), prevTo.toISOString()),
-        fetchRows(prevMetaFromIso, prevTo.toISOString()),
-      ]);
-
-    const [currRowsGeo, currMetaGeo, prevRowsGeo, prevMetaGeo] = await Promise.all([
-      enrichGeo(currRowsRaw),
-      enrichGeo(currMetaRaw),
-      enrichGeo(prevRowsRaw),
-      enrichGeo(prevMetaRaw),
+    const [
+      activeUsersRealtime,
+      currRowsRaw,
+      currMetaRaw,
+      prevRowsRaw,
+      prevMetaRaw,
+    ] = await Promise.all([
+      fetchRealtimeActive(),
+      fetchRows(fromIso, toIso),
+      fetchRows(metaFromIso, toIso),
+      fetchRows(prevFrom.toISOString(), prevTo.toISOString()),
+      fetchRows(prevMetaFromIso, prevTo.toISOString()),
     ]);
 
-    const currRows = applyRowFilters(currRowsGeo, { event: filterEvent, device: filterDevice, path: filterPath });
-    const prevRows = applyRowFilters(prevRowsGeo, { event: filterEvent, device: filterDevice, path: filterPath });
+    const [currRowsGeo, currMetaGeo, prevRowsGeo, prevMetaGeo] =
+      await Promise.all([
+        enrichGeo(currRowsRaw),
+        enrichGeo(currMetaRaw),
+        enrichGeo(prevRowsRaw),
+        enrichGeo(prevMetaRaw),
+      ]);
 
-    const current = computeMetrics(currRows, currMetaGeo, activeUsersRealtime, filterTraffic);
-    const previous = computeMetrics(prevRows, prevMetaGeo, activeUsersRealtime, filterTraffic);
+    const currRows = applyRowFilters(currRowsGeo, {
+      event: filterEvent,
+      device: filterDevice,
+      path: filterPath,
+    });
+    const prevRows = applyRowFilters(prevRowsGeo, {
+      event: filterEvent,
+      device: filterDevice,
+      path: filterPath,
+    });
+
+    const current = computeMetrics(
+      currRows,
+      currMetaGeo,
+      activeUsersRealtime,
+      filterTraffic
+    );
+    const previous = computeMetrics(
+      prevRows,
+      prevMetaGeo,
+      activeUsersRealtime,
+      filterTraffic
+    );
 
     return NextResponse.json({
       ok: true,

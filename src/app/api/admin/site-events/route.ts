@@ -51,7 +51,6 @@ function normalizeCountry(v: unknown) {
 function normalizeRegion(v: unknown) {
   const s = decodeMaybe(v);
   if (!s) return "";
-  // remove numeric region codes e.g. "14"
   if (/^\d+$/.test(s.trim())) return "";
   return s;
 }
@@ -60,7 +59,50 @@ function normalizeCity(v: unknown) {
   return decodeMaybe(v);
 }
 
-function formatLocation(city: string, region: string, country: string) {
+// ✅ Parse Google Address to extract standardized location components
+function parseExactAddress(addr: string | null) {
+  if (!addr) return null;
+  const parts = addr
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+
+  const countryRaw = parts[parts.length - 1];
+  const country = normalizeCountry(countryRaw);
+
+  let region = "";
+  let city = parts[0];
+
+  if (parts.length >= 3) {
+    const potentialRegion = parts[parts.length - 2];
+    region = potentialRegion.replace(/\d+/g, "").trim();
+    city = parts[parts.length - 3] || parts[0];
+  } else if (parts.length === 2) {
+    city = parts[0];
+  }
+
+  return { country, region, city };
+}
+
+// ✅ CRITICAL FIX: If exact_address is missing but we have GPS, show GPS coords
+function formatLocation(
+  city: string,
+  region: string,
+  country: string,
+  exact: string | null,
+  lat?: number | null,
+  lng?: number | null
+) {
+  if (exact) {
+    return exact.split(",").slice(0, 2).join(", ");
+  }
+
+  // If we have GPS data but no address, show coords to avoid "Kuala Lumpur" IP bias
+  if (lat && lng) {
+    return `${Number(lat).toFixed(4)}, ${Number(lng).toFixed(4)} (GPS)`;
+  }
+
   return [city, region, country].filter(Boolean).join(", ") || "Unknown";
 }
 
@@ -93,8 +135,9 @@ async function fetchRows(
 
   let q = supabaseAdmin
     .from("site_events")
+    // ✅ ADDED: lat, lng, exact_address, isp
     .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city",
+      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, lat, lng, exact_address, isp",
       { count: "exact" }
     )
     .gte("created_at", fromIso)
@@ -116,26 +159,23 @@ async function fetchRows(
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
 
-    if (!from || !to) {
+    if (!from || !to)
       return NextResponse.json(
         { ok: false, error: "Missing from/to" },
         { status: 400 }
       );
-    }
 
     const fromIso = toIsoSafe(from);
     const toIso = toIsoSafe(to);
 
-    if (!fromIso || !toIso) {
+    if (!fromIso || !toIso)
       return NextResponse.json(
         { ok: false, error: "Invalid from/to" },
         { status: 400 }
       );
-    }
 
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const limit = Math.min(
@@ -150,12 +190,16 @@ export async function GET(req: Request) {
       path: url.searchParams.get("path") || undefined,
     };
 
-    const { rows, total } = await fetchRows(fromIso, toIso, filters, page, limit);
+    const { rows, total } = await fetchRows(
+      fromIso,
+      toIso,
+      filters,
+      page,
+      limit
+    );
 
-    // session-first attribution (traffic + campaign + refName sticks to the session)
     const sessionFirst = new Map<string, SiteEventRow>();
     for (const r of rows.slice().reverse()) {
-      // rows are desc, reverse to find earliest first
       const sk = getSessionKey(r);
       if (!sessionFirst.has(sk)) sessionFirst.set(sk, r);
     }
@@ -177,34 +221,41 @@ export async function GET(req: Request) {
     const out = rows.map((r) => {
       const sk = getSessionKey(r);
       const meta = sessionMeta.get(sk);
-
       const propsObj = safeParseProps(r.props);
 
-      // ✅ normalize location fields for display + aggregation
-      const cityNorm = normalizeCity((r as any).city);
-      const regionNorm = normalizeRegion((r as any).region);
-      const countryNorm = normalizeCountry((r as any).country);
+      const gpsGeo = parseExactAddress(r.exact_address || null);
+      const cityNorm = gpsGeo?.city || normalizeCity((r as any).city);
+      const regionNorm = gpsGeo?.region || normalizeRegion((r as any).region);
+      const countryNorm =
+        gpsGeo?.country || normalizeCountry((r as any).country);
 
-      const locationLabel = formatLocation(cityNorm, regionNorm, countryNorm);
+      // ✅ Pass Lat/Lng to formatLocation
+      const locationLabel = formatLocation(
+        cityNorm,
+        regionNorm,
+        countryNorm,
+        r.exact_address || null,
+        r.lat,
+        r.lng
+      );
 
       const modelKey = getModelKey(r);
 
       return {
         ...r,
-
         propsObj,
-
         trafficFixed: meta?.trafficFixed || "direct",
         campaignKey: meta?.campaignKey || "—",
         refName: meta?.refName || "Direct / None",
-
         modelKey: modelKey || "Unknown",
-
-        // ✅ these three are what your UI should use
         city: cityNorm || null,
         region: regionNorm || null,
         country: countryNorm || null,
         locationLabel,
+        lat: r.lat,
+        lng: r.lng,
+        exact_address: r.exact_address,
+        isp: r.isp,
       };
     });
 
