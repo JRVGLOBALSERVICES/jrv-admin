@@ -18,7 +18,6 @@ function getIp(req: Request) {
   return "127.0.0.1";
 }
 
-// --- 1. IP Geo Lookup ---
 async function fetchGeoFromIp(ip: string) {
   if (!ip || ip === "127.0.0.1" || ip === "::1") return null;
   try {
@@ -36,9 +35,8 @@ async function fetchGeoFromIp(ip: string) {
   return null;
 }
 
-// --- 2. Google Maps Server-Side Lookup ---
 async function resolveAddressServerSide(lat: number, lng: number) {
-  // ✅ UPDATED: Now looks for 'Maps_SERVER_KEY'
+  // ✅ UPDATED: Looks for Maps_SERVER_KEY
   const apiKey =
     process.env.MAPS_SERVER_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
@@ -68,17 +66,10 @@ export async function POST(req: Request) {
     const ip = safeText(getIp(req), 120)!;
     const props = body.props || {};
 
-    // A. IP Data
-    let geo = {
-      country: null as string | null,
-      region: null as string | null,
-      city: null as string | null,
-      isp: null as string | null,
-    };
+    let geo = { country: null, region: null, city: null, isp: null };
     const accurate = await fetchGeoFromIp(ip);
-    if (accurate) geo = accurate;
+    if (accurate) geo = accurate; // ✅ Type safe assignment
 
-    // B. GPS Data & Address Resolution
     let lat = props.lat || null;
     let lng = props.lng || null;
     let exact_address = props.exact_address || null;
@@ -93,23 +84,19 @@ export async function POST(req: Request) {
       page_url: safeText(body.page_url, 800),
       referrer: safeText(body.referrer, 800),
       session_id: safeText(body.session_id, 120),
-
       ip,
       country: geo.country,
       region: geo.region,
       city: geo.city,
       isp: geo.isp,
-
       lat,
       lng,
       exact_address,
-
       props,
       created_at: new Date().toISOString(),
     };
 
     const { error } = await supabase.from("site_events_test").insert(insertRow);
-
     if (error) throw error;
 
     return NextResponse.json({ ok: true });
