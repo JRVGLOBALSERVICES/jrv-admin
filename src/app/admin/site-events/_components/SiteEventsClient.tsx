@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Megaphone, TrendingUp, DollarSign } from "lucide-react";
+import { ExternalLink, Megaphone } from "lucide-react";
 
 type Filters = { event: string; traffic: string; device: string; path: string };
 
@@ -25,7 +25,6 @@ type Summary = {
   topModels: { key: string; count: number }[];
   topReferrers: { name: string; count: number }[];
   trafficSeries: { t: string; v: number }[];
-  // ✅ Campaign Data
   campaigns: {
     campaign: string;
     count: number;
@@ -42,6 +41,7 @@ type Summary = {
     referral: { name: string; count: number }[];
   };
   topCities: { name: string; count: number }[];
+  topIsps: { name: string; count: number }[]; // ✅ Added ISP Type
   compare?: any;
 };
 
@@ -152,7 +152,7 @@ function fmtPct(p: number) {
   return `${v > 0 ? "+" : ""}${v}%`;
 }
 
-// ✅ Aggregation Helper
+// Aggregation Helper
 function aggregate(
   data: { name: string; count: number }[],
   mode: "country" | "packed"
@@ -550,7 +550,6 @@ export default function SiteEventsClient({
         </div>
       </div>
 
-      {/* ✅ NEW: Vibrant & Interactive Campaigns Section */}
       {s?.campaigns && s.campaigns.length > 0 && (
         <Card title="Marketing Campaigns">
           <div className="overflow-x-auto">
@@ -628,99 +627,144 @@ export default function SiteEventsClient({
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="Top Models">
-          <div className="p-4 space-y-2">
-            {(s?.topModels || []).slice(0, 10).map((m, i) => (
-              <Link
-                key={m.key}
-                href={`/admin/cars?model=${encodeURIComponent(m.key)}`}
-                className="flex items-center justify-between p-2 rounded-lg hover:bg-indigo-50 group border border-transparent hover:border-indigo-100 transition-all"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
-                      i
-                    )}`}
-                  >
-                    {i + 1}
+      {/* ✅ NEW GRID LAYOUT WITH ISP CARD */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <div className="lg:col-span-1">
+          <Card title="Top Models">
+            <div className="p-4 space-y-2">
+              {(s?.topModels || []).slice(0, 10).map((m, i) => (
+                <Link
+                  key={m.key}
+                  href={`/admin/cars?model=${encodeURIComponent(m.key)}`}
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-indigo-50 group border border-transparent hover:border-indigo-100 transition-all"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                        i
+                      )}`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-700 group-hover:text-indigo-700">
+                      {m.key}
+                    </span>
+                  </div>
+                  <span className="font-bold text-gray-900 bg-gray-50 px-2 py-0.5 rounded text-xs border border-gray-100 group-hover:bg-white">
+                    {m.count}
                   </span>
-                  <span className="text-sm font-semibold text-gray-700 group-hover:text-indigo-700">
-                    {m.key}
-                  </span>
+                </Link>
+              ))}
+              {!s?.topModels?.length && (
+                <div className="text-sm text-gray-400 p-2 italic">
+                  No model data
                 </div>
-                <span className="font-bold text-gray-900 bg-gray-50 px-2 py-0.5 rounded text-xs border border-gray-100 group-hover:bg-white">
-                  {m.count}
-                </span>
-              </Link>
-            ))}
-            {!s?.topModels?.length && (
-              <div className="text-sm text-gray-400 p-2 italic">
-                No model data
-              </div>
-            )}
-          </div>
-        </Card>
+              )}
+            </div>
+          </Card>
+        </div>
 
-        <Card title="Top Countries">
-          <div className="p-4 space-y-2">
-            {mergedCountries.map((x, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
-                      i
-                    )}`}
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-medium text-gray-700">
-                    {x.name}
+        {/* ✅ NEW: TOP ISPs CARD */}
+        <div className="lg:col-span-1">
+          <Card title="Top ISPs / Networks">
+            <div className="p-4 space-y-2 max-h-80 overflow-y-auto custom-scrollbar">
+              {(s?.topIsps || []).slice(0, 10).map((item, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                        i
+                      )}`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span
+                      className="text-xs font-medium text-gray-700 truncate"
+                      title={item.name}
+                    >
+                      {item.name}
+                    </span>
+                  </div>
+                  <span className="font-bold text-gray-900 text-xs">
+                    {item.count}
                   </span>
                 </div>
-                <span className="font-bold text-gray-900">{x.count}</span>
-              </div>
-            ))}
-            {!mergedCountries.length && (
-              <div className="text-sm text-gray-400 p-2 italic">
-                No country data
-              </div>
-            )}
-          </div>
-        </Card>
+              ))}
+              {!s?.topIsps?.length && (
+                <div className="text-sm text-gray-400 p-2 italic">
+                  No ISP data
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
 
-        <Card title="Top Cities">
-          <div className="p-4 space-y-2 max-h-100 overflow-y-auto custom-scrollbar">
-            {mergedCities.map((x, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <span
-                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
-                      i
-                    )}`}
-                  >
-                    {i + 1}
-                  </span>
-                  <span className="text-sm font-medium text-gray-700 truncate">
-                    {x.name}
-                  </span>
+        <div className="lg:col-span-1">
+          <Card title="Top Countries">
+            <div className="p-4 space-y-2">
+              {mergedCountries.map((x, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span
+                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                        i
+                      )}`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {x.name}
+                    </span>
+                  </div>
+                  <span className="font-bold text-gray-900">{x.count}</span>
                 </div>
-                <span className="font-bold text-gray-900">{x.count}</span>
-              </div>
-            ))}
-            {!mergedCities.length && (
-              <div className="text-sm text-gray-400 p-2 italic">
-                No city data
-              </div>
-            )}
-          </div>
-        </Card>
+              ))}
+              {!mergedCountries.length && (
+                <div className="text-sm text-gray-400 p-2 italic">
+                  No country data
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        <div className="lg:col-span-1">
+          <Card title="Top Cities">
+            <div className="p-4 space-y-2 max-h-100 overflow-y-auto custom-scrollbar">
+              {mergedCities.map((x, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span
+                      className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                        i
+                      )}`}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="text-sm font-medium text-gray-700 truncate">
+                      {x.name}
+                    </span>
+                  </div>
+                  <span className="font-bold text-gray-900">{x.count}</span>
+                </div>
+              ))}
+              {!mergedCities.length && (
+                <div className="text-sm text-gray-400 p-2 italic">
+                  No city data
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
 
       <div className="rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden bg-white">
@@ -753,7 +797,7 @@ export default function SiteEventsClient({
                   Source
                 </th>
                 <th className="px-4 py-3 font-semibold uppercase tracking-wider">
-                  Location
+                  Location & ISP
                 </th>
                 <th className="px-4 py-3 font-semibold uppercase tracking-wider">
                   Details
@@ -790,11 +834,24 @@ export default function SiteEventsClient({
                       </span>
                     </div>
                   </td>
-                  <td
-                    className="px-4 py-2 text-gray-600 truncate max-w-32"
-                    title={buildLocationLabel(r.city, r.region, r.country)}
-                  >
-                    {buildLocationLabel(r.city, r.region, r.country) || "-"}
+                  {/* ✅ UPDATED: SHOW ISP & PRECISE LOCATION */}
+                  <td className="px-4 py-2">
+                    <div className="flex flex-col">
+                      <span
+                        className="text-gray-700 font-medium truncate max-w-[150px]"
+                        title={r.locationLabel}
+                      >
+                        {r.locationLabel || "-"}
+                      </span>
+                      {r.isp && (
+                        <span
+                          className="text-[9px] text-gray-400 truncate max-w-[150px] mt-0.5"
+                          title={r.isp}
+                        >
+                          {r.isp}
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2">
                     {r.modelKey && (

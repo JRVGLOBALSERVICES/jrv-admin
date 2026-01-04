@@ -42,7 +42,7 @@ function normalizeCountry(raw: any) {
   return COUNTRY_ALIASES[key] || s;
 }
 
-// ✅ NEW: Helper to extract country from Exact Address
+// Helper to extract country from Exact Address
 function extractCountryFromAddr(addr: string | null) {
   if (!addr) return null;
   const parts = addr.split(",").map((s) => s.trim());
@@ -69,7 +69,7 @@ function normalizeCityKey(
   countryRaw: any,
   exactAddr?: string | null
 ) {
-  // ✅ 1. Use Exact Address if available
+  // 1. Use Exact Address if available
   if (exactAddr) {
     const parts = exactAddr.split(",").map((s) => s.trim());
     if (parts.length >= 2) {
@@ -96,7 +96,7 @@ function normalizeRegionKey(
   countryRaw: any,
   exactAddr?: string | null
 ) {
-  // ✅ 1. Use Exact Address if available
+  // 1. Use Exact Address if available
   if (exactAddr) {
     const parts = exactAddr.split(",").map((s) => s.trim());
     if (parts.length >= 3) {
@@ -262,13 +262,13 @@ function applyRowFilters(rows: SiteEventRow[], filters: any) {
   });
 }
 
+// ✅ UPDATED: Fetch from site_events_test AND select ISP
 async function fetchRows(fromIso: string, toIso: string) {
   const { data, error } = await supabaseAdmin
-    .from("site_events")
-    // ✅ ADDED: exact_address
+    .from("site_events_test") // ✅
     .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, exact_address"
-    )
+      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, exact_address, isp"
+    ) // ✅ Added isp
     .gte("created_at", fromIso)
     .lte("created_at", toIso)
     .order("created_at", { ascending: false })
@@ -278,11 +278,12 @@ async function fetchRows(fromIso: string, toIso: string) {
   return (data || []) as SiteEventRow[];
 }
 
+// ✅ UPDATED: Fetch real-time from site_events_test
 async function fetchRealtimeActive() {
   const now = new Date();
   const from = new Date(now.getTime() - 5 * 60 * 1000);
   const { data, error } = await supabaseAdmin
-    .from("site_events")
+    .from("site_events_test") // ✅
     .select("session_id, anon_id, created_at")
     .gte("created_at", from.toISOString())
     .lte("created_at", now.toISOString())
@@ -349,6 +350,9 @@ function computeMetrics(
   const cityCanonical = new Map<string, { name: string; count: number }>();
   const regionCanonical = new Map<string, { name: string; count: number }>();
 
+  // ✅ NEW: ISP Tracking
+  const ispCounts = new Map<string, number>();
+
   for (const r of rowsInRange) {
     const sk = getSessionKey(r);
     const sm = sessionMeta.get(sk);
@@ -406,14 +410,13 @@ function computeMetrics(
     if (en === "phone_click") prev.calls += 1;
     campMap.set(campaignKey, prev);
 
-    // ✅ NEW: Prefer Exact Address for country stats
+    // Prefer Exact Address for country stats
     let country = normalizeCountry(r.country) || "Unknown";
     if (r.exact_address) {
       const extracted = extractCountryFromAddr(r.exact_address);
       if (extracted) country = extracted;
     }
 
-    // ✅ NEW: Prefer Exact Address for city/region stats
     const cityKey = normalizeCityKey(
       r.city,
       r.region,
@@ -436,6 +439,12 @@ function computeMetrics(
     }
     if (cityKey) incCanonical(cityCanonical, cityKey);
     if (regionKey) incCanonical(regionCanonical, regionKey);
+
+    // ✅ Aggregating ISP
+    const ispName = r.isp ? String(r.isp).trim() : "Unknown";
+    if (ispName !== "Unknown") {
+      ispCounts.set(ispName, (ispCounts.get(ispName) || 0) + 1);
+    }
   }
 
   const topModels = Array.from(modelCounts.entries())
@@ -465,6 +474,12 @@ function computeMetrics(
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
+  // ✅ Sort Top ISPs
+  const topIsps = Array.from(ispCounts.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
   return {
     activeUsersRealtime,
     pageViews,
@@ -483,6 +498,7 @@ function computeMetrics(
     },
     topCities: topFromCanonical(cityCanonical, 15),
     topRegions: topFromCanonical(regionCanonical, 10),
+    topIsps, // ✅ Return New Metric
   };
 }
 

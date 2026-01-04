@@ -27,7 +27,7 @@ function getIp(req: Request) {
   return "127.0.0.1";
 }
 
-// ✅ 1. DEVICE TYPE LOGIC
+// 1. DEVICE TYPE LOGIC
 function getDeviceType(userAgent: string) {
   if (!userAgent) return "Desktop";
   const ua = userAgent.toLowerCase();
@@ -44,7 +44,7 @@ function getDeviceType(userAgent: string) {
   return "Desktop";
 }
 
-// ✅ 2. TRAFFIC TYPE LOGIC
+// 2. TRAFFIC TYPE LOGIC
 function getTrafficType(
   referrer: string | null,
   currentUrl: string | null,
@@ -89,7 +89,7 @@ function getTrafficType(
   }
 }
 
-// ✅ 3. SERVER-SIDE GEOCODING (Fixes "Exact Address Null")
+// 3. SERVER-SIDE GEOCODING (Fixes "Exact Address Null")
 async function resolveAddressServerSide(lat: number, lng: number) {
   // Use server key (unrestricted IP) or fallback to public key
   const key =
@@ -127,7 +127,7 @@ async function fetchGeoFromIp(ip: string) {
         country: data.country,
         region: data.regionName,
         city: data.city,
-        isp: data.isp,
+        isp: data.isp, // ✅ Capture ISP
       };
     }
   } catch (e) {}
@@ -218,8 +218,8 @@ export async function POST(req: Request) {
       utm_content: safeText(body.utm_content, 200),
 
       // Calculated Fields
-      traffic_type, // ✅ Now populated correctly
-      device_type, // ✅ Now populated correctly
+      traffic_type,
+      device_type,
       keyword: safeText(body.keyword, 200),
       user_agent: userAgent,
 
@@ -228,18 +228,18 @@ export async function POST(req: Request) {
       country: geo.country,
       region: geo.region,
       city: geo.city,
-      isp: geo.isp,
+      isp: geo.isp, // ✅ Capture ISP
 
       // GPS Specifics
-      exact_address, // ✅ Now populated via Server-Side Google Call
+      exact_address,
       lat,
       lng,
 
       props,
     };
 
-    // 5. Save to Supabase (Using 'site_events' table as per your schema)
-    const { error } = await supabase.from("site_events").insert(insertRow);
+    // 5. Save to Supabase (Using 'site_events_test' table)
+    const { error } = await supabase.from("site_events_test").insert(insertRow);
 
     if (error) {
       console.error("[Supabase Insert Error]:", error);

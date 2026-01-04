@@ -8,10 +8,6 @@ import {
   getModelKey,
 } from "@/lib/site-events";
 
-/* ===========================
-   Location normalization
-   =========================== */
-
 function decodeMaybe(v: unknown) {
   const raw = String(v ?? "").trim();
   if (!raw) return "";
@@ -59,7 +55,6 @@ function normalizeCity(v: unknown) {
   return decodeMaybe(v);
 }
 
-// ✅ Parse Google Address to extract standardized location components
 function parseExactAddress(addr: string | null) {
   if (!addr) return null;
   const parts = addr
@@ -85,7 +80,6 @@ function parseExactAddress(addr: string | null) {
   return { country, region, city };
 }
 
-// ✅ CRITICAL FIX: If exact_address is missing but we have GPS, show GPS coords
 function formatLocation(
   city: string,
   region: string,
@@ -105,10 +99,6 @@ function formatLocation(
 
   return [city, region, country].filter(Boolean).join(", ") || "Unknown";
 }
-
-/* ===========================
-   Query helpers
-   =========================== */
 
 function toIsoSafe(s: string) {
   const d = new Date(s);
@@ -134,10 +124,9 @@ async function fetchRows(
   const toIdx = fromIdx + limit - 1;
 
   let q = supabaseAdmin
-    .from("site_events")
-    // ✅ ADDED: lat, lng, exact_address, isp
+    .from("site_events_test") // ✅ Target site_events_test
     .select(
-      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, lat, lng, exact_address, isp",
+      "id, created_at, event_name, page_path, page_url, referrer, session_id, anon_id, traffic_type, device_type, props, ip, country, region, city, lat, lng, exact_address, isp", // ✅ Include ISP
       { count: "exact" }
     )
     .gte("created_at", fromIso)
@@ -229,7 +218,6 @@ export async function GET(req: Request) {
       const countryNorm =
         gpsGeo?.country || normalizeCountry((r as any).country);
 
-      // ✅ Pass Lat/Lng to formatLocation
       const locationLabel = formatLocation(
         cityNorm,
         regionNorm,
