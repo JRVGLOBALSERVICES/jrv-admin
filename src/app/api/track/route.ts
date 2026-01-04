@@ -38,9 +38,9 @@ async function fetchGeoFromIp(ip: string) {
 
 // --- 2. Google Maps Server-Side Lookup ---
 async function resolveAddressServerSide(lat: number, lng: number) {
+  // ✅ UPDATED: Now looks for 'Maps_SERVER_KEY'
   const apiKey =
-    process.env.GOOGLE_MAPS_SERVER_KEY ||
-    process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
+    process.env.MAPS_SERVER_KEY || process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
 
   if (!apiKey || !lat || !lng) return null;
 
@@ -83,7 +83,6 @@ export async function POST(req: Request) {
     let lng = props.lng || null;
     let exact_address = props.exact_address || null;
 
-    // ✅ FIX: Fallback lookup if client sent GPS but no address
     if (lat && lng && !exact_address) {
       exact_address = await resolveAddressServerSide(lat, lng);
     }
@@ -103,7 +102,7 @@ export async function POST(req: Request) {
 
       lat,
       lng,
-      exact_address, // ✅ Populated
+      exact_address,
 
       props,
       created_at: new Date().toISOString(),
