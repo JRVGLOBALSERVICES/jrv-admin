@@ -148,7 +148,12 @@ export function getCampaignFromParams(p: UrlParams): string {
 }
 
 export function getSessionKey(r: SiteEventRow): string {
-  return r.session_id || r.anon_id || "unknown";
+  return getIdentityKey(r);
+}
+
+// ✅ identity grouping rule = anon_id → session_id → ip
+export function getIdentityKey(r: SiteEventRow): string {
+  return (r.anon_id || r.session_id || r.ip || "unknown") as string;
 }
 
 export function referrerLabelFromFirstEvent(first: SiteEventRow): string {
@@ -225,7 +230,9 @@ export function getModelKey(r: SiteEventRow): string {
   if (make || model) return `${make} ${model}`.trim();
 
   const p = r.page_path || "";
-  const m = p.match(/^\/cars\/([^/]+)\/?$/i);
+  // Strip query string before matching to avoid capturing params as model slug
+  const pNoQuery = p.split("?")[0];
+  const m = pNoQuery.match(/^\/cars\/([^/]+)\/?$/i);
   if (m?.[1]) {
     const slug = decodeURIComponent(m[1]);
     return slug.replace(/-/g, " ").trim() || "Unknown";
@@ -239,6 +246,121 @@ export function getCampaignKeyFromSession(sessionFirst: SiteEventRow): string {
   return c || "—";
 }
 
-export function referrerLabel(r: SiteEventRow) {
-  return referrerLabelFromFirstEvent(r);
+export function cleanPart(v: any) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  try {
+    const decoded = decodeURIComponent(s.replace(/\+/g, " "));
+    return decoded.trim();
+  } catch {
+    return s;
+  }
+}
+
+export function isGarbageModel(name: string) {
+  if (!name) return true;
+  const n = name.toLowerCase().trim();
+
+  if (
+    n.includes("gad_source") ||
+    n.includes("gclid") ||
+    n.includes("campaignid") ||
+    n.includes("fbclid") ||
+    n.includes("http") ||
+    n.includes("_wcB") ||
+    n.includes("gad_source") ||
+    n.includes("gclid") ||
+    n.includes("campaignid") ||
+    n.includes("fbclid") ||
+    n.includes("http") ||
+    n.includes("_wcB") ||
+    n.includes("w8s") ||
+    n.includes("location=") ||
+    n.includes("offertoday")
+  ) {
+    return true;
+  }
+  if (n.length > 25) return true;
+  if (n.includes("_")) return true;
+  if (!n.includes(" ") && n.length > 15) return true;
+
+  return false;
+}
+
+export function normalizeModel(rawName: string | null) {
+  if (!rawName) return "Unknown";
+  if (isGarbageModel(rawName)) return "Unknown";
+
+  const lower = rawName.toLowerCase().trim();
+
+  if (lower.includes("bezza")) return "Perodua Bezza";
+  if (lower.includes("myvi")) return "Perodua Myvi";
+  if (lower.includes("axia")) return "Perodua Axia";
+  if (lower.includes("alza")) return "Perodua Alza";
+  if (lower.includes("aruz")) return "Perodua Aruz";
+  if (lower.includes("ativa")) return "Perodua Ativa";
+  if (lower.includes("saga")) return "Proton Saga";
+  if (lower.includes("person")) return "Proton Persona";
+  if (lower.includes("exora")) return "Proton Exora";
+  if (lower.includes("x50")) return "Proton X50";
+  if (lower.includes("x70")) return "Proton X70";
+  if (lower.includes("x90")) return "Proton X90";
+  if (lower.includes("vios")) return "Toyota Vios";
+  if (lower.includes("yaris")) return "Toyota Yaris";
+  if (lower.includes("alphard")) return "Toyota Alphard";
+  if (lower.includes("vellfire")) return "Toyota Vellfire";
+  if (lower.includes("innova")) return "Toyota Innova";
+  if (lower.includes("city")) return "Honda City";
+  if (lower.includes("civic")) return "Honda Civic";
+  if (lower.includes("brv") || lower.includes("br-v")) return "Honda BR-V";
+  if (lower.includes("crv") || lower.includes("cr-v")) return "Honda CR-V";
+  if (lower.includes("xpander")) return "Mitsubishi Xpander";
+  if (lower.includes("triton")) return "Mitsubishi Triton";
+  if (lower.includes("hr-v") || lower.includes("hrv")) return "Honda HR-V";
+  if (lower.includes("wr-v") || lower.includes("wrv")) return "Honda WR-V";
+  if (lower.includes("cr-v") || lower.includes("crv")) return "Honda CR-V";
+  if (lower.includes("preve")) return "Proton Prevé";
+  if (lower.includes("iriz")) return "Proton Iriz";
+
+  // Fallback: Title Case
+  return lower.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+export function getBrand(model: string) {
+  const m = (model || "").toLowerCase();
+  if (m.includes("perodua")) return "Perodua";
+  if (m.includes("proton")) return "Proton";
+  if (m.includes("toyota")) return "Toyota";
+  if (m.includes("honda")) return "Honda";
+  return "Others";
+}
+
+export function cleanPagePath(path: string | null): string {
+  if (!path) return "Unknown";
+  try {
+    // Strip query params
+    const noQuery = path.split("?")[0];
+    // Decode URI components
+    return decodeURIComponent(noQuery).trim() || "/";
+  } catch {
+    return path.split("?")[0] || "/";
+  }
+}
+
+
+
+export function getDeviceType(ua?: string | null): string {
+  if (!ua) return "Unknown";
+  const low = ua.toLowerCase();
+  if (low.includes("mobile") || low.includes("android") || low.includes("iphone") || low.includes("ipod")) {
+    return "Mobile";
+  }
+  if (low.includes("ipad") || low.includes("tablet")) {
+    return "Tablet";
+  }
+  return "Desktop";
+}
+
+export function isTruthy(v: any) {
+  return v !== null && v !== undefined && String(v).trim() !== "";
 }

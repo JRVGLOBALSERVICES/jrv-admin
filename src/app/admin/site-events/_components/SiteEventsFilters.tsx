@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
+import { Check, ChevronDown } from "lucide-react";
 
 type Filters = {
   event: string;
@@ -17,6 +18,26 @@ const DEFAULT_FILTERS: Filters = {
   traffic: "",
   device: "",
   path: "",
+};
+
+const EVENT_LABELS: Record<string, string> = {
+  page_view: "Page View",
+  whatsapp_click: "WhatsApp",
+  phone_click: "Call",
+  session_start: "Session Start",
+  click: "Click",
+  submit: "Submit",
+  form_submit: "Form Submit",
+  file_download: "Download",
+  scroll: "Scroll",
+  view_search_results: "Search",
+  car_image_click: "Car Image",
+  consent_granted: "Consent Granted",
+  consent_rejected: "Consent Rejected",
+  filter_click: "Filter Used",
+  location_consent_denied: "Loc Denied",
+  location_consent_granted: "Loc Granted",
+  model_click: "Model Click",
 };
 
 /**
@@ -97,6 +118,21 @@ export default function SiteEventsFilters({
 
   const [local, setLocal] = useState<Filters>(filters || DEFAULT_FILTERS);
 
+  // Custom dropdown state
+  const [isEventOpen, setIsEventOpen] = useState(false);
+  const eventDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (eventDropdownRef.current && !eventDropdownRef.current.contains(event.target as Node)) {
+        setIsEventOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => setLocalRange(rangeKey || "24h"), [rangeKey]);
   useEffect(() => setLocalFromDate(anyToDateInput(from || "")), [from]);
   useEffect(() => setLocalToDate(anyToDateInput(to || "")), [to]);
@@ -172,13 +208,26 @@ export default function SiteEventsFilters({
     });
   }
 
+  const toggleEvent = (ev: string) => {
+    const current = local.event ? local.event.split(',').map(s => s.trim()) : [];
+    if (current.includes(ev)) {
+      const next = current.filter(e => e !== ev);
+      setLocal(prev => ({ ...prev, event: next.join(',') }));
+    } else {
+      const next = [...current, ev];
+      setLocal(prev => ({ ...prev, event: next.join(',') }));
+    }
+  };
+
+  const selectedEvents = local.event ? local.event.split(',').filter(Boolean) : [];
+
   const inputClass =
     "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800";
   const labelClass =
     "text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 block";
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden mb-6">
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 mb-6">
       {/* Header with Gradient */}
       <div className="p-4 border-b border-gray-100 bg-linear-to-r from-indigo-50 via-purple-50 to-pink-50 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -222,11 +271,10 @@ export default function SiteEventsFilters({
             onClick={onApply}
             disabled={isPending || !canApply}
             size="sm"
-            className={`font-bold transition-all shadow-md ${
-              isPending || !canApply
-                ? "opacity-50"
-                : "bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white border-0"
-            }`}
+            className={`font-bold transition-all shadow-md ${isPending || !canApply
+              ? "opacity-50"
+              : "bg-linear-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white border-0"
+              }`}
           >
             {isPending ? (
               <span className="flex items-center gap-2">
@@ -275,11 +323,10 @@ export default function SiteEventsFilters({
           </div>
 
           <div
-            className={`grid grid-cols-2 gap-2 transition-opacity duration-300 ${
-              localRange !== "custom"
-                ? "opacity-40 pointer-events-none"
-                : "opacity-100"
-            }`}
+            className={`grid grid-cols-2 gap-2 transition-opacity duration-300 ${localRange !== "custom"
+              ? "opacity-40 pointer-events-none"
+              : "opacity-100"
+              }`}
           >
             <div>
               <label className={labelClass}>From</label>
@@ -304,22 +351,53 @@ export default function SiteEventsFilters({
 
         {/* Filters Section */}
         <div className="lg:col-span-4 grid grid-cols-2 md:grid-cols-4 gap-4 p-1">
-          <div className="col-span-1">
+          <div className="col-span-1" ref={eventDropdownRef}>
             <label className={labelClass}>Event Type</label>
-            <select
-              value={local.event}
-              onChange={(e) =>
-                setLocal((p) => ({ ...p, event: e.target.value }))
-              }
-              className={inputClass}
-            >
-              <option value="">All Events</option>
-              {eventOptions.map((ev) => (
-                <option key={ev} value={ev}>
-                  {ev}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsEventOpen(!isEventOpen)}
+                className={`${inputClass} text-left flex justify-between items-center`}
+              >
+                <span className="truncate block max-w-[120px]">
+                  {selectedEvents.length === 0
+                    ? "All Events"
+                    : selectedEvents.length === 1
+                      ? (EVENT_LABELS[selectedEvents[0]] || selectedEvents[0])
+                      : `${selectedEvents.length} selected`}
+                </span>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </button>
+
+              {isEventOpen && (
+                <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-100 rounded-lg shadow-xl z-[100] max-h-60 overflow-y-auto p-1">
+                  {eventOptions.length === 0 && (
+                    <div className="p-2 text-xs text-gray-400 italic">No events found</div>
+                  )}
+                  {eventOptions.map((evKey) => {
+                    const isSelected = selectedEvents.includes(evKey);
+                    return (
+                      <div
+                        key={evKey}
+                        onClick={() => toggleEvent(evKey)}
+                        className={`
+                                        flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors
+                                        ${isSelected ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-gray-50 text-gray-700'}
+                                    `}
+                      >
+                        <div className={`
+                                        w-4 h-4 rounded border flex items-center justify-center
+                                        ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 bg-white'}
+                                    `}>
+                          {isSelected && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                        <span className="flex-1">{EVENT_LABELS[evKey] || evKey}</span>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="col-span-1">

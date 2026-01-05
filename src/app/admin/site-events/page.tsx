@@ -3,6 +3,7 @@ import { pageMetadata } from "@/lib/seo";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import SiteEventsClient from "./_components/SiteEventsClient";
 import SiteEventsFilters from "./_components/SiteEventsFilters";
+import { rangeKeyToIso } from "@/lib/klTimeWindow";
 
 export const metadata: Metadata = pageMetadata({
   title: "Site Events",
@@ -57,18 +58,19 @@ function clampToDateInput(iso: string) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 function dateOnlyToIsoStart(dateOnly: string) {
-  // Server runs in UTC on Vercel; if you send ISO from client (Malaysia),
-  // this is only fallback.
+  // fallback: interpret as KL 06:00 boundary
   const [y, m, d] = dateOnly.split("-").map((x) => Number(x));
-  const dt = new Date(y, m - 1, d, 0, 0, 0, 0);
-  return dt.toISOString();
+  const kl6amMs = Date.UTC(y, m - 1, d, 6, 0, 0, 0);
+  return new Date(kl6amMs - KL_OFFSET_MS).toISOString();
 }
 
 function dateOnlyToIsoEnd(dateOnly: string) {
-  const [y, m, d] = dateOnly.split("-").map((x) => Number(x));
-  const dt = new Date(y, m - 1, d, 23, 59, 59, 999);
-  return dt.toISOString();
+  const start = new Date(dateOnlyToIsoStart(dateOnly));
+  return new Date(start.getTime() + DAY_MS).toISOString();
 }
 
 function normalizeCustomRange(from?: string, to?: string) {
@@ -122,49 +124,13 @@ function normalizeCustomRange(from?: string, to?: string) {
 function rangeToIso(rangeKey: string, from?: string, to?: string) {
   const now = new Date();
 
-  const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
-  const DAY_MS = 24 * 60 * 60 * 1000;
-  const BUSINESS_START_HOUR = 6;
-
-  function windowStart6amKlUtc(nowUtc: Date) {
-    const klNowMs = nowUtc.getTime() + KL_OFFSET_MS;
-    const klNow = new Date(klNowMs);
-    const y = klNow.getUTCFullYear();
-    const m = klNow.getUTCMonth();
-    const d = klNow.getUTCDate();
-    let startKlMs = Date.UTC(y, m, d, BUSINESS_START_HOUR, 0, 0, 0);
-    if (klNowMs < startKlMs) startKlMs -= DAY_MS;
-    return new Date(startKlMs - KL_OFFSET_MS);
-  }
-
   if (rangeKey === "custom") {
     const custom = normalizeCustomRange(from, to);
     if (custom) return custom;
   }
 
-  if (rangeKey === "7d") {
-    return {
-      initialFrom: new Date(now.getTime() - 7 * 864e5).toISOString(),
-      initialTo: now.toISOString(),
-      rangeKey: "7d" as const,
-    };
-  }
-
-  if (rangeKey === "30d") {
-    return {
-      initialFrom: new Date(now.getTime() - 30 * 864e5).toISOString(),
-      initialTo: now.toISOString(),
-      rangeKey: "30d" as const,
-    };
-  }
-
-  const start = windowStart6amKlUtc(now);
-  const end = new Date(start.getTime() + DAY_MS);
-  return {
-    initialFrom: start.toISOString(),
-    initialTo: end.toISOString(),
-    rangeKey: "24h" as const,
-  };
+  // ✅ 24h / 7d / 30d are all aligned to KL 06:00 boundaries
+  return rangeKeyToIso(rangeKey || "24h", now);
 }
 
 export default async function SiteEventsPage({
@@ -174,18 +140,26 @@ export default async function SiteEventsPage({
 }) {
   const sp = await searchParams;
 
+  const KNOWN_EVENTS = [
+    "page_view", "whatsapp_click", "phone_click", "session_start", "click", "submit",
+    "form_submit", "file_download", "scroll", "view_search_results",
+    "car_image_click", "consent_granted", "consent_rejected", "filter_click",
+    "location_consent_denied", "location_consent_granted", "model_click",
+    "view_car", "view_details"
+  ];
+
   const supabase = await createSupabaseServer();
   const { data: evRows } = await supabase
     .from("site_events")
     .select("event_name")
-    .limit(5000);
-  const eventOptions = Array.from(
-    new Set(
-      (evRows || [])
-        .map((r: any) => String(r.event_name || "").trim())
-        .filter(Boolean)
-    )
-  ).sort();
+    .limit(50000); // Increased limit to capture all types
+
+  const distinctEvents = new Set(KNOWN_EVENTS);
+  (evRows || []).forEach((r: any) => {
+    if (r.event_name) distinctEvents.add(String(r.event_name).trim());
+  });
+
+  const eventOptions = Array.from(distinctEvents).sort();
 
   const { initialFrom, initialTo, rangeKey } = rangeToIso(
     sp.range || "24h",
@@ -209,7 +183,7 @@ export default async function SiteEventsPage({
   const filterUiFrom =
     rangeKey === "custom"
       ? sp.fromDate ||
-        (isDateOnly(sp.from) ? sp.from! : clampToDateInput(initialFrom))
+      (isDateOnly(sp.from) ? sp.from! : clampToDateInput(initialFrom))
       : "";
 
   const filterUiTo =

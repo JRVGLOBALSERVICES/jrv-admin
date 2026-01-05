@@ -1,12 +1,28 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
+import { rangeDays6amKlUtc, currentBusinessDay } from "@/lib/klTimeWindow";
+// ...
+  // 1. SITE ANALYTICS (KL 6am→6am business window)
+  const now = new Date();
+  const { start: windowStart, end: windowEnd } = currentBusinessDay(now);
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
 import AvailableNow from "../admin/_components/AvailableNow";
 import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
 import CurrentlyRented from "../admin/_components/CurrentlyRented";
 import DashboardFilters from "../admin/_components/DashboardFilters";
 import MiniSiteAnalytics from "./_components/MiniSiteAnalytics";
+import GlossyKpi from "./_components/GlossyKpi";
+import { rankBadge } from "./_lib/utils";
+import {
+  isGarbageModel,
+  normalizeModel,
+  cleanPagePath,
+  cleanPart,
+  getModelKey,
+  getBrand,
+  type SiteEventRow,
+} from "@/lib/site-events"; // assuming getBrand is also shared or I should move it?
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 
@@ -83,58 +99,6 @@ function classifyTrafficSource(referrer: string | null, url: string | null) {
   return "Direct";
 }
 
-function GlossyKpi({
-  title,
-  value,
-  sub,
-  color = "blue",
-}: {
-  title: string;
-  value: string | number;
-  sub: string;
-  color?: "blue" | "green" | "purple" | "orange";
-}) {
-  const gradients = {
-    blue: "from-cyan-500 to-blue-600 shadow-blue-200",
-    green: "from-emerald-400 to-green-600 shadow-green-200",
-    purple: "from-violet-400 to-purple-600 shadow-purple-200",
-    orange: "from-amber-400 to-orange-600 shadow-orange-200",
-  };
-
-  return (
-    <div
-      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${gradients[color]} group hover:scale-[1.02] transition-transform duration-300`}
-    >
-      <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
-      <div className="relative z-10">
-        <div className="text-[10px] font-bold uppercase tracking-widest opacity-80">
-          {title}
-        </div>
-        <div className="text-3xl font-black mt-2 tracking-tight drop-shadow-sm">
-          {value}
-        </div>
-        <div className="text-xs font-medium mt-1 opacity-90 flex items-center gap-1">
-          <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
-            {sub}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const RANK_BADGES = [
-  "bg-indigo-500 text-white shadow-indigo-200",
-  "bg-emerald-500 text-white shadow-emerald-200",
-  "bg-amber-500 text-white shadow-amber-200",
-  "bg-rose-500 text-white shadow-rose-200",
-  "bg-sky-500 text-white shadow-sky-200",
-  "bg-violet-500 text-white shadow-violet-200",
-];
-
-function rankBadge(i: number) {
-  return RANK_BADGES[i % RANK_BADGES.length] + " shadow-md";
-}
 
 const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -235,64 +199,7 @@ function getRange(
   return { start, end: now };
 }
 
-function isGarbageModel(name: string) {
-  if (!name) return true;
-  const n = name.toLowerCase().trim();
 
-  if (
-    n.includes("gad_source") ||
-    n.includes("gclid") ||
-    n.includes("campaignid") ||
-    n.includes("fbclid") ||
-    n.includes("http") ||
-    n.includes("_wcB") ||
-    n.includes("w8s")
-  ) {
-    return true;
-  }
-  if (n.length > 25) return true;
-  if (n.includes("_")) return true;
-  if (!n.includes(" ") && n.length > 15) return true;
-
-  return false;
-}
-
-function normalizeModel(rawName: string | null) {
-  if (!rawName) return "Unknown";
-  if (isGarbageModel(rawName)) return "Unknown";
-
-  const lower = rawName.toLowerCase().trim();
-
-  if (lower.includes("bezza")) return "Perodua Bezza";
-  if (lower.includes("myvi")) return "Perodua Myvi";
-  if (lower.includes("axia")) return "Perodua Axia";
-  if (lower.includes("alza")) return "Perodua Alza";
-  if (lower.includes("aruz")) return "Perodua Aruz";
-  if (lower.includes("ativa")) return "Perodua Ativa";
-  if (lower.includes("saga")) return "Proton Saga";
-  if (lower.includes("person")) return "Proton Persona";
-  if (lower.includes("exora")) return "Proton Exora";
-  if (lower.includes("x50")) return "Proton X50";
-  if (lower.includes("x70")) return "Proton X70";
-  if (lower.includes("x90")) return "Proton X90";
-  if (lower.includes("vios")) return "Toyota Vios";
-  if (lower.includes("yaris")) return "Toyota Yaris";
-  if (lower.includes("alphard")) return "Toyota Alphard";
-  if (lower.includes("vellfire")) return "Toyota Vellfire";
-  if (lower.includes("innova")) return "Toyota Innova";
-  if (lower.includes("city")) return "Honda City";
-  if (lower.includes("civic")) return "Honda Civic";
-  if (lower.includes("brv") || lower.includes("br-v")) return "Honda BR-V";
-  if (lower.includes("crv") || lower.includes("cr-v")) return "Honda CR-V";
-  if (lower.includes("xpander")) return "Mitsubishi Xpander";
-  if (lower.includes("triton")) return "Mitsubishi Triton";
-
-  return rawName.replace(/\b\w/g, (l) => l.toUpperCase());
-}
-
-function getBrand(model: string) {
-  return model.split(" ")[0] || "Other";
-}
 
 function getCatalogItem(rel: any) {
   if (Array.isArray(rel)) return rel[0] || {};
@@ -307,17 +214,6 @@ function safeJson(v: any) {
     return {};
   } catch {
     return {};
-  }
-}
-
-function cleanPart(v: any) {
-  const s = String(v || "").trim();
-  if (!s) return "";
-  try {
-    const decoded = decodeURIComponent(s.replace(/\+/g, " "));
-    return decoded.trim();
-  } catch {
-    return s;
   }
 }
 
@@ -355,20 +251,21 @@ export default async function AdminDashboard({
   const { start, end } = getRange(period, fromParam, toParam, new Date());
   const supabase = await createSupabaseServer();
 
-  // 1. SITE ANALYTICS (Last 24h)
+  // 1. SITE ANALYTICS (KL 6am→6am business window)
   const now = new Date();
-  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const { start: windowStart, end: windowEnd } = currentBusinessDay(now);
   const activeThreshold = new Date(now.getTime() - 5 * 60 * 1000);
 
-  // FETCH events strictly last 24h
+  // FETCH events strictly within last business window (6am→6am)
   const { data: siteEvents24h } = await supabase
     .from("site_events")
     .select(
       "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer, ip, country, region, city, isp"
     )
-    .gte("created_at", last24h.toISOString())
+    .gte("created_at", windowStart.toISOString())
+    .lt("created_at", windowEnd.toISOString())
     .order("created_at", { ascending: false })
-    .limit(3000);
+    .limit(5000);
 
   const events = (siteEvents24h ?? []) as any[];
 
@@ -387,17 +284,26 @@ export default async function AdminDashboard({
     }
   >();
 
+  const pathCounts = new Map<string, number>(); // Moved here
+
   let whatsappClicks24h = 0;
   let phoneClicks24h = 0;
 
   for (const e of events) {
-    const userKey = e.session_id || e.anon_id || e.ip || "unknown";
+    // Identity grouping: anon_id → session_id → ip
+    const userKey = e.anon_id || e.session_id || e.ip || "unknown";
     const createdAt = new Date(e.created_at).getTime();
     const en = String(e.event_name || "").toLowerCase();
 
     // Interaction stats remain hit-based
     if (en === "whatsapp_click") whatsappClicks24h++;
     if (en === "phone_click") phoneClicks24h++;
+
+    // Track Top Pages (Hit-based)
+    if (en === "page_view") {
+        const pp = cleanPagePath(e.page_path || e.page_url);
+        pathCounts.set(pp, (pathCounts.get(pp) || 0) + 1);
+    }
 
     // Grouping Logic
     if (!usersMap.has(userKey)) {
@@ -428,12 +334,8 @@ export default async function AdminDashboard({
     if (createdAt >= activeThreshold.getTime()) userData.isOnline = true;
 
     // Model interaction tracking (Unique per user)
-    const props = safeJson(e.props);
-    let rawModel = String(props?.model || "").trim();
-    if (!rawModel && e.page_path && e.page_path.includes("/cars/")) {
-      const inf = inferCarFromPath(e.page_path);
-      if (inf && inf.model) rawModel = inf.model;
-    }
+    // Use shared getModelKey to ensure consistency with Site Events page
+    let rawModel = getModelKey(e as SiteEventRow);
 
     if (rawModel && !isGarbageModel(rawModel)) {
       const cleanName = normalizeModel(cleanPart(rawModel));
@@ -454,6 +356,7 @@ export default async function AdminDashboard({
     Direct: 0,
   };
   const modelCounts = new Map<string, number>();
+  // pathCounts moved up
   const referrerCounts = new Map<string, number>();
   const ispCounts = new Map<string, number>();
   const locationCounts = new Map<string, number>();
@@ -484,13 +387,31 @@ export default async function AdminDashboard({
     u.models.forEach((m) => modelCounts.set(m, (modelCounts.get(m) || 0) + 1));
   });
 
+  // Identity breakdown for display (anon/session/ip)
+  const anonSet = new Set<string>();
+  const sessionSet = new Set<string>();
+  const ipSet = new Set<string>();
+  for (const e of events) {
+    if (e.anon_id) anonSet.add(String(e.anon_id));
+    if (e.session_id) sessionSet.add(String(e.session_id));
+    if (e.ip) ipSet.add(String(e.ip));
+  }
+
   const miniSiteData = {
     activeUsersRealtime,
-    uniqueSessions24h: usersMap.size, // <-- THIS WAS MISSING
+    // ✅ identity grouping: anon_id → session_id → ip
+    uniqueVisitors24h: usersMap.size,
+    uniqueAnonIds24h: anonSet.size,
+    uniqueSessions24h: sessionSet.size,
+    uniqueIps24h: ipSet.size,
     whatsappClicks: whatsappClicks24h,
     phoneClicks: phoneClicks24h,
     traffic: trafficCounts,
     topModels: Array.from(modelCounts.entries())
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10),
+    topPages: Array.from(pathCounts.entries())
       .map(([key, count]) => ({ key, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),

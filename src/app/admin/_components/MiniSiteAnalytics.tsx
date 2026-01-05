@@ -13,6 +13,8 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
+import GlossyKpi from "./GlossyKpi";
+import { rankBadge } from "../_lib/utils";
 
 /* =========================
    Types
@@ -23,82 +25,6 @@ type TopLoc = { name: string; users: number; status?: string; trend?: string };
 /* =========================
    UI Components
    ========================= */
-
-const RANK_BADGES = [
-  "bg-indigo-500 text-white shadow-indigo-200",
-  "bg-emerald-500 text-white shadow-emerald-200",
-  "bg-amber-500 text-white shadow-amber-200",
-  "bg-rose-500 text-white shadow-rose-200",
-  "bg-sky-500 text-white shadow-sky-200",
-  "bg-violet-500 text-white shadow-violet-200",
-];
-
-function rankBadge(i: number) {
-  return RANK_BADGES[i % RANK_BADGES.length] + " shadow-md";
-}
-
-function GlossyKpi({
-  title,
-  value,
-  color = "blue",
-  icon: Icon,
-  pulse = false,
-}: {
-  title: string;
-  value: number;
-  // FIXED: Added 'slate' to the union type
-  color?:
-    | "blue"
-    | "green"
-    | "purple"
-    | "orange"
-    | "pink"
-    | "indigo"
-    | "emerald"
-    | "slate";
-  icon?: any;
-  pulse?: boolean;
-}) {
-  const gradients = {
-    blue: "from-cyan-500 to-blue-600 shadow-blue-200",
-    green: "from-emerald-400 to-green-600 shadow-green-200",
-    emerald: "from-emerald-500 to-teal-600 shadow-emerald-300",
-    purple: "from-violet-400 to-purple-600 shadow-purple-200",
-    orange: "from-amber-400 to-orange-600 shadow-orange-200",
-    pink: "from-rose-400 to-red-600 shadow-rose-200",
-    indigo: "from-indigo-400 to-blue-800 shadow-indigo-200",
-    slate: "from-slate-500 to-slate-700 shadow-slate-200", // Added slate gradient
-  };
-
-  const selectedGradient = gradients[color] || gradients.blue;
-
-  return (
-    <div
-      className={`relative overflow-hidden rounded-2xl p-4 text-white shadow-lg bg-gradient-to-br ${selectedGradient} group transition-all duration-500 ${
-        pulse
-          ? "scale-105 animate-pulse ring-4 ring-emerald-400 shadow-2xl"
-          : "hover:scale-[1.02]"
-      }`}
-    >
-      <div className="absolute inset-x-0 top-0 h-1/3 bg-gradient-to-b from-white/30 to-transparent pointer-events-none" />
-      <div className="relative z-10 flex flex-col h-full justify-between">
-        <div className="flex justify-between items-start">
-          <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">
-            {title}
-          </span>
-          {Icon && (
-            <Icon
-              className={`w-4 h-4 ${pulse ? "animate-bounce" : "opacity-60"}`}
-            />
-          )}
-        </div>
-        <div className="text-3xl font-black mt-2 tracking-tight drop-shadow-sm">
-          {value.toLocaleString()}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function MixRow({
   label,
@@ -136,7 +62,7 @@ function MixRow({
       </div>
       <div className="h-2 rounded-full bg-gray-100/80 overflow-hidden shadow-inner">
         <div
-          className={`h-full rounded-full bg-gradient-to-r ${chosenGradient} shadow-sm transition-all duration-500 relative overflow-hidden`}
+          className={`h-full rounded-full bg-linear-to-r ${chosenGradient} shadow-sm transition-all duration-500 relative overflow-hidden`}
           style={{ width: `${pct}%` }}
         >
           <div className="absolute inset-x-0 top-0 h-1/2 bg-white/30" />
@@ -203,7 +129,10 @@ export default function MiniSiteAnalytics({
 }: {
   data: {
     activeUsersRealtime: number;
+    uniqueVisitors24h: number;
+    uniqueAnonIds24h: number;
     uniqueSessions24h: number;
+    uniqueIps24h: number;
     whatsappClicks: number;
     phoneClicks: number;
     traffic: {
@@ -216,13 +145,14 @@ export default function MiniSiteAnalytics({
       Direct: number;
     };
     topModels: { key: string; count: number }[];
+    topPages: { key: string; count: number }[]; // Added
     topReferrers: { name: string; count: number }[];
     topISP: { name: string; count: number }[];
     topLocations: TopLoc[];
   };
 }) {
   const router = useRouter();
-  const [countdown, setCountdown] = useState(20);
+  const [countdown, setCountdown] = useState(30);
   const [isNewUserEntry, setIsNewUserEntry] = useState(false);
   const prevUserCount = useRef(data.activeUsersRealtime);
 
@@ -239,11 +169,11 @@ export default function MiniSiteAnalytics({
   useEffect(() => {
     const refreshInterval = setInterval(() => {
       router.refresh();
-      setCountdown(20);
-    }, 20000);
+      setCountdown(30);
+    }, 30000);
 
     const timerInterval = setInterval(() => {
-      setCountdown((prev) => (prev > 0 ? prev - 1 : 20));
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 30));
     }, 1000);
 
     return () => {
@@ -254,11 +184,15 @@ export default function MiniSiteAnalytics({
 
   const {
     activeUsersRealtime,
+    uniqueVisitors24h,
+    uniqueAnonIds24h,
     uniqueSessions24h,
+    uniqueIps24h,
     whatsappClicks,
     phoneClicks,
     traffic,
     topModels,
+    topPages, // Added
     topReferrers,
     topISP,
     topLocations,
@@ -286,7 +220,7 @@ export default function MiniSiteAnalytics({
             <div className="w-px h-3 bg-emerald-200 mx-1"></div>
             <div className="flex items-center gap-1 text-emerald-600 text-[10px] font-bold">
               <RefreshCw
-                className={`w-3 h-3 ${countdown === 20 ? "animate-spin" : ""}`}
+                className={`w-3 h-3 ${countdown === 5 ? "animate-spin" : ""}`}
               />
               {countdown}s
             </div>
@@ -310,12 +244,18 @@ export default function MiniSiteAnalytics({
           icon={Users}
           pulse={isNewUserEntry}
         />
-        <GlossyKpi
-          title="Unique Visitors"
-          value={uniqueSessions24h}
-          color="orange"
-          icon={Fingerprint}
-        />
+        <div className="flex flex-col gap-1">
+          <GlossyKpi
+            title="Unique Visitors"
+            value={uniqueVisitors24h}
+            color="orange"
+            icon={Fingerprint}
+          />
+          {/* <div className="text-[10px] font-black text-gray-500 px-1">
+            anon:{uniqueAnonIds24h} • sess:{uniqueSessions24h} • ip:
+            {uniqueIps24h}
+          </div> */}
+        </div>
         <GlossyKpi
           title="Google Ads"
           value={traffic["Google Ads"]}
@@ -335,7 +275,7 @@ export default function MiniSiteAnalytics({
         <GlossyKpi title="Calls" value={phoneClicks} color="pink" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card title="Traffic Breakdown">
           <div className="space-y-4">
             <MixRow
@@ -419,9 +359,7 @@ export default function MiniSiteAnalytics({
             )}
           </div>
         </Card>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card title="Top Locations" icon={MapPin}>
           <div className="space-y-3">
             {topLocations?.length ? (
@@ -457,27 +395,6 @@ export default function MiniSiteAnalytics({
             ) : (
               <div className="text-xs text-gray-400 italic py-4 text-center">
                 No location data
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card title="Top Networks (ISP)" icon={Wifi}>
-          <div className="space-y-3">
-            {topISP?.length ? (
-              topISP
-                .slice(0, 6)
-                .map((isp, i) => (
-                  <ListRow
-                    key={isp.name}
-                    rank={i}
-                    label={isp.name}
-                    count={isp.count}
-                  />
-                ))
-            ) : (
-              <div className="text-xs text-gray-400 italic py-4 text-center">
-                No ISP data
               </div>
             )}
           </div>
