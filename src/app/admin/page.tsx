@@ -3,14 +3,18 @@ import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { rangeDays6amKlUtc, currentBusinessDay } from "@/lib/klTimeWindow";
 // ...
-  // 1. SITE ANALYTICS (KL 6am→6am business window)
-  const now = new Date();
-  const { start: windowStart, end: windowEnd } = currentBusinessDay(now);
+// 1. SITE ANALYTICS (KL 6am→6am business window)
+const now = new Date();
+const { start: windowStart, end: windowEnd } = currentBusinessDay(now);
+import { differenceInDays, parseISO } from "date-fns";
+import UrgentActionsModal from "../admin/_components/UrgentActionsModal";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
 import AvailableNow from "../admin/_components/AvailableNow";
 import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
 import CurrentlyRented from "../admin/_components/CurrentlyRented";
 import DashboardFilters from "../admin/_components/DashboardFilters";
+// import UrgentActionsModal from "../admin/_components/UrgentActionsModal";
+import ClockKpi from "./_components/ClockKpi";
 import MiniSiteAnalytics from "./_components/MiniSiteAnalytics";
 import GlossyKpi from "./_components/GlossyKpi";
 import { rankBadge } from "./_lib/utils";
@@ -301,8 +305,8 @@ export default async function AdminDashboard({
 
     // Track Top Pages (Hit-based)
     if (en === "page_view") {
-        const pp = cleanPagePath(e.page_path || e.page_url);
-        pathCounts.set(pp, (pathCounts.get(pp) || 0) + 1);
+      const pp = cleanPagePath(e.page_path || e.page_url);
+      pathCounts.set(pp, (pathCounts.get(pp) || 0) + 1);
     }
 
     // Grouping Logic
@@ -319,9 +323,8 @@ export default async function AdminDashboard({
       usersMap.set(userKey, {
         source: classifyTrafficSource(e.referrer, e.page_url),
         isp: cleanPart(e.isp) || "Unknown",
-        location: `${cleanPart(e.city) || "Unknown"}, ${
-          cleanPart(e.region) || "Unknown"
-        }`,
+        location: `${cleanPart(e.city) || "Unknown"}, ${cleanPart(e.region) || "Unknown"
+          }`,
         models: new Set(),
         isOnline: false,
         referrerHost: refHost,
@@ -535,7 +538,7 @@ export default async function AdminDashboard({
   const { data: carsBase } = await supabase
     .from("cars")
     .select(
-      "id, plate_number, status, location, catalog_rel:catalog_id ( make, model )"
+      "id, plate_number, status, location, catalog_rel:catalog_id ( make, model ), insurance_expiry, roadtax_expiry"
     )
     .order("plate_number", { ascending: true })
     .limit(5000);
@@ -598,8 +601,41 @@ export default async function AdminDashboard({
   const availableCount = availableNowRows.length;
   const rentedCount = currentlyRentedRows.length;
 
+  // FILTER URGENT INSURANCE/ROADTAX (<= 1 Day)
+  const urgentRenewals: any[] = [];
+  const todayForUrgent = new Date();
+
+  (carsBase ?? []).forEach((c: any) => {
+    const carDetails = {
+      id: c.id,
+      plate: c.plate_number,
+      make: getCatalogItem(c.catalog_rel)?.make || "",
+      model: getCatalogItem(c.catalog_rel)?.model || "",
+    };
+
+    if (c.insurance_expiry) {
+      const d = parseISO(c.insurance_expiry);
+      const days = differenceInDays(d, todayForUrgent);
+      if (days <= 1) {
+        console.log(`DEBUG: URGENT FOUND! ${c.plate_number} (Days: ${days}) (${c.insurance_expiry})`);
+        urgentRenewals.push({ ...carDetails, type: "Insurance", date: c.insurance_expiry, days });
+      }
+    }
+    if (c.roadtax_expiry) {
+      const d = parseISO(c.roadtax_expiry);
+      const days = differenceInDays(d, todayForUrgent);
+      if (days <= 1) {
+        console.log(`DEBUG: URGENT FOUND! ${c.plate_number} (Days: ${days}) (${c.roadtax_expiry})`);
+        urgentRenewals.push({ ...carDetails, type: "Roadtax", date: c.roadtax_expiry, days });
+      }
+    }
+  });
+
+  console.log(`DEBUG: Total Urgent Items: ${urgentRenewals.length}`);
+
   return (
     <div className="p-4 md:p-6 space-y-6 bg-gray-50 min-h-screen">
+      <UrgentActionsModal items={urgentRenewals} />
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
@@ -607,8 +643,8 @@ export default async function AdminDashboard({
             {period === "all"
               ? "All Time"
               : period === "custom"
-              ? "Custom Range"
-              : `Last ${diffDays(start.toISOString(), end.toISOString())} Days`}
+                ? "Custom Range"
+                : `Last ${diffDays(start.toISOString(), end.toISOString())} Days`}
           </div>
         </div>
         <Suspense
@@ -656,12 +692,7 @@ export default async function AdminDashboard({
           sub="per day"
           color="purple"
         />
-        <GlossyKpi
-          title="Unique Visitors"
-          value={usersMap.size}
-          sub="last 24h"
-          color="orange"
-        />
+        <ClockKpi />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

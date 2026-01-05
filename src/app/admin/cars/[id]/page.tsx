@@ -58,7 +58,7 @@ export default async function EditCarPage({
       `
       id, plate_number, catalog_id, status, location, daily_price, price_3_days, weekly_price, monthly_price, deposit,
       body_type, seats, transmission, color, primary_image_url, images, bluetooth, smoking_allowed, fuel_type, 
-      aux, usb, android_auto, apple_carplay, notes, is_featured, promo_price, promo_label, year
+      aux, usb, android_auto, apple_carplay, notes, is_featured, promo_price, promo_label, year, insurance_expiry, roadtax_expiry
     `
     )
     .eq("id", id)

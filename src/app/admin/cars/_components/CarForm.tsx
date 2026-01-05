@@ -17,6 +17,7 @@ import {
   Sparkles,
   ArrowLeft,
   Trash2,
+  CalendarDays,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -130,6 +131,8 @@ export function CarForm({
   const [status, setStatus] = useState(initial.status ?? "available");
   const [location, setLocation] = useState(initial.location ?? "Seremban");
   const [year, setYear] = useState(initial.year ?? "2025");
+  const [insuranceExpiry, setInsuranceExpiry] = useState(initial.insurance_expiry ?? "");
+  const [roadtaxExpiry, setRoadtaxExpiry] = useState(initial.roadtax_expiry ?? "");
 
   const [dailyPrice, setDailyPrice] = useState(
     String(initial.daily_price ?? "")
@@ -295,6 +298,8 @@ export function CarForm({
             transmission,
             color,
             year,
+            insurance_expiry: insuranceExpiry || null,
+            roadtax_expiry: roadtaxExpiry || null,
             primary_image_url: primaryToSave,
             images: gallery,
             bluetooth,
@@ -450,6 +455,32 @@ export function CarForm({
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 uppercase tracking-wider">
+              <CalendarDays className="w-4 h-4" /> Expiry Dates (Internal)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Insurance Expiry</label>
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={insuranceExpiry}
+                  onChange={(e) => setInsuranceExpiry(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Roadtax Expiry</label>
+                <input
+                  type="date"
+                  className={inputClass}
+                  value={roadtaxExpiry}
+                  onChange={(e) => setRoadtaxExpiry(e.target.value)}
+                />
               </div>
             </div>
           </div>

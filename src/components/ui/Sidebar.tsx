@@ -135,6 +135,10 @@ export function Sidebar() {
   }, [pathname]);
 
   const handleLogout = () => {
+    // Clear dismissal state so popup resets for next login
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("urgent_dismissed");
+    }
     // Force a hard navigation to the logout route to ensure cookies are cleared cleanly
     // and to avoid Next.js prefetching issues with Links
     window.location.href = "/admin/logout";
@@ -172,6 +176,14 @@ export function Sidebar() {
         color: "text-rose-600",
         icon: (
           <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
+        ),
+      },
+      {
+        href: "/admin/insurance",
+        label: "Insurance & Roadtax",
+        color: "text-amber-500",
+        icon: (
+          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
         ),
       },
       {
