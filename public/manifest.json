@@ -3,7 +3,7 @@
   "short_name": "JRV Admin",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F15828",
+  "background_color": "#FF3057",
   "theme_color": "#FF3057",
   "icons": [
     {
