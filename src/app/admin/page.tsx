@@ -17,6 +17,9 @@ export const metadata: Metadata = pageMetadata({
   index: false,
 });
 
+/* ===========================
+   TYPES & HELPERS
+   =========================== */
 type Period =
   | "daily"
   | "weekly"
@@ -38,30 +41,48 @@ type AgreementLite = {
   total_price: number | null;
 };
 
-type MiniSummary = {
-  activeUsersRealtime: number;
-  whatsappClicks: number;
-  phoneClicks: number;
-  traffic: { direct: number; organic: number; paid: number; referral: number };
-  topModels: { key: string; count: number }[];
-  topReferrers: { name: string; count: number }[];
-  topCountries: { name: string; count: number }[];
-  topRegions: { name: string; count: number }[];
-  topCities: { name: string; count: number }[];
-  campaigns: {
-    campaign: string;
-    count: number;
-    views: number;
-    whatsapp: number;
-    calls: number;
-    conversions: number;
-    rate: number;
-  }[];
-};
+/**
+ * FIXED CLASSIFICATION LOGIC
+ * Corrects Search Partners by checking for syndicatedsearch.goog domain
+ */
+function classifyTrafficSource(referrer: string | null, url: string | null) {
+  const ref = (referrer || "").toLowerCase();
+  const u = (url || "").toLowerCase();
 
-/* ===========================
-   UI Helpers (Glossy)
-   =========================== */
+  // 1. Google Ads / Paid (Check URL for click IDs)
+  if (
+    u.includes("gclid") ||
+    u.includes("gad_source") ||
+    u.includes("utm_medium=cpc") ||
+    u.includes("utm_medium=paid")
+  ) {
+    return "Google Ads";
+  }
+
+  // 2. Google Search Partners
+  // Adjusted to catch syndicatedsearch.goog specifically
+  if (
+    u.includes("syndicate") ||
+    u.includes("utm_medium=syndicate") ||
+    ref.includes("syndicatedsearch.goog")
+  ) {
+    return "Google Search Partners";
+  }
+
+  // 3. Social Media
+  if (ref.includes("facebook") || ref.includes("fb.com")) return "Facebook";
+  if (ref.includes("instagram") || ref.includes("ig.me")) return "Instagram";
+  if (ref.includes("tiktok")) return "TikTok";
+
+  // 4. Google Organic
+  if (ref.includes("google.com")) {
+    return "Google Organic";
+  }
+
+  // 5. Everything else is Direct
+  return "Direct";
+}
+
 function GlossyKpi({
   title,
   value,
@@ -115,9 +136,6 @@ function rankBadge(i: number) {
   return RANK_BADGES[i % RANK_BADGES.length] + " shadow-md";
 }
 
-/* ===========================
-   Date Helpers (KL Time)
-   =========================== */
 const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -176,9 +194,6 @@ function parseKLEndOfDayToUTC(dateYYYYMMDD: string) {
   return new Date(s.getTime() + DAY_MS - 1);
 }
 
-/* ===========================
-   Range logic (Rolling Windows)
-   =========================== */
 function getRange(
   period: Period,
   fromParam: string,
@@ -220,12 +235,34 @@ function getRange(
   return { start, end: now };
 }
 
-/* ===========================
-   Model normalization
-   =========================== */
+function isGarbageModel(name: string) {
+  if (!name) return true;
+  const n = name.toLowerCase().trim();
+
+  if (
+    n.includes("gad_source") ||
+    n.includes("gclid") ||
+    n.includes("campaignid") ||
+    n.includes("fbclid") ||
+    n.includes("http") ||
+    n.includes("_wcB") ||
+    n.includes("w8s")
+  ) {
+    return true;
+  }
+  if (n.length > 25) return true;
+  if (n.includes("_")) return true;
+  if (!n.includes(" ") && n.length > 15) return true;
+
+  return false;
+}
+
 function normalizeModel(rawName: string | null) {
   if (!rawName) return "Unknown";
+  if (isGarbageModel(rawName)) return "Unknown";
+
   const lower = rawName.toLowerCase().trim();
+
   if (lower.includes("bezza")) return "Perodua Bezza";
   if (lower.includes("myvi")) return "Perodua Myvi";
   if (lower.includes("axia")) return "Perodua Axia";
@@ -249,23 +286,19 @@ function normalizeModel(rawName: string | null) {
   if (lower.includes("crv") || lower.includes("cr-v")) return "Honda CR-V";
   if (lower.includes("xpander")) return "Mitsubishi Xpander";
   if (lower.includes("triton")) return "Mitsubishi Triton";
+
   return rawName.replace(/\b\w/g, (l) => l.toUpperCase());
 }
+
 function getBrand(model: string) {
   return model.split(" ")[0] || "Other";
 }
 
-/* ===========================
-   Supabase relation helper
-   =========================== */
 function getCatalogItem(rel: any) {
   if (Array.isArray(rel)) return rel[0] || {};
   return rel || {};
 }
 
-/* ===========================
-   Site events helpers
-   =========================== */
 function safeJson(v: any) {
   try {
     if (!v) return {};
@@ -276,173 +309,18 @@ function safeJson(v: any) {
     return {};
   }
 }
-const COUNTRY_CODE_TO_NAME: Record<string, string> = {
-  MY: "Malaysia",
-  SG: "Singapore",
-  US: "United States",
-  USA: "United States",
-  UK: "United Kingdom",
-  GB: "United Kingdom",
-  ID: "Indonesia",
-  IN: "India",
-  AU: "Australia",
-  CA: "Canada",
-  CN: "China",
-  HK: "Hong Kong",
-  JP: "Japan",
-  KR: "South Korea",
-  TH: "Thailand",
-  VN: "Vietnam",
-  PH: "Philippines",
-  TW: "Taiwan",
-};
-function decodeSafe(v: any) {
-  const raw = String(v || "").trim();
-  if (!raw) return "";
-  try {
-    return decodeURIComponent(raw.replace(/\+/g, "%20")).trim();
-  } catch {
-    return raw;
-  }
-}
-function normalizeCountryServer(input: any) {
-  const s = decodeSafe(input);
-  if (!s) return "";
-  const upper = s.toUpperCase();
-  if (COUNTRY_CODE_TO_NAME[upper]) return COUNTRY_CODE_TO_NAME[upper];
-  return s;
-}
+
 function cleanPart(v: any) {
-  const s = decodeSafe(v);
+  const s = String(v || "").trim();
   if (!s) return "";
-  return s
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/\s+/g, " ")
-    .replace(/\s*,\s*/g, ", ")
-    .trim();
-}
-function normalizeRegionLabelServer(regionRaw: any, countryRaw: any) {
-  const decoded = decodeSafe(regionRaw);
-  if (!decoded) return "";
-  const rawTrim = decoded.trim();
-  if (!rawTrim || /^\d+$/.test(rawTrim) || rawTrim.length <= 1) return "";
-  const parts = rawTrim
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-  if (!parts.length) return "";
-  if (parts.length === 2) {
-    const maybeCountry = normalizeCountryServer(parts[1]);
-    if (maybeCountry) return cleanPart(parts[0]);
-  }
-  const candidate = cleanPart(parts[0] || rawTrim);
-  if (!candidate || /^\d+$/.test(candidate)) return "";
-  const ctry = normalizeCountryServer(countryRaw);
-  if (ctry && candidate.toLowerCase() === ctry.toLowerCase()) return "";
-  return candidate;
-}
-function normalizeCityLabelServer(cityRaw: any, countryRaw: any) {
-  const decoded = decodeSafe(cityRaw);
-  if (!decoded) return "";
-  const parts = decoded
-    .split(",")
-    .map((x) => x.trim())
-    .filter(Boolean);
-  const city = cleanPart(parts[0] || "");
-  if (!city || /^\d+$/.test(city)) return "";
-  const last = parts.length > 1 ? parts[parts.length - 1] : "";
-  const lastNorm = normalizeCountryServer(last);
-  const country = lastNorm || normalizeCountryServer(countryRaw);
-  if (!country) return city;
-  return `${city}, ${country}`;
-}
-function deriveRegionFromCityServer(cityRaw: any) {
-  const decoded = decodeSafe(cityRaw);
-  if (!decoded) return "";
-  const parts = decoded
-    .split(",")
-    .map((x) => cleanPart(x))
-    .filter(Boolean);
-  if (parts.length < 3) return "";
-  const maybeRegion = cleanPart(parts[parts.length - 2]);
-  if (
-    !maybeRegion ||
-    /^\d+$/.test(maybeRegion) ||
-    /^(my|jk)$/i.test(maybeRegion)
-  )
-    return "";
-  return maybeRegion;
-}
-function normalizeKey(v: string) {
-  return cleanPart(v).toLowerCase();
-}
-function collapseCounts(map: Map<string, number>) {
-  const agg = new Map<string, { name: string; count: number }>();
-  for (const [k, v] of map.entries()) {
-    const name = cleanPart(k);
-    if (!name || name === "Unknown") continue;
-    const key = normalizeKey(name);
-    const prev = agg.get(key);
-    if (prev) prev.count += v;
-    else agg.set(key, { name, count: v });
-  }
-  return Array.from(agg.values());
-}
-function parseUrlParamsSafe(pageUrl: string | null | undefined) {
-  const out: Record<string, string> = {};
-  if (!pageUrl) return out;
   try {
-    const u = new URL(pageUrl);
-    u.searchParams.forEach((val, key) => {
-      out[key] = val;
-    });
-    return out;
+    const decoded = decodeURIComponent(s.replace(/\+/g, " "));
+    return decoded.trim();
   } catch {
-    return out;
+    return s;
   }
 }
-function isGoogleRef(referrer: string | null | undefined) {
-  if (!referrer) return false;
-  return referrer.toLowerCase().includes("google.");
-}
-function getCampaignKeyFromUrlParams(p: Record<string, string>) {
-  const utm = (p["utm_campaign"] || "").trim();
-  if (utm) return `utm:${utm}`;
-  const gad = (p["gad_campaignid"] || "").trim();
-  if (gad) return `gad:${gad}`;
-  return "—";
-}
-function referrerLabelGadOnly(
-  referrer: string | null | undefined,
-  pageUrl: string | null | undefined
-) {
-  const p = parseUrlParamsSafe(pageUrl);
-  const hasGad = !!(p["gad_campaignid"] || "").trim();
-  if (isGoogleRef(referrer)) return hasGad ? "Google Ads" : "Google (Organic)";
-  if (!referrer) return "Direct / None";
-  try {
-    const u = new URL(referrer);
-    return u.hostname.replace(/^www\./, "");
-  } catch {
-    return (
-      String(referrer)
-        .replace(/^https?:\/\//, "")
-        .replace(/^www\./, "")
-        .split("/")[0] || "Direct / None"
-    );
-  }
-}
-function inferTrafficTypeGadOnly(
-  referrer: string | null | undefined,
-  pageUrl: string | null | undefined
-) {
-  const p = parseUrlParamsSafe(pageUrl);
-  const hasGad = !!(p["gad_campaignid"] || "").trim();
-  if (hasGad) return "paid" as const;
-  if (isGoogleRef(referrer)) return "organic" as const;
-  if (!referrer) return "direct" as const;
-  return "referral" as const;
-}
+
 function inferCarFromPath(page_path: string | null) {
   if (!page_path) return null;
   const m = page_path.match(/^\/cars\/([^/]+)\/?$/i);
@@ -454,7 +332,7 @@ function inferCarFromPath(page_path: string | null) {
 }
 
 /* ===========================
-   MAIN
+   MAIN PAGE COMPONENT
    =========================== */
 export default async function AdminDashboard({
   searchParams,
@@ -477,190 +355,160 @@ export default async function AdminDashboard({
   const { start, end } = getRange(period, fromParam, toParam, new Date());
   const supabase = await createSupabaseServer();
 
-  // -------------------------
-  // MINI SITE ANALYTICS (last 24h rolling)
-  // -------------------------
-  const now2 = new Date();
-  const last5m = new Date(now2.getTime() - 5 * 60 * 1000);
-  const klNow = new Date(now2.getTime() + KL_OFFSET_MS);
-  const ky = klNow.getUTCFullYear();
-  const km = klNow.getUTCMonth();
-  const kd = klNow.getUTCDate();
-  let windowStartKlMs = Date.UTC(ky, km, kd, 6, 0, 0, 0);
-  if (klNow.getUTCHours() < 6) windowStartKlMs -= DAY_MS;
-  const windowEndKlMs = windowStartKlMs + DAY_MS;
-  const windowStartUtc = new Date(windowStartKlMs - KL_OFFSET_MS);
-  const windowEndUtc = new Date(windowEndKlMs - KL_OFFSET_MS);
+  // 1. SITE ANALYTICS (Last 24h)
+  const now = new Date();
+  const last24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const activeThreshold = new Date(now.getTime() - 5 * 60 * 1000);
 
+  // FETCH events strictly last 24h
   const { data: siteEvents24h } = await supabase
     .from("site_events")
     .select(
-      "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer, ip, country, region, city"
+      "created_at, event_name, session_id, anon_id, page_path, page_url, props, referrer, ip, country, region, city, isp"
     )
-    .gte("created_at", windowStartUtc.toISOString())
-    .lt("created_at", windowEndUtc.toISOString())
-    .order("created_at", { ascending: true })
-    .limit(5000);
+    .gte("created_at", last24h.toISOString())
+    .order("created_at", { ascending: false })
+    .limit(3000);
 
   const events = (siteEvents24h ?? []) as any[];
 
-  // Analytics Processing Logic (same as before)
-  const active5mSet = new Set<string>();
-  let whatsappClicks24h = 0;
-  let phoneClicks24h = 0;
-  const trafficCounts = { direct: 0, organic: 0, paid: 0, referral: 0 };
-  const modelCounts = new Map<string, number>();
-  const refCounts = new Map<string, number>();
-  const countryCounts = new Map<string, number>();
-  const regionCounts = new Map<string, number>();
-  const cityCounts = new Map<string, number>();
-  const campaignAgg = new Map<
-    string,
-    { count: number; views: number; wa: number; calls: number }
-  >();
-  const sessionFirst = new Map<string, any>();
-  for (const e of events) {
-    const sid = e.session_id || e.anon_id || "unknown";
-    if (!sessionFirst.has(sid)) sessionFirst.set(sid, e);
-  }
-  const sessionMeta = new Map<
+  // ---------------------------------------------------------
+  // CRITICAL FIX: GROUP BY UNIQUE VISITOR IDENTITY
+  // ---------------------------------------------------------
+  const usersMap = new Map<
     string,
     {
-      traffic: "direct" | "organic" | "paid" | "referral";
-      refLabel: string;
-      campaignKey: string;
+      source: string;
+      isp: string;
+      location: string;
+      models: Set<string>;
+      isOnline: boolean;
+      referrerHost: string;
     }
   >();
-  for (const [sid, first] of sessionFirst.entries()) {
-    const firstParams = parseUrlParamsSafe(first.page_url);
-    const firstCampaignKey = getCampaignKeyFromUrlParams(firstParams);
-    const traffic = inferTrafficTypeGadOnly(first.referrer, first.page_url);
-    const refLabel = referrerLabelGadOnly(first.referrer, first.page_url);
-    const campaignKey =
-      traffic === "paid"
-        ? firstCampaignKey === "—"
-          ? "Google Ads"
-          : firstCampaignKey
-        : traffic === "organic"
-        ? "Google (Organic)"
-        : traffic === "direct"
-        ? "Direct"
-        : refLabel || "Referral";
-    sessionMeta.set(sid, { traffic, refLabel, campaignKey });
-  }
+
+  let whatsappClicks24h = 0;
+  let phoneClicks24h = 0;
+
   for (const e of events) {
-    const sid = e.session_id || e.anon_id || "unknown";
-    const meta = sessionMeta.get(sid);
+    const userKey = e.session_id || e.anon_id || e.ip || "unknown";
     const createdAt = new Date(e.created_at).getTime();
-    if (!Number.isNaN(createdAt) && createdAt >= last5m.getTime()) {
-      active5mSet.add(sid);
-    }
     const en = String(e.event_name || "").toLowerCase();
+
+    // Interaction stats remain hit-based
     if (en === "whatsapp_click") whatsappClicks24h++;
     if (en === "phone_click") phoneClicks24h++;
-    const t = (meta?.traffic || "direct") as keyof typeof trafficCounts;
-    trafficCounts[t] += 1;
-    const rLabel = meta?.refLabel || "Direct / None";
-    refCounts.set(rLabel, (refCounts.get(rLabel) || 0) + 1);
-    const ctryRaw = e.country;
-    const ctry = normalizeCountryServer(ctryRaw) || "Unknown";
-    const ctryLabel = cleanPart(ctry);
-    if (ctryLabel && ctryLabel !== "Unknown") {
-      countryCounts.set(ctryLabel, (countryCounts.get(ctryLabel) || 0) + 1);
-    }
-    const ctyRaw = e.city;
-    const regRaw = e.region;
-    let reg =
-      normalizeRegionLabelServer(regRaw, ctryRaw) ||
-      deriveRegionFromCityServer(ctyRaw) ||
-      "";
-    if (!reg) reg = "Unknown";
-    const cty = normalizeCityLabelServer(ctyRaw, ctryRaw) || "Unknown";
-    if (reg !== "Unknown")
-      regionCounts.set(reg, (regionCounts.get(reg) || 0) + 1);
-    if (cty !== "Unknown") cityCounts.set(cty, (cityCounts.get(cty) || 0) + 1);
-    const looksLikeCarDetail = !!inferCarFromPath(e.page_path);
-    const props = safeJson(e.props);
-    let make = String(props?.make || "").trim();
-    let model = String(props?.model || "").trim();
-    if (!model) {
-      const inferred = inferCarFromPath(e.page_path);
-      if (inferred?.model) {
-        make = make || inferred.make || "";
-        model = inferred.model;
+
+    // Grouping Logic
+    if (!usersMap.has(userKey)) {
+      let refHost = "Direct / None";
+      if (e.referrer) {
+        try {
+          refHost = new URL(e.referrer).hostname.replace(/^www\./, "");
+        } catch {
+          refHost = "Other";
+        }
       }
+
+      usersMap.set(userKey, {
+        source: classifyTrafficSource(e.referrer, e.page_url),
+        isp: cleanPart(e.isp) || "Unknown",
+        location: `${cleanPart(e.city) || "Unknown"}, ${
+          cleanPart(e.region) || "Unknown"
+        }`,
+        models: new Set(),
+        isOnline: false,
+        referrerHost: refHost,
+      });
     }
-    const shouldCountModel =
-      en === "model_click" ||
-      en === "whatsapp_click" ||
-      en === "phone_click" ||
-      ((en === "page_view" || en === "site_load") && looksLikeCarDetail);
-    if (shouldCountModel && model) {
-      const key = `${make ? make + " " : ""}${model}`.trim();
-      modelCounts.set(key, (modelCounts.get(key) || 0) + 1);
+
+    const userData = usersMap.get(userKey)!;
+
+    // Determine if currently active
+    if (createdAt >= activeThreshold.getTime()) userData.isOnline = true;
+
+    // Model interaction tracking (Unique per user)
+    const props = safeJson(e.props);
+    let rawModel = String(props?.model || "").trim();
+    if (!rawModel && e.page_path && e.page_path.includes("/cars/")) {
+      const inf = inferCarFromPath(e.page_path);
+      if (inf && inf.model) rawModel = inf.model;
     }
-    const campaignKey = meta?.campaignKey || "Direct";
-    const prev = campaignAgg.get(campaignKey) || {
-      count: 0,
-      views: 0,
-      wa: 0,
-      calls: 0,
-    };
-    prev.count += 1;
-    if (looksLikeCarDetail && (en === "page_view" || en === "site_load"))
-      prev.views += 1;
-    if (en === "whatsapp_click") prev.wa += 1;
-    if (en === "phone_click") prev.calls += 1;
-    campaignAgg.set(campaignKey, prev);
+
+    if (rawModel && !isGarbageModel(rawModel)) {
+      const cleanName = normalizeModel(cleanPart(rawModel));
+      if (cleanName !== "Unknown") userData.models.add(cleanName);
+    }
   }
 
-  const topModels24h = Array.from(modelCounts.entries())
-    .map(([key, count]) => ({ key, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-  const topReferrers24h = Array.from(refCounts.entries())
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-  const topCountries24h = collapseCounts(countryCounts)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-  const topRegions24h = collapseCounts(regionCounts)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-  const topCities24h = collapseCounts(cityCounts)
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 8);
-  const campaigns24h = Array.from(campaignAgg.entries())
-    .map(([campaign, v]) => {
-      const conversions = v.wa + v.calls;
-      const rate = v.views > 0 ? v.wa / v.views : 0;
-      return {
-        campaign,
-        count: v.count,
-        views: v.views,
-        whatsapp: v.wa,
-        calls: v.calls,
-        conversions,
-        rate,
-      };
-    })
-    .sort((a, b) => b.conversions - a.conversions || b.count - a.count)
-    .slice(0, 20);
+  // ---------------------------------------------------------
+  // AGGREGATE STATS FROM GROUPED USERS
+  // ---------------------------------------------------------
+  const trafficCounts: any = {
+    "Google Ads": 0,
+    "Google Search Partners": 0,
+    "Google Organic": 0,
+    Facebook: 0,
+    Instagram: 0,
+    TikTok: 0,
+    Direct: 0,
+  };
+  const modelCounts = new Map<string, number>();
+  const referrerCounts = new Map<string, number>();
+  const ispCounts = new Map<string, number>();
+  const locationCounts = new Map<string, number>();
+  let activeUsersRealtime = 0;
 
-  const summary: MiniSummary = {
-    activeUsersRealtime: active5mSet.size,
+  usersMap.forEach((u) => {
+    if (u.isOnline) activeUsersRealtime++;
+
+    // Traffic Sources
+    if (trafficCounts.hasOwnProperty(u.source)) trafficCounts[u.source]++;
+    else trafficCounts["Direct"]++;
+
+    // Referrer breakdown
+    referrerCounts.set(
+      u.referrerHost,
+      (referrerCounts.get(u.referrerHost) || 0) + 1
+    );
+
+    // ISP
+    if (u.isp !== "Unknown") {
+      ispCounts.set(u.isp, (ispCounts.get(u.isp) || 0) + 1);
+    }
+
+    // Location
+    locationCounts.set(u.location, (locationCounts.get(u.location) || 0) + 1);
+
+    // Models viewed by this user
+    u.models.forEach((m) => modelCounts.set(m, (modelCounts.get(m) || 0) + 1));
+  });
+
+  const miniSiteData = {
+    activeUsersRealtime,
+    uniqueSessions24h: usersMap.size, // <-- THIS WAS MISSING
     whatsappClicks: whatsappClicks24h,
     phoneClicks: phoneClicks24h,
     traffic: trafficCounts,
-    topModels: topModels24h,
-    topReferrers: topReferrers24h,
-    topCountries: topCountries24h,
-    topRegions: topRegions24h,
-    topCities: topCities24h,
-    campaigns: campaigns24h,
+    topModels: Array.from(modelCounts.entries())
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10),
+    topReferrers: Array.from(referrerCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8),
+    topISP: Array.from(ispCounts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8),
+    topLocations: Array.from(locationCounts.entries())
+      .map(([name, users]) => ({ name, users }))
+      .sort((a, b) => b.users - a.users)
+      .slice(0, 10),
   };
 
+  // 2. FINANCIAL DATA
   const { data: allAgreements } = await supabase
     .from("agreements")
     .select("car_type, plate_number")
@@ -704,15 +552,9 @@ export default async function AdminDashboard({
 
   let totalRevenue = 0;
   let totalDaysRented = 0;
-  const byModel = new Map<
-    string,
-    { count: number; revenue: number; days: number }
-  >();
-  const byPlate = new Map<
-    string,
-    { count: number; revenue: number; model: string }
-  >();
-  const byBrand = new Map<string, { revenue: number }>();
+  const byModel = new Map();
+  const byPlate = new Map();
+  const byBrand = new Map();
 
   for (const r of rows) {
     if (r.status === "Cancelled") continue;
@@ -742,41 +584,33 @@ export default async function AdminDashboard({
   }
 
   const breakdownModel = Array.from(byModel.entries())
-    .map(([k, v]) => ({ key: k, ...v, adr: v.revenue / (v.days || 1) }))
-    .sort((a, b) => b.revenue - a.revenue);
-
+    .map(([k, v]: any) => ({ key: k, ...v, adr: v.revenue / (v.days || 1) }))
+    .sort((a: any, b: any) => b.revenue - a.revenue);
   const breakdownPlate = Array.from(byPlate.entries())
-    .map(([k, v]) => ({ key: k, ...v }))
-    .sort((a, b) => b.revenue - a.revenue)
+    .map(([k, v]: any) => ({ key: k, ...v }))
+    .sort((a: any, b: any) => b.revenue - a.revenue)
     .slice(0, 10);
-
   const breakdownBrand = Array.from(byBrand.entries())
-    .map(([k, v]) => ({ key: k, ...v }))
-    .sort((a, b) => b.revenue - a.revenue);
+    .map(([k, v]: any) => ({ key: k, ...v }))
+    .sort((a: any, b: any) => b.revenue - a.revenue);
 
   const bookingCount = rows.filter((r) => r.status !== "Cancelled").length;
   const avgDailyRate = totalDaysRented > 0 ? totalRevenue / totalDaysRented : 0;
   const avgLength = bookingCount > 0 ? totalDaysRented / bookingCount : 0;
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
-  // -------------------------
   // Cards data
-  // -------------------------
-  const now = new Date();
   const todayStartUTC = startOfBusinessDayInKLToUTC(now, 7);
   const todayEndUTC = endOfBusinessDayInKLToUTC(now, 7);
 
   const { data: expiringToday } = await supabase
     .from("agreements")
-    .select(
-      "id, customer_name, car_type, plate_number, mobile, status, date_start, date_end, total_price"
-    )
+    .select("*")
     .not("status", "in", `("Deleted","Cancelled","Completed")`)
     .gte("date_end", todayStartUTC.toISOString())
     .lte("date_end", todayEndUTC.toISOString())
     .order("date_end", { ascending: true })
     .limit(5000);
-
   const { data: carsBase } = await supabase
     .from("cars")
     .select(
@@ -784,16 +618,12 @@ export default async function AdminDashboard({
     )
     .order("plate_number", { ascending: true })
     .limit(5000);
-
-  const nowIso = now.toISOString();
   const { data: activeNow } = await supabase
     .from("agreements")
-    .select(
-      "id, customer_name, mobile, car_id, plate_number, car_type, date_start, date_end, status"
-    )
+    .select("*")
     .not("status", "in", `("Deleted","Cancelled","Completed")`)
-    .lte("date_start", nowIso)
-    .gt("date_end", nowIso)
+    .lte("date_start", todayStartUTC.toISOString())
+    .gt("date_end", todayEndUTC.toISOString())
     .not("car_id", "is", null)
     .order("date_end", { ascending: true })
     .limit(5000);
@@ -801,7 +631,6 @@ export default async function AdminDashboard({
   const busyCarIds = new Set(
     (activeNow ?? []).map((a: any) => a?.car_id).filter(Boolean)
   );
-
   const availableNowRows =
     (carsBase ?? [])
       .filter(
@@ -809,28 +638,25 @@ export default async function AdminDashboard({
       )
       .map((c: any) => {
         const cat = getCatalogItem(c?.catalog_rel);
-        const make = String(cat?.make ?? "").trim();
-        const model = String(cat?.model ?? "").trim();
         return {
           id: c.id,
           plate_number: c.plate_number,
           location: c.location,
-          car_label: [make, model].filter(Boolean).join(" ").trim(),
+          car_label: [cat?.make, cat?.model].filter(Boolean).join(" ").trim(),
         };
       }) ?? [];
-
   const currentlyRentedRows =
     (activeNow ?? []).map((ag: any) => {
       const car = (carsBase ?? []).find((c: any) => c?.id === ag.car_id);
       const cat = getCatalogItem(car?.catalog_rel);
-      const make = String(cat?.make ?? "").trim();
-      const model = String(cat?.model ?? "").trim();
       return {
         agreement_id: ag.id,
         car_id: ag.car_id,
         plate_number: ag.plate_number || car?.plate_number || "—",
         car_label:
-          ag.car_type || [make, model].filter(Boolean).join(" ").trim() || "—",
+          ag.car_type ||
+          [cat?.make, cat?.model].filter(Boolean).join(" ").trim() ||
+          "—",
         customer_name: ag.customer_name ?? null,
         mobile: ag.mobile ?? null,
         date_end: ag.date_end ?? null,
@@ -840,7 +666,6 @@ export default async function AdminDashboard({
 
   const tomorrowStartUTC = new Date(todayStartUTC.getTime() + DAY_MS);
   const tomorrowEndUTC = new Date(tomorrowStartUTC.getTime() + DAY_MS - 1);
-
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;
     return (
@@ -849,7 +674,6 @@ export default async function AdminDashboard({
       endT <= tomorrowEndUTC.getTime()
     );
   });
-
   const availableCount = availableNowRows.length;
   const rentedCount = currentlyRentedRows.length;
 
@@ -875,7 +699,6 @@ export default async function AdminDashboard({
         </Suspense>
       </div>
 
-      {/* ✅ NEW SECTION HEADER FOR FINANCIALS */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-bold text-gray-900">
@@ -893,7 +716,6 @@ export default async function AdminDashboard({
         </Link>
       </div>
 
-      {/* GLOSSY KPI GRID */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <GlossyKpi
           title="Revenue"
@@ -914,14 +736,13 @@ export default async function AdminDashboard({
           color="purple"
         />
         <GlossyKpi
-          title="Avg Length"
-          value={avgLength.toFixed(1)}
-          sub="days / trip"
+          title="Unique Visitors"
+          value={usersMap.size}
+          sub="last 24h"
           color="orange"
         />
       </div>
 
-      {/* ANALYSIS TABLES */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
@@ -931,7 +752,7 @@ export default async function AdminDashboard({
             </span>
           </div>
           <div className="divide-y overflow-y-auto max-h-96">
-            {breakdownPlate.map((p, i) => (
+            {breakdownPlate.map((p: any, i: number) => (
               <div
                 key={p.key}
                 className="p-3 flex items-center justify-between hover:bg-gray-50 text-sm"
@@ -965,7 +786,7 @@ export default async function AdminDashboard({
 
         <div className="lg:col-span-2 space-y-6">
           <div className="flex flex-wrap gap-3">
-            {breakdownBrand.map((b) => (
+            {breakdownBrand.map((b: any) => (
               <div
                 key={b.key}
                 className="bg-white border shadow-sm rounded-lg px-4 py-2 flex items-center gap-3"
@@ -988,19 +809,27 @@ export default async function AdminDashboard({
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-gray-500 font-medium border-b">
                   <tr>
-                    <th className="px-4 py-3 w-1/3">Model</th>
-                    <th className="px-4 py-3 text-right">Performance</th>
-                    <th className="px-4 py-3 text-right">Revenue</th>
-                    <th className="px-4 py-3 text-right">Trips</th>
-                    <th className="px-4 py-3 text-right">ADR</th>
+                    <th className="px-4 py-3 whitespace-nowrap">Model</th>
+                    <th className="px-4 py-3 text-right whitespace-nowrap">
+                      Performance
+                    </th>
+                    <th className="px-4 py-3 text-right whitespace-nowrap">
+                      Revenue
+                    </th>
+                    <th className="px-4 py-3 text-right whitespace-nowrap">
+                      Trips
+                    </th>
+                    <th className="px-4 py-3 text-right whitespace-nowrap">
+                      ADR
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {breakdownModel.map((b) => {
+                  {breakdownModel.map((b: any) => {
                     const percent = (b.revenue / maxModelRev) * 100;
                     return (
                       <tr key={b.key} className="hover:bg-gray-50 group">
-                        <td className="px-4 py-3 font-medium text-gray-800">
+                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
                           {b.key}
                         </td>
                         <td className="px-4 py-3 w-1/4 align-middle">
@@ -1013,13 +842,13 @@ export default async function AdminDashboard({
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-right font-bold text-emerald-700">
+                        <td className="px-4 py-3 text-right font-bold text-emerald-700 whitespace-nowrap">
                           {fmtMoney(b.revenue)}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600">
+                        <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
                           {b.count}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600 font-medium bg-gray-50/50">
+                        <td className="px-4 py-3 text-right text-gray-600 font-medium bg-gray-50/50 whitespace-nowrap">
                           {fmtMoney(b.adr)}
                         </td>
                       </tr>
@@ -1039,18 +868,7 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      {/* Mini Site Analytics */}
-      <MiniSiteAnalytics
-        activeUsers={summary.activeUsersRealtime}
-        whatsappClicks={summary.whatsappClicks}
-        phoneClicks={summary.phoneClicks}
-        traffic={summary.traffic}
-        topModels={summary.topModels}
-        topReferrers={summary.topReferrers}
-        topCountries={summary.topCountries}
-        topRegions={summary.topRegions}
-        topCities={summary.topCities}
-      />
+      <MiniSiteAnalytics data={miniSiteData} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ExpiringSoon
@@ -1069,7 +887,6 @@ export default async function AdminDashboard({
           rows={availableTomorrowRows as any}
         />
       </div>
-
       <div className="grid grid-cols-1">
         <CurrentlyRented
           title="Currently Rented 🚗"
