@@ -1,0 +1,12 @@
+{
+	"folders": [
+		{
+			"name": "jrv-admin",
+			"path": "../../../../.."
+		},
+		{
+			"path": "../../../../../../jrvservices_front"
+		}
+	],
+	"settings": {}
+}
