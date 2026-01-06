@@ -208,6 +208,14 @@ export function Sidebar() {
         color: "text-amber-600",
         icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
       },
+      {
+        href: "/admin/landing-pages",
+        label: "Landing Pages",
+        color: "text-purple-600",
+        icon: (
+          <Icon d="M3 4.5h18A1.5 1.5 0 0 1 22.5 6v12a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 18V6A1.5 1.5 0 0 1 3 4.5z M1.5 9h21 M7 9v10.5" />
+        ),
+      },
       // ✅ NEW: Blacklist (Operational Tool)
       {
         href: "/admin/blacklist",
@@ -261,6 +269,14 @@ export function Sidebar() {
         color: "text-slate-400",
         icon: (
           <Icon d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+        ),
+      },
+      {
+        href: "/admin/landing-pages/logs",
+        label: "Landing Page Logs",
+        color: "text-slate-400",
+        icon: (
+          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
         ),
       },
       {
