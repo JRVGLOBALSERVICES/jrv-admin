@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import BlackListCheck from "./_components/BlackListCheck";
+import BlacklistClient from "./_components/BlacklistClient";
 import { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 
@@ -20,7 +20,7 @@ export default function BlacklistPage() {
         </div>
       }
     >
-      <BlackListCheck />
+      <BlacklistClient />
     </Suspense>
   );
 }

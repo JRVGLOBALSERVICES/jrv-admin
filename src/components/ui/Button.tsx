@@ -82,19 +82,19 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer",
+    "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer p-4",
   secondary:
-    "bg-white text-black border border-black/15 hover:bg-gray-100 active:bg-gray-200 cursor-pointer",
+    "bg-white text-black border border-black/15 hover:bg-gray-100 active:bg-gray-200 cursor-pointer p-4",
   tertiary:
-    "bg-violet-50 text-violet-700 border border-violet-100 hover:bg-violet-100 active:bg-violet-200 cursor-pointer",
+    "bg-violet-50 text-violet-700 border border-violet-100 hover:bg-violet-100 active:bg-violet-200 cursor-pointer p-4",
   ghost:
-    "bg-transparent text-black hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
+    "bg-transparent text-black hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer p-4",
   danger:
-    "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm cursor-pointer",
+    "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm cursor-pointer p-4",
   indigo:
-    "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm cursor-pointer",
+    "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm cursor-pointer p-4",
   "indigo-light":
-    "bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 active:bg-indigo-100 cursor-pointer",
+    "bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 active:bg-indigo-100 cursor-pointer p-4",
 };
 
 const sizes: Record<ButtonSize, string> = {

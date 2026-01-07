@@ -1,48 +1,90 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSupabaseServer } from "@/lib/supabase/server";
+import { requireAdmin } from "@/lib/auth/requireAdmin";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
+// GET: Fetch all
 export async function GET() {
+  const gate = await requireAdmin();
+  if (!gate.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const supabase = await createSupabaseServer();
   const { data, error } = await supabase
     .from("blacklist")
     .select("*")
     .order("created_at", { ascending: false });
-  return NextResponse.json({ ok: !error, rows: data });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, rows: data });
 }
 
+// POST: Create New
 export async function POST(req: Request) {
-  const body = await req.json();
+  try {
+      const gate = await requireAdmin();
+      if (!gate.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  if (body.action === "create") {
-    // ✅ Fix: Sanitize input before saving
-    // Keeps only alphanumeric chars (removes dashes, spaces, etc.)
-    const raw = String(body.value || "").trim();
+      const body = await req.json();
+      const { type, value, reason } = body;
 
-    // For phones/ICs, usually better to store them 'clean' so searches are easier
-    // But we will store what the user entered if it's mixed,
-    // or just strip spaces/dashes to be safe.
-    // Let's strip spaces/dashes for consistency moving forward.
-    const cleanValue = raw.replace(/[^a-zA-Z0-9+]/g, "");
+      // Sanitize
+      const cleanValue = String(value || "").trim().replace(/[^a-zA-Z0-9+]/g, "");
 
-    const { error } = await supabase.from("blacklist").insert({
-      type: body.type,
-      value: cleanValue,
-      reason: body.reason,
-    });
-    return NextResponse.json({ ok: !error });
+      const supabase = await createSupabaseServer();
+      const { error } = await supabase.from("blacklist").insert({
+          type, 
+          value: cleanValue, 
+          reason
+      });
+
+      if (error) throw error;
+      return NextResponse.json({ ok: true });
+  } catch(e: any) {
+      return NextResponse.json({ error: e.message }, { status: 500 });
   }
+}
 
-  if (body.action === "delete") {
-    const { error } = await supabase
-      .from("blacklist")
-      .delete()
-      .eq("id", body.id);
-    return NextResponse.json({ ok: !error });
-  }
+// PUT: Update
+export async function PUT(req: Request) {
+    try {
+        const gate = await requireAdmin();
+        if (!gate.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  
+        const body = await req.json();
+        const { id, type, value, reason } = body;
+  
+        // Sanitize
+        const cleanValue = String(value || "").trim().replace(/[^a-zA-Z0-9+]/g, "");
+  
+        const supabase = await createSupabaseServer();
+        const { error } = await supabase.from("blacklist").update({
+            type, 
+            value: cleanValue, 
+            reason
+        }).eq('id', id);
+  
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+    } catch(e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 });
+    }
+}
 
-  return NextResponse.json({ error: "Invalid action" });
+// DELETE: Remove
+export async function DELETE(req: Request) {
+    try {
+        const gate = await requireAdmin();
+        if (!gate.ok) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get('id');
+        if(!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+
+        const supabase = await createSupabaseServer();
+        const { error } = await supabase.from("blacklist").delete().eq('id', id);
+
+        if (error) throw error;
+        return NextResponse.json({ ok: true });
+    } catch(e: any) {
+        return NextResponse.json({ error: e.message }, { status: 500 });
+    }
 }

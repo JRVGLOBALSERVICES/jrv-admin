@@ -409,11 +409,12 @@ export function normalizeModel(rawName: string | null) {
   }
   if (lower.includes("civic")) return "Honda Civic";
   if (lower.includes("brv") || lower.includes("br-v")) return "Honda BR-V";
-  if (lower.includes("crv") || lower.includes("cr-v")) return "Honda CR-V";
+  if (lower.includes("crv") || lower.includes("cr-v") || lower.includes("cr v")) return "Honda CR-V";
   if (lower.includes("xpander")) return "Mitsubishi Xpander";
   if (lower.includes("triton")) return "Mitsubishi Triton";
-  if (lower.includes("hr-v") || lower.includes("hrv")) return "Honda HR-V";
-  if (lower.includes("wr-v") || lower.includes("wrv")) return "Honda WR-V";
+  if (lower.includes("hr-v") || lower.includes("hrv") || lower.includes("hr v")) return "Honda HR-V";
+  if (lower.includes("wr-v") || lower.includes("wrv") || lower.includes("wr v")) return "Honda WR-V";
+  if (lower.includes("brv") || lower.includes("br-v") || lower.includes("br v")) return "Honda BR-V";
   if (lower.includes("preve")) return "Proton Prevé";
   if (lower.includes("iriz")) return "Proton Iriz";
 

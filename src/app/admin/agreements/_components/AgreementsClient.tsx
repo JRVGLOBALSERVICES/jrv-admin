@@ -271,7 +271,7 @@ export default function AgreementsClient() {
 
           <div className="col-span-2 md:col-span-1 flex items-end">
             <Button
-              variant="ghost"
+              variant="indigo"
               size="sm"
               onClick={clearFilters}
               className="col-span-2 md:col-span-1 md:w-auto h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700 mb-px hover:text-white"

@@ -197,7 +197,7 @@ export function Sidebar() {
       },
       {
         href: "/admin/marketing",
-        label: "Marketing Tools",
+        label: "AI & Marketing Tools",
         color: "text-sky-600",
         icon: <Sparkles className="w-5 h-5" />,
       },

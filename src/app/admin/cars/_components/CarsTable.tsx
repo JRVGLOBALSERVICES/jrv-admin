@@ -250,7 +250,7 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
 
           <div className="flex items-end">
             <Button
-              variant="ghost"
+              variant="indigo"
               onClick={handleClear}
               className="w-full h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700 hover:text-white"
             >
