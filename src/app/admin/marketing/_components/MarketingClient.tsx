@@ -550,19 +550,14 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
             {/* --- FB POSTS TAB --- */}
             {activeTab === "fb_posts" && (
                 <div className="bg-white rounded-xl border p-1">
-                    <PostsClient />
+                    <PostsClient platform="facebook" />
                 </div>
             )}
 
             {/* --- IG POSTS TAB --- */}
             {activeTab === "ig_posts" && (
                 <div className="bg-white rounded-xl border p-1">
-                    {/* Placeholder for now or separate client if needed */}
-                    <div className="p-12 text-center text-gray-500">
-                        <Instagram className="w-12 h-12 mx-auto mb-4 text-pink-500 opacity-50" />
-                        <h3 className="text-lg font-bold">Instagram Posts</h3>
-                        <p className="text-sm">Connect your Instagram account to see posts here.</p>
-                    </div>
+                    <PostsClient platform="instagram" />
                 </div>
             )}
 
