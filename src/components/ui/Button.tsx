@@ -3,7 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils/cn";
 
-type ButtonVariant = "primary" | "secondary" | "tertiary" | "ghost" | "danger";
+type ButtonVariant = "primary" | "secondary" | "tertiary" | "ghost" | "danger" | "indigo" | "indigo-light";
 type ButtonSize = "sm" | "md" | "lg";
 
 // Updated: "auto" now effectively behaves like "on"
@@ -39,7 +39,7 @@ function playClickTick() {
 
     // iOS / Safari sometimes starts suspended; resume within the user gesture
     if (ctx.state === "suspended") {
-      ctx.resume().catch(() => {});
+      ctx.resume().catch(() => { });
     }
 
     const o = ctx.createOscillator();
@@ -84,13 +84,17 @@ const variants: Record<ButtonVariant, string> = {
   primary:
     "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer",
   secondary:
-    "bg-white text-black border border-black/15 hover:bg-black/5 active:bg-black/10 cursor-pointer",
+    "bg-white text-black border border-black/15 hover:bg-gray-100 active:bg-gray-200 cursor-pointer",
   tertiary:
-    "bg-violet-50 text-violet-700 border border-violet-100 hover:bg-black/5 active:bg-black/10 cursor-pointer",
+    "bg-violet-50 text-violet-700 border border-violet-100 hover:bg-violet-100 active:bg-violet-200 cursor-pointer",
   ghost:
-    "bg-black text-white hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
+    "bg-transparent text-black hover:bg-black/5 active:bg-black/10 hover:text-black cursor-pointer",
   danger:
     "bg-red-600 text-white hover:bg-red-600/90 active:bg-red-700 shadow-sm cursor-pointer",
+  indigo:
+    "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm cursor-pointer",
+  "indigo-light":
+    "bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 active:bg-indigo-100 cursor-pointer",
 };
 
 const sizes: Record<ButtonSize, string> = {
@@ -158,8 +162,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           variants[variant],
           sizes[size],
           fullWidth && "w-full",
-          'p-4'
-,          className
+          className
         )}
         disabled={isDisabled}
         aria-disabled={isDisabled}
