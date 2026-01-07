@@ -10,6 +10,12 @@ import {
   RefreshCw,
   ChevronRight,
   Fingerprint,
+  ExternalLink,
+  MessageCircle,
+  Instagram as InstagramIcon,
+  Facebook as FacebookIcon,
+  Search,
+  Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
@@ -19,12 +25,39 @@ import { rankBadge } from "../_lib/utils";
 /* =========================
    Types
    ========================= */
-type TopItem = { key: string; count: number };
+type TopItem = { key: string; count: number; carId?: string };
 type TopLoc = { name: string; users: number; status?: string; trend?: string };
 
 /* =========================
    UI Components
    ========================= */
+
+function GlossyBadge({
+  value,
+  color = "indigo"
+}: {
+  value: number | string;
+  color?: "emerald" | "amber" | "sky" | "pink" | "indigo" | "rose" | "slate"
+}) {
+  const themes = {
+    emerald: "from-emerald-400 to-green-500 text-white border-emerald-300 shadow-emerald-100",
+    amber: "from-amber-400 to-orange-500 text-white border-amber-300 shadow-amber-100",
+    sky: "from-sky-400 to-blue-500 text-white border-sky-300 shadow-sky-100",
+    pink: "from-pink-400 to-rose-500 text-white border-pink-300 shadow-pink-100",
+    indigo: "from-indigo-400 to-purple-500 text-white border-indigo-300 shadow-indigo-100",
+    rose: "from-rose-400 to-red-500 text-white border-rose-300 shadow-rose-100",
+    slate: "from-slate-400 to-slate-600 text-white border-slate-300 shadow-slate-100",
+  };
+
+  const theme = themes[color] || themes.indigo;
+
+  return (
+    <div className={`relative px-2 py-0.5 rounded-lg border font-black text-[10px] bg-linear-to-br ${theme} shadow-xs overflow-hidden flex items-center justify-center min-w-[32px]`}>
+      <div className="absolute inset-x-0 top-0 h-1/2 bg-white/30 pointer-events-none" />
+      <span className="relative z-10 drop-shadow-md">{value}</span>
+    </div>
+  );
+}
 
 function MixRow({
   label,
@@ -53,16 +86,19 @@ function MixRow({
   return (
     <div className="group">
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
-        <span className="font-bold text-gray-700 group-hover:text-black transition-colors">
-          {label}
-        </span>
+        <div className="flex items-center gap-2">
+          <div className={`w-1.5 h-1.5 rounded-full bg-linear-to-br ${chosenGradient} shadow-xs ring-2 ring-white`} />
+          <span className="font-bold text-gray-700 group-hover:text-black transition-colors">
+            {label}
+          </span>
+        </div>
         <span className="font-mono text-[10px] text-gray-500">
           <span className="font-bold text-gray-900">{value}</span> ({pct}%)
         </span>
       </div>
-      <div className="h-2 rounded-full bg-gray-100/80 overflow-hidden shadow-inner">
+      <div className="h-2 rounded-full bg-gray-100/80 overflow-hidden shadow-inner border border-gray-200/50">
         <div
-          className={`h-full rounded-full bg-linear-to-r ${chosenGradient} shadow-sm transition-all duration-500 relative overflow-hidden`}
+          className={`h-full rounded-full bg-linear-to-r ${chosenGradient} shadow-sm transition-all duration-1000 relative overflow-hidden`}
           style={{ width: `${pct}%` }}
         >
           <div className="absolute inset-x-0 top-0 h-1/2 bg-white/30" />
@@ -76,10 +112,12 @@ function Card({
   title,
   children,
   icon: Icon,
+  headerExtras,
 }: {
   title: string;
   children: any;
   icon?: any;
+  headerExtras?: any;
 }) {
   return (
     <div className="rounded-2xl border border-gray-100 shadow-sm bg-white overflow-hidden flex flex-col h-full">
@@ -88,6 +126,7 @@ function Card({
           {Icon && <Icon className="w-3 h-3 text-gray-400" />}
           {title}
         </div>
+        {headerExtras && <div>{headerExtras}</div>}
       </div>
       <div className="p-4 flex-1 overflow-x-auto">{children}</div>
     </div>
@@ -98,28 +137,39 @@ function ListRow({
   rank,
   label,
   count,
+  color = "slate",
+  icon: CustomIcon
 }: {
   rank: number;
   label: string;
   count: number | string;
+  color?: "emerald" | "amber" | "sky" | "pink" | "indigo" | "rose" | "slate";
+  icon?: any;
 }) {
   return (
-    <div className="flex items-center justify-between text-sm group py-1">
+    <div className="flex items-center justify-between text-sm group py-1.5 transition-all hover:translate-x-1">
       <div className="flex items-center gap-3 min-w-0">
-        <span
-          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${rankBadge(
-            rank
-          )}`}
-        >
-          {rank + 1}
-        </span>
+        <div className="relative">
+          <span
+            className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 shadow-xs border ${rankBadge(
+              rank
+            )}`}
+          >
+            {rank + 1}
+          </span>
+          {CustomIcon && (
+            <div className="absolute -top-1.5 -right-1.5 bg-white p-0.5 rounded-full border border-gray-100 shadow-xs">
+              <CustomIcon className="w-2.5 h-2.5" />
+            </div>
+          )}
+        </div>
         <div className="min-w-0">
-          <div className="font-semibold text-gray-700 group-hover:text-black truncate max-w-[160px]">
+          <div className="font-bold text-gray-700 group-hover:text-indigo-600 truncate max-w-[160px] transition-colors">
             {label}
           </div>
         </div>
       </div>
-      <span className="font-bold text-gray-900 shrink-0">{count}</span>
+      <GlossyBadge value={count} color={color} />
     </div>
   );
 }
@@ -144,8 +194,8 @@ export default function MiniSiteAnalytics({
       TikTok: number;
       Direct: number;
     };
-    topModels: { key: string; count: number }[];
-    topPages: { key: string; count: number }[]; // Added
+    topModels: { key: string; count: number; carId?: string }[];
+    topPages: { key: string; name: string; count: number; carId?: string | null }[];
     topReferrers: { name: string; count: number }[];
     topISP: { name: string; count: number }[];
     topLocations: TopLoc[];
@@ -323,14 +373,29 @@ export default function MiniSiteAnalytics({
           </div>
         </Card>
 
-        <Card title="Top Models">
-          <div className="space-y-3">
-            {topModels.length ? (
-              topModels
-                .slice(0, 5)
-                .map((m, i) => (
-                  <ListRow key={m.key} rank={i} label={m.key} count={m.count} />
-                ))
+        <Card title="Top Models" icon={Zap}>
+          <div className="space-y-1">
+            {topModels?.length ? (
+              topModels.slice(0, 5).map((m, i) => (
+                <div key={m.key} className="group relative">
+                  <ListRow
+                    rank={i}
+                    label={m.key}
+                    count={m.count}
+                    color={i === 0 ? "emerald" : "indigo"}
+                  />
+                  <div className="absolute right-12 top-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <a
+                      href={m.carId ? `/admin/cars/${m.carId}` : "/admin/cars"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[9px] font-black text-indigo-500 hover:text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100"
+                    >
+                      EDIT
+                    </a>
+                  </div>
+                </div>
+              ))
             ) : (
               <div className="text-xs text-gray-400 italic py-4 text-center">
                 No model data
@@ -339,19 +404,31 @@ export default function MiniSiteAnalytics({
           </div>
         </Card>
 
-        <Card title="Top Referrers" icon={Globe}>
-          <div className="space-y-3">
-            {topReferrers.length ? (
-              topReferrers
-                .slice(0, 5)
-                .map((r, i) => (
+        <Card title="Referrers" icon={Globe}>
+          <div className="space-y-1">
+            {topReferrers?.length ? (
+              topReferrers.slice(0, 5).map((r, i) => {
+                let color: any = "slate";
+                let Icon: any = Globe;
+                const lower = r.name.toLowerCase();
+
+                if (lower.includes("whatsapp")) { color = "emerald"; Icon = MessageCircle; }
+                else if (lower.includes("instagram")) { color = "pink"; Icon = InstagramIcon; }
+                else if (lower.includes("facebook")) { color = "sky"; Icon = FacebookIcon; }
+                else if (lower.includes("google")) { color = "amber"; Icon = Search; }
+                else if (lower.includes("tiktok")) { color = "rose"; Icon = Activity; }
+
+                return (
                   <ListRow
                     key={r.name}
                     rank={i}
                     label={r.name}
                     count={r.count}
+                    color={color}
+                    icon={Icon}
                   />
-                ))
+                );
+              })
             ) : (
               <div className="text-xs text-gray-400 italic py-4 text-center">
                 No referrers
@@ -360,41 +437,53 @@ export default function MiniSiteAnalytics({
           </div>
         </Card>
 
-        <Card title="Top Locations" icon={MapPin}>
+        <Card
+          title="Top Pages"
+          icon={Activity}
+        // headerExtras={
+        //   <Link
+        //     href="/admin/cars"
+        //     className="text-[10px] font-black text-indigo-500 hover:text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100/50"
+        //   >
+        //     Cars Page →
+        //   </Link>
+        // }
+        >
           <div className="space-y-3">
-            {topLocations?.length ? (
-              topLocations.slice(0, 6).map((loc, i) => (
+            {topPages?.length ? (
+              topPages.slice(0, 6).map((p, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between text-sm group py-1"
+                  className="flex items-center justify-between text-sm group py-1 border-b border-gray-50 last:border-0 pb-1"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
                     <span
-                      className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${rankBadge(
+                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[8px] font-bold shrink-0 ${rankBadge(
                         i
                       )}`}
                     >
                       {i + 1}
                     </span>
                     <div className="min-w-0">
-                      <div className="font-semibold text-gray-700 truncate">
-                        {loc.name}
-                      </div>
+                      <a
+                        href={`https://jrvservices.co${p.key}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-semibold text-gray-700 truncate max-w-[120px] block hover:text-blue-600 transition-colors"
+                        title={`View live: ${p.key}`}
+                      >
+                        {p.name}
+                      </a>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-bold text-gray-900 block">
-                      {loc.users}
-                    </span>
-                    <span className="text-[9px] uppercase font-bold text-gray-400">
-                      Users
-                    </span>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="font-bold text-gray-900">{p.count}</span>
                   </div>
                 </div>
               ))
             ) : (
               <div className="text-xs text-gray-400 italic py-4 text-center">
-                No location data
+                No page data
               </div>
             )}
           </div>

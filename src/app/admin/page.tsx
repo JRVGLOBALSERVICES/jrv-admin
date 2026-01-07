@@ -4,8 +4,7 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { rangeDays6amKlUtc, currentBusinessDay } from "@/lib/klTimeWindow";
 // ...
 // 1. SITE ANALYTICS (KL 6am→6am business window)
-const now = new Date();
-const { start: windowStart, end: windowEnd } = currentBusinessDay(now);
+// Moved inside AdminDashboard
 import { differenceInDays, parseISO } from "date-fns";
 import UrgentActionsModal from "../admin/_components/UrgentActionsModal";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
@@ -25,8 +24,11 @@ import {
   cleanPart,
   getModelKey,
   getBrand,
+  classifyTrafficSource,
+  getIdentityKey,
+  getPageName,
   type SiteEventRow,
-} from "@/lib/site-events"; // assuming getBrand is also shared or I should move it?
+} from "@/lib/site-events";
 import type { Metadata } from "next";
 import { pageMetadata } from "@/lib/seo";
 
@@ -65,43 +67,6 @@ type AgreementLite = {
  * FIXED CLASSIFICATION LOGIC
  * Corrects Search Partners by checking for syndicatedsearch.goog domain
  */
-function classifyTrafficSource(referrer: string | null, url: string | null) {
-  const ref = (referrer || "").toLowerCase();
-  const u = (url || "").toLowerCase();
-
-  // 1. Google Ads / Paid (Check URL for click IDs)
-  if (
-    u.includes("gclid") ||
-    u.includes("gad_source") ||
-    u.includes("utm_medium=cpc") ||
-    u.includes("utm_medium=paid")
-  ) {
-    return "Google Ads";
-  }
-
-  // 2. Google Search Partners
-  // Adjusted to catch syndicatedsearch.goog specifically
-  if (
-    u.includes("syndicate") ||
-    u.includes("utm_medium=syndicate") ||
-    ref.includes("syndicatedsearch.goog")
-  ) {
-    return "Google Search Partners";
-  }
-
-  // 3. Social Media
-  if (ref.includes("facebook") || ref.includes("fb.com")) return "Facebook";
-  if (ref.includes("instagram") || ref.includes("ig.me")) return "Instagram";
-  if (ref.includes("tiktok")) return "TikTok";
-
-  // 4. Google Organic
-  if (ref.includes("google.com")) {
-    return "Google Organic";
-  }
-
-  // 5. Everything else is Direct
-  return "Direct";
-}
 
 
 const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -268,8 +233,38 @@ export default async function AdminDashboard({
     )
     .gte("created_at", windowStart.toISOString())
     .lt("created_at", windowEnd.toISOString())
+    .not("page_url", "ilike", "%localhost%")
     .order("created_at", { ascending: false })
     .limit(5000);
+
+  // FETCH cars for slug matching
+  const { data: carsData } = await supabase
+    .from("cars")
+    .select("id, catalog_rel:catalog_id ( make, model )")
+    .limit(1000);
+
+  // FETCH landing pages for dynamic naming
+  const { data: landingPagesData } = await supabase
+    .from("landing_pages")
+    .select("slug, title, menu_label")
+    .neq("status", "deleted");
+
+  const landingPageMap = new Map<string, string>();
+  (landingPagesData ?? []).forEach((p: any) => {
+    const safeSlug = cleanPagePath(p.slug).toLowerCase();
+    const label = p.menu_label || p.title || p.slug;
+    landingPageMap.set(safeSlug, label);
+  });
+
+  // Build car slug map
+  const carSlugMap = new Map<string, string>();
+  (carsData ?? []).forEach((c: any) => {
+    const cat = getCatalogItem(c?.catalog_rel);
+    if (cat?.make && cat?.model) {
+      const slug = `${cat.make.replace(/\s+/g, "-")}-${cat.model.replace(/\s+/g, "-")}`.toLowerCase();
+      if (!carSlugMap.has(slug)) carSlugMap.set(slug, c.id);
+    }
+  });
 
   const events = (siteEvents24h ?? []) as any[];
 
@@ -294,8 +289,13 @@ export default async function AdminDashboard({
   let phoneClicks24h = 0;
 
   for (const e of events) {
-    // Identity grouping: anon_id → session_id → ip
-    const userKey = e.anon_id || e.session_id || e.ip || "unknown";
+    // Filter out localhost
+    const url = String(e.page_url || e.page_path || "").toLowerCase();
+    const ref = String(e.referrer || "").toLowerCase();
+    if (url.includes("localhost") || ref.includes("localhost")) continue;
+
+    // Identity grouping: Use robust lib version
+    const userKey = getIdentityKey(e);
     const createdAt = new Date(e.created_at).getTime();
     const en = String(e.event_name || "").toLowerCase();
 
@@ -304,9 +304,21 @@ export default async function AdminDashboard({
     if (en === "phone_click") phoneClicks24h++;
 
     // Track Top Pages (Hit-based)
+    // Track Top Pages (Hit-based)
     if (en === "page_view") {
       const pp = cleanPagePath(e.page_path || e.page_url);
-      pathCounts.set(pp, (pathCounts.get(pp) || 0) + 1);
+      const ppLower = pp.toLowerCase();
+
+      // Fix: Walink URL detections
+      if (ppLower.includes("walink")) {
+        whatsappClicks24h++;
+        // Attribute to parent page so it shows in Top Pages
+        const parts = ppLower.split("walink");
+        const base = cleanPagePath(parts[0]);
+        pathCounts.set(base, (pathCounts.get(base) || 0) + 1);
+      } else {
+        pathCounts.set(pp, (pathCounts.get(pp) || 0) + 1);
+      }
     }
 
     // Grouping Logic
@@ -323,8 +335,7 @@ export default async function AdminDashboard({
       usersMap.set(userKey, {
         source: classifyTrafficSource(e.referrer, e.page_url),
         isp: cleanPart(e.isp) || "Unknown",
-        location: `${cleanPart(e.city) || "Unknown"}, ${cleanPart(e.region) || "Unknown"
-          }`,
+        location: `${cleanPart(e.city) || "Unknown"}, ${cleanPart(e.region) || "Unknown"}`,
         models: new Set(),
         isOnline: false,
         referrerHost: refHost,
@@ -332,6 +343,8 @@ export default async function AdminDashboard({
     }
 
     const userData = usersMap.get(userKey)!;
+    // Since processing latest -> earliest, overwriting gets the earliest touch
+    userData.source = classifyTrafficSource(e.referrer, e.page_url);
 
     // Determine if currently active
     if (createdAt >= activeThreshold.getTime()) userData.isOnline = true;
@@ -411,11 +424,47 @@ export default async function AdminDashboard({
     phoneClicks: phoneClicks24h,
     traffic: trafficCounts,
     topModels: Array.from(modelCounts.entries())
-      .map(([key, count]) => ({ key, count }))
+      .map(([key, count]) => {
+        let carId: string | null = null;
+        const normalizedM = key.toLowerCase();
+
+        for (const [slug, id] of Array.from(carSlugMap.entries())) {
+          // A model "Perodua Myvi G3" matches a slug "perodua-myvi-g3"
+          if (slug.replace(/-/g, ' ') === normalizedM) {
+            carId = id;
+            break;
+          }
+        }
+        return { key, count, carId: carId || undefined };
+      })
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),
     topPages: Array.from(pathCounts.entries())
-      .map(([key, count]) => ({ key, count }))
+      .map(([key, count]) => {
+        let name = getPageName(key);
+        const cleanKey = cleanPagePath(key).toLowerCase();
+
+        if (landingPageMap.has(cleanKey)) {
+          name = landingPageMap.get(cleanKey)!;
+        }
+
+        let carId: string | null = null;
+
+        const pNorm = key.split("?")[0].trim();
+        const carMatch = pNorm.match(/^\/cars\/([^/]+)\/?$/i);
+        if (carMatch) {
+          const slug = carMatch[1].toLowerCase();
+          carId = carSlugMap.get(slug) || null;
+        }
+
+        return { key, name, count, carId: carId || undefined };
+      })
+      .filter(p => {
+        // Remove "All Cars"
+        if (p.name === "All Cars") return false;
+        if (p.key.toLowerCase().includes("/cars/") && !p.key.toLowerCase().match(/\/cars\/[^/]/)) return false;
+        return true;
+      })
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),
     topReferrers: Array.from(referrerCounts.entries())

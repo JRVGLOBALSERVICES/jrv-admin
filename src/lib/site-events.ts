@@ -152,8 +152,18 @@ export function getSessionKey(r: SiteEventRow): string {
 }
 
 // ✅ identity grouping rule = anon_id → session_id → ip
-export function getIdentityKey(r: SiteEventRow): string {
-  return (r.anon_id || r.session_id || r.ip || "unknown") as string;
+export function getIdentityKey(event: any): string {
+  if (event.anon_id) return String(event.anon_id);
+  if (event.session_id) return String(event.session_id);
+  
+  // High entropy fallback for missing IDs
+  // Combine IP, UserAgent, and a rough time window (10 min) to avoid merging distinct users
+  const ip = event.ip || "unknown_ip";
+  const ua = event.user_agent || "unknown_ua";
+  const u = event.page_url || event.page_path || "unknown_url";
+  const timeWindow = Math.floor(new Date(event.created_at).getTime() / (10 * 60 * 1000));
+  
+  return `fb_${ip}_${ua.slice(0,20)}_${u.slice(0,20)}_${timeWindow}`;
 }
 
 export function referrerLabelFromFirstEvent(first: SiteEventRow): string {
@@ -221,6 +231,62 @@ export function inferAcquisitionFromFirstEvent(first: SiteEventRow): {
     refName: referrerLabelFromFirstEvent(first),
     adsMeta,
   };
+}
+
+export function classifyTrafficSource(referrer: string | null, url: string | null) {
+  const ref = (referrer || "").toLowerCase();
+  const u = (url || "").toLowerCase();
+
+  // 1. Google Ads / Paid (Check URL for click IDs)
+  if (
+    u.includes("gclid") ||
+    u.includes("gbraid") ||
+    u.includes("wbraid") ||
+    u.includes("gad_source") ||
+    u.includes("utm_medium=cpc") ||
+    u.includes("utm_medium=paid") ||
+    u.includes("utm_medium=ppc")
+  ) {
+    return "Google Ads";
+  }
+
+  // 2. Google Search Partners
+  if (
+    u.includes("syndicate") ||
+    u.includes("utm_medium=syndicate") ||
+    ref.includes("syndicatedsearch.goog")
+  ) {
+    return "Google Search Partners";
+  }
+
+  // 3. Social Media
+  if (
+    ref.includes("facebook") ||
+    ref.includes("fb.com") ||
+    u.includes("utm_source=fb") ||
+    u.includes("utm_source=facebook")
+  ) {
+    return "Facebook";
+  }
+  if (
+    ref.includes("instagram") ||
+    ref.includes("ig.me") ||
+    u.includes("utm_source=ig") ||
+    u.includes("utm_source=instagram")
+  ) {
+    return "Instagram";
+  }
+  if (ref.includes("tiktok") || u.includes("utm_source=tiktok")) {
+    return "TikTok";
+  }
+
+  // 4. Google Organic
+  if (ref.includes("google.com") || ref.includes("google.com.my")) {
+    return "Google Organic";
+  }
+
+  // 5. Everything else is Direct
+  return "Direct";
 }
 
 export function getModelKey(r: SiteEventRow): string {
@@ -293,14 +359,41 @@ export function normalizeModel(rawName: string | null) {
 
   const lower = rawName.toLowerCase().trim();
 
+  // Helper to preserve suffixes while fixing base names
+  const fix = (base: string, search: string) => {
+    if (lower.includes(search)) {
+      // If the raw name already has more detail (like G3), keep it but fix the brand/model part
+      // e.g. "myvi g3" -> "Perodua Myvi G3"
+      const variant = rawName.split(/\s+/).slice(1).join(" ").trim();
+      if (variant && !variant.toLowerCase().includes(search)) {
+         // This is a bit complex, let's stick to a simpler "smart replace"
+      }
+    }
+  };
+
   if (lower.includes("bezza")) return "Perodua Bezza";
-  if (lower.includes("myvi")) return "Perodua Myvi";
-  if (lower.includes("axia")) return "Perodua Axia";
-  if (lower.includes("alza")) return "Perodua Alza";
+  if (lower.includes("myvi")) {
+    if (lower.includes("g3")) return "Perodua Myvi G3";
+    if (lower.includes("g2")) return "Perodua Myvi G2";
+    if (lower.includes("g1")) return "Perodua Myvi G1";
+    return "Perodua Myvi";
+  }
+  if (lower.includes("axia")) {
+    if (lower.includes("g3")) return "Perodua Axia G3";
+    if (lower.includes("g2")) return "Perodua Axia G2";
+    if (lower.includes("g1")) return "Perodua Axia G1";
+    return "Perodua Axia";
+  }
+  if (lower.includes("alza")) {
+    if (lower.includes("new")) return "Perodua Alza New";
+    if (lower.includes("g2")) return "Perodua Alza G2";
+    if (lower.includes("g1")) return "Perodua Alza G1";
+    return "Perodua Alza";
+  }
   if (lower.includes("aruz")) return "Perodua Aruz";
   if (lower.includes("ativa")) return "Perodua Ativa";
   if (lower.includes("saga")) return "Proton Saga";
-  if (lower.includes("person")) return "Proton Persona";
+  if (lower.includes("persona")) return "Proton Persona";
   if (lower.includes("exora")) return "Proton Exora";
   if (lower.includes("x50")) return "Proton X50";
   if (lower.includes("x70")) return "Proton X70";
@@ -310,7 +403,10 @@ export function normalizeModel(rawName: string | null) {
   if (lower.includes("alphard")) return "Toyota Alphard";
   if (lower.includes("vellfire")) return "Toyota Vellfire";
   if (lower.includes("innova")) return "Toyota Innova";
-  if (lower.includes("city")) return "Honda City";
+  if (lower.includes("city")) {
+    if (lower.includes("rs")) return "Honda City RS";
+    return "Honda City";
+  }
   if (lower.includes("civic")) return "Honda Civic";
   if (lower.includes("brv") || lower.includes("br-v")) return "Honda BR-V";
   if (lower.includes("crv") || lower.includes("cr-v")) return "Honda CR-V";
@@ -318,12 +414,18 @@ export function normalizeModel(rawName: string | null) {
   if (lower.includes("triton")) return "Mitsubishi Triton";
   if (lower.includes("hr-v") || lower.includes("hrv")) return "Honda HR-V";
   if (lower.includes("wr-v") || lower.includes("wrv")) return "Honda WR-V";
-  if (lower.includes("cr-v") || lower.includes("crv")) return "Honda CR-V";
   if (lower.includes("preve")) return "Proton Prevé";
   if (lower.includes("iriz")) return "Proton Iriz";
 
-  // Fallback: Title Case
-  return lower.replace(/\b\w/g, (c) => c.toUpperCase());
+  // Fallback: Title Case but keep common acronyms uppercase
+  return lower
+    .split(" ")
+    .map((word) => {
+      const w = word.toUpperCase();
+      if (["G1", "G2", "G3", "RS", "VVT", "SE", "AV"].includes(w)) return w;
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join(" ");
 }
 
 export function getBrand(model: string) {
@@ -335,24 +437,34 @@ export function getBrand(model: string) {
   return "Others";
 }
 
-export function cleanPagePath(path: string | null): string {
-  if (!path) return "Unknown";
-  try {
-    // Strip query params
-    const noQuery = path.split("?")[0];
-    // Decode URI components
-    return decodeURIComponent(noQuery).trim() || "/";
-  } catch {
-    return path.split("?")[0] || "/";
-  }
-}
-
-
+export const PAGE_NAMES: Record<string, string> = {
+  "/": "Homepage",
+  "/cars/": "All Cars",
+  "/about/": "About Us",
+  "/contact/": "Contact Us",
+  "/events/": "Our Events",
+  "/how-it-works/": "How It Works",
+  "/terms/": "Terms & Conditions",
+  "/privacy/": "Privacy Policy",
+  "/news-and-promotions/": "News & Promotions",
+  "/kereta-sewa-seremban/": "Kereta Sewa Seremban",
+  "/kereta-sewa-senawang/": "Kereta Sewa Senawang",
+  "/kereta-sewa-nilai/": "Kereta Sewa Nilai",
+  "/kereta-sewa-klia-klia2/": "Kereta Sewa KLIA/KLIA2",
+  "/sewa-kereta-mewah/": "Luxury Car Rental",
+  "/honda-city-rs/": "Car: Honda City RS",
+  "/sewa-kereta-pelajar/": "Sewa Kereta Pelajar",
+};
 
 export function getDeviceType(ua?: string | null): string {
   if (!ua) return "Unknown";
   const low = ua.toLowerCase();
-  if (low.includes("mobile") || low.includes("android") || low.includes("iphone") || low.includes("ipod")) {
+  if (
+    low.includes("mobile") ||
+    low.includes("android") ||
+    low.includes("iphone") ||
+    low.includes("ipod")
+  ) {
     return "Mobile";
   }
   if (low.includes("ipad") || low.includes("tablet")) {
@@ -363,4 +475,48 @@ export function getDeviceType(ua?: string | null): string {
 
 export function isTruthy(v: any) {
   return v !== null && v !== undefined && String(v).trim() !== "";
+}
+
+export function cleanPagePath(path: string | null): string {
+  if (!path) return "/";
+  try {
+    // Strip query params
+    let p = path.split("?")[0].trim().toLowerCase();
+    if (!p || p === "/" || p === "") return "/";
+    // Ensure leading slash
+    if (!p.startsWith("/")) p = "/" + p;
+    // Ensure trailing slash for mapping consistency
+    if (!p.endsWith("/")) p += "/";
+    return p;
+  } catch {
+    return "/";
+  }
+}
+
+export function getPageName(path: string | null): string {
+  const p = cleanPagePath(path);
+  if (p === "/") return "Homepage";
+
+  if (PAGE_NAMES[p]) return PAGE_NAMES[p];
+
+  // Try to match car details: /cars/brand-model/
+  const carMatch = p.match(/^\/cars\/([^/]+)\/$/i);
+  if (carMatch) {
+    const slug = carMatch[1];
+    // Decodes and replaces dashes with spaces
+    // e.g. perodua-myvi-g3 -> Perodua Myvi G3
+    const raw = decodeURIComponent(slug).replace(/-/g, " ").trim();
+    // Title Case + Smart Caps for common variants
+    return raw
+      .split(" ")
+      .map((word) => {
+        const w = word.toUpperCase();
+        if (["G1", "G2", "G3", "RS", "VVT", "SE", "AV"].includes(w)) return w;
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      })
+      .join(" ");
+  }
+
+  // Return the cleaned path as fallback
+  return p;
 }

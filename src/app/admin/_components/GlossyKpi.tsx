@@ -9,6 +9,8 @@ export type KpiColor =
   | "pink"
   | "indigo"
   | "emerald"
+  | "amber"
+  | "rose"
   | "slate";
 
 interface GlossyKpiProps {
@@ -36,6 +38,8 @@ export default function GlossyKpi({
     orange: "from-amber-400 to-orange-600 shadow-orange-200",
     pink: "from-rose-400 to-red-600 shadow-rose-200",
     indigo: "from-indigo-400 to-blue-800 shadow-indigo-200",
+    amber: "from-amber-400 to-orange-500 shadow-amber-200",
+    rose: "from-rose-400 to-red-600 shadow-rose-200",
     slate: "from-slate-500 to-slate-700 shadow-slate-200",
   };
 
@@ -43,11 +47,10 @@ export default function GlossyKpi({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${selectedGradient} group transition-all duration-500 ${
-        pulse
+      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${selectedGradient} group transition-all duration-500 ${pulse
           ? "scale-105 animate-pulse ring-4 ring-emerald-400 shadow-2xl"
           : "hover:scale-[1.02]"
-      }`}
+        }`}
     >
       <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
       <div className="relative z-10 flex flex-col h-full justify-between">
