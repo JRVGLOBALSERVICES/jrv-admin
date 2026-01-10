@@ -20,6 +20,7 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "JRV Admin",
+    startupImage: "/logo2.png",
   },
 };
 

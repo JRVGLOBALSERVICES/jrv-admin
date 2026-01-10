@@ -80,7 +80,8 @@ export default async function EditAgreementPage({
       ic_url,
       creator_email,
       editor_email,
-      updated_at
+      updated_at,
+      eligible_for_event
     `
     )
     .eq("id", id)
@@ -116,6 +117,7 @@ export default async function EditAgreementPage({
         editor_email: (row as any).editor_email ?? null,
         updated_at: (row as any).updated_at ?? null,
         ic_url: row.ic_url ?? null, // ✅ PASSING IT DOWN
+        eligible_for_event: row.eligible_for_event ?? true,
       }}
     />
   );

@@ -118,7 +118,7 @@ export async function GET(req: Request) {
       .select(
         `
         id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
-        total_price, deposit_price, deposit_refunded, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id, ic_url,
+        total_price, deposit_price, deposit_refunded, eligible_for_event, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id, ic_url,
         cars:car_id ( id, plate_number, catalog_id, car_catalog:catalog_id ( make, model ) )
       `
       )
@@ -193,7 +193,7 @@ export async function GET(req: Request) {
     .select(
       `
       id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
-      total_price, deposit_price, deposit_refunded, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id,
+      total_price, deposit_price, deposit_refunded, eligible_for_event, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id,
       cars:car_id ( id, plate_number, car_catalog:catalog_id ( make, model ) )
     `,
       { count: "exact" }
@@ -475,6 +475,7 @@ export async function POST(req: Request) {
         editor_email: isEdit ? actorEmail : null,
         updated_at: new Date().toISOString(),
         ic_url: payload.ic_url || null,
+        eligible_for_event: payload.eligible_for_event ?? true,
       };
 
       if (!isEdit) {

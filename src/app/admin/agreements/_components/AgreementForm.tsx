@@ -55,6 +55,7 @@ type InitialAgreement = {
   deposit_price?: string | number;
   agreement_url?: string | null;
   ic_url?: string | null;
+  eligible_for_event?: boolean | null;
 };
 
 // --- HELPERS ---
@@ -134,8 +135,8 @@ function useSfx() {
   }, []);
   const play = (key: string) => {
     try {
-      audioRefs.current[key]?.play().catch(() => {});
-    } catch {}
+      audioRefs.current[key]?.play().catch(() => { });
+    } catch { }
   };
   return { play };
 }
@@ -367,13 +368,16 @@ export function AgreementForm({
     Boolean(initial?.deposit_refunded)
   );
   const [status, setStatus] = useState(initial?.status ?? "New");
+  const [eligibleForEvent, setEligibleForEvent] = useState(
+    initial?.eligible_for_event ?? true
+  );
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initial?.agreement_url ?? null
   );
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [totalTouched, setTotalTouched] = useState(false);
-  const [regeneratePdf, setRegeneratePdf] = useState(true);
+  // const [regeneratePdf, setRegeneratePdf] = useState(true); // DEPRECATED: Always true/auto handled
 
   const selectedCar = useMemo(
     () => cars.find((c) => c.id === carId) ?? null,
@@ -395,6 +399,8 @@ export function AgreementForm({
       if (initial.date_end) setEndDate(initial.date_end.slice(0, 10));
       if (initial.start_time) setStartTime(initial.start_time);
       if (initial.end_time) setEndTime(initial.end_time);
+      if (initial.eligible_for_event !== undefined)
+        setEligibleForEvent(initial.eligible_for_event ?? true);
     }
   }, [initial]);
 
@@ -407,7 +413,7 @@ export function AgreementForm({
         const res = await fetch(url.toString());
         const json = await res.json();
         if (json.rows) setCars(json.rows);
-      } catch {}
+      } catch { }
     })();
   }, [initial?.car_id]);
 
@@ -571,9 +577,8 @@ export function AgreementForm({
 
   const handleShare = async () => {
     const url = window.location.href;
-    const text = `JRV Admin: Review Agreement for ${
-      customerName || "Customer"
-    }`;
+    const text = `JRV Admin: Review Agreement for ${customerName || "Customer"
+      }`;
     if (navigator.share) {
       try {
         await navigator.share({ title: "JRV Admin", text: text, url: url });
@@ -630,7 +635,11 @@ export function AgreementForm({
       setBusy(false);
     }
   };
-  const executeSave = async (overrideStatus?: string) => {
+  const executeSave = async (opts?: {
+    overrideStatus?: string;
+    silent?: boolean;
+  }) => {
+    const { overrideStatus, silent } = opts || {};
     const v = validate();
     if (v) return setErr(v);
     setBusy(true);
@@ -654,7 +663,14 @@ export function AgreementForm({
         status: overrideStatus || status,
         agent_email: agentEmail,
         ic_url: url,
-        skip_pdf: !regeneratePdf && isEdit,
+        // If silent, skip PDF generation. Else, we typically regenerate if it's an edit to ensure data is fresh.
+        // Actually, user wants "Regenerate PDF" option gone.
+        // Let's assume:
+        // - Create: Generate PDF.
+        // - Edit (Save & WhatsApp): Generate PDF (to ensure link is fresh/correct).
+        // - Edit (Silent Save): SKIP PDF. (skip_pdf = true)
+        skip_pdf: silent,
+        eligible_for_event: eligibleForEvent,
       };
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
@@ -666,7 +682,8 @@ export function AgreementForm({
       const j = await res.json();
       if (!j.ok) throw new Error(j.error);
       play("ok");
-      if (j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
+      if (!silent && j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
+      // Redirect for both Silent (Save & Exit) and Normal (Save & WhatsApp)
       window.location.href = onDoneHref;
     } catch (e: any) {
       setErr(e.message);
@@ -690,7 +707,8 @@ export function AgreementForm({
     });
     window.location.href = onDoneHref;
   };
-  const handleRestoreClick = async () => await executeSave("Editted");
+  const handleRestoreClick = async () =>
+    await executeSave({ overrideStatus: "Editted" });
   const statusOptions = isSuperadmin
     ? ["New", "Editted", "Cancelled", "Deleted", "Completed"]
     : ["New", "Editted", "Cancelled"];
@@ -1162,17 +1180,19 @@ export function AgreementForm({
               </select>
             </div>
             <div className="flex flex-col w-full md:w-auto gap-3">
-              {isEdit && (
-                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 select-none cursor-pointer self-end">
+              <div className="flex flex-row flex-wrap gap-4 justify-end">
+                {/* Regenerate PDF removed as requested */}
+                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 select-none cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={regeneratePdf}
-                    onChange={(e) => setRegeneratePdf(e.target.checked)}
-                    className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                    checked={eligibleForEvent}
+                    onChange={(e) => setEligibleForEvent(e.target.checked)}
+                  // global css handles styling now, but we keep basic tailwind for override if needed
                   />
-                  <FileText className="w-3 h-3" /> Regenerate PDF & Link?
+                  <Sparkles className="w-3 h-3 text-yellow-500" /> Eligible for
+                  Event?
                 </label>
-              )}
+              </div>
               <div className="flex gap-3">
                 <Button
                   onClick={() => preview()}
@@ -1185,6 +1205,19 @@ export function AgreementForm({
                 >
                   Preview PDF
                 </Button>
+                {isEdit && (
+                  <Button
+                    onClick={() => executeSave({ silent: true })}
+                    loading={busy}
+                    variant="secondary"
+                    disabled={
+                      idStatus === "danger" || mobileStatus === "danger" || busy
+                    }
+                    className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm p-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Save Changes & Exit
+                  </Button>
+                )}
                 <Button
                   onClick={() => executeSave()}
                   loading={busy}

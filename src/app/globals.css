@@ -7,3 +7,11 @@ html, body {
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Global Form Elements */
+input[type="checkbox"] {
+  @apply h-5 w-5 rounded border-gray-300 text-[#f15828] focus:ring-[#f15828] transition-all cursor-pointer shadow-sm;
+}
+
+input[type="text"], input[type="number"], input[type="email"], input[type="date"], input[type="time"], select, textarea {
+  @apply transition-all duration-200;
+}
