@@ -28,7 +28,14 @@ export async function generateContentWithAI(title: string, slug: string, lang: "
     Generate landing page content for a page titled "${title}" with slug "${slug}".
     
     CRITICAL: The content MUST be written in the following language: ${lang === "en" ? "ENGLISH" : "BAHASA MELAYU"}.
+    CRITICAL: The content MUST be written in the following language: ${lang === "en" ? "ENGLISH" : "BAHASA MELAYU"}.
     ${lang === "en" ? "DO NOT use any Bahasa Melayu word. Every single word must be in English." : "Ensure natural, native Bahasa Melayu flow."}
+    
+    CRITICAL: When describing car models (e.g., Perodua Myvi, Honda City, etc.), ALWAYS assume the LATEST 2026 / CURRENT FACELIFT version.
+    - PRIORITIZE data and specifications from model years 2025-2026.
+    - Mention modern features (e.g. LED headlights, digital clusters, safety sense) associated with the newest models.
+    - DO NOT describe discontinued or old generations.
+    - Context Year: 2026.
     
     Return ONLY a JSON object with these keys:
     - slug: A URL-friendly slug (lowercase, hyphens only, e.g. "kereta-sewa-klia")
@@ -37,7 +44,7 @@ export async function generateContentWithAI(title: string, slug: string, lang: "
     - h1_title: Main H1 heading
     - intro_text: Short intro sentence
     - cta_text: Bold Call to Action button text
-    - cta_link: URL link (e.g. "/contact" or "#booking")
+    - cta_link: A WhatsApp URL in this strict format: "https://wa.me/60126565477?text=..." where the text parameter is a URI-encoded message relevant to the page slug/topic (e.g. "Hi JRV, I am interested in [Topic]").
     - body_content: An array of 5-8 detailed content blocks. 
       Each block must be one of:
       - { type: "h2" | "h3", content: "Heading text" }
@@ -46,7 +53,8 @@ export async function generateContentWithAI(title: string, slug: string, lang: "
       - { type: "features", items: [{ title: "Feature Title", description: "Short description" }, ...] }
       - { type: "image", url: "https://images.unsplash.com/photo-1503376780353-7e6692767b70", alt_text: "Descriptive alt" }
     - image_prompts: An array of 3 descriptive image generation prompts (in English). 
-      Prompts should follow this style: "High-quality realistic commercial automotive photography, [Car Make/Model, e.g. Silver Proton Saga] parked in [Specific Location context], professional 8k resolution, daytime lighting, clean reflections, JRV Services brand aesthetic". 
+      Prompts should follow this style: "High-quality realistic commercial automotive photography, [Car Make/Model, e.g. Silver Perodua Myvi (Latest 2026 Facelift)] with [Specific visual details like 'new aggressive front bumper' or 'sleek LED matrix headlights'] parked in [Specific Location context], professional 8k resolution, daytime lighting, clean reflections, JRV Services brand aesthetic". 
+      IMPORTANT: You MUST include 2-3 specific visual adjectives describing the 2025-2026 facelift changes (e.g. "large grille", "connected tail lights") to guide the image generator.
       AVOID abstract art; focus on realistic car-centric scenes.
     
     Content requirements:
@@ -55,7 +63,7 @@ export async function generateContentWithAI(title: string, slug: string, lang: "
     - Style: High-converting, professional, and trustworthy.
   `;
 
-  const modelsToTry = ["gemini-2.0-flash", "gemini-flash-latest", "gemini-pro-latest"];
+  const modelsToTry = ["gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.5-flash"];
   let lastError = "";
 
   for (const modelName of modelsToTry) {
@@ -120,40 +128,55 @@ export async function generateImageWithGemini(prompt: string) {
     throw new Error("Cloudinary is not configured.");
   }
 
-  // Use Imagen 4.0 which we verified is available for this key
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+  // Use gemini-3-pro-image-preview with Grounding
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: {
-          sampleCount: 1,
-          aspectRatio: "16:9",
-          // Note: Imagen 4 might have different parameter keys, sticking to basics that work
-        },
-      }),
+    const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }], // Enable Grounding
+        generationConfig: {
+            responseModalities: ["IMAGE"], // camelCase as per docs
+            imageConfig: {
+                aspectRatio: "16:9",
+                imageSize: "2K" // Docs say 4K is an option but let's stick to 2K for stability unless sure user has access. Docs said 2K in one place, 4K in another. Let's try 2K first to be safe, or 4K if we feel bold. User has 'Paid API key'... let's try 2K.
+            }
+        }
+    };
+    
+    // Debug log to confirm we are sending the tool
+    // console.log("Sending Gemini Image Request with Grounding:", JSON.stringify(payload, null, 2));
+
+    const response2 = await fetch(url, {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify(payload)
     });
 
-    const result = await response.json();
+    const result = await response2.json();
 
     if (result.error) {
       throw new Error(`Gemini Image Error: ${result.error.message}`);
     }
+    
+    // Structure: candidates[0].content.parts[0].inlineData (camelCase)
+    const part = result.candidates?.[0]?.content?.parts?.[0];
+    const inlineData = part?.inlineData || part?.inline_data;
 
-    const prediction = result.predictions?.[0];
-    const base64Image = prediction?.bytesBase64Encoded;
-    const mimeType = prediction?.mimeType || "image/png";
+    if (!part || !inlineData) {
+        throw new Error("Gemini did not return image data. Check prompt or safety settings.");
+    }
+
+    const base64Image = inlineData.data;
+    const mimeType = inlineData.mime_type || "image/jpeg";
 
     if (!base64Image) {
-      throw new Error("Gemini did not return any image data. Please try a different prompt or check your safety settings.");
+      throw new Error("Gemini returned empty image data.");
     }
 
     // Upload to Cloudinary
     const dataUrl = `data:${mimeType};base64,${base64Image}`;
-    const uniqueId = `imagen4_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const uniqueId = `gemini3pro_${Date.now()}_${Math.random().toString(16).slice(2)}`;
 
     const uploadResult = await cloudinary.uploader.upload(dataUrl, {
       folder: "jrv/landing-pages",

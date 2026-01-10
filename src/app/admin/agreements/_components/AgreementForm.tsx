@@ -58,6 +58,37 @@ type InitialAgreement = {
   eligible_for_event?: boolean | null;
 };
 
+function Toggle({
+  label,
+  value,
+  onChange,
+}: {
+  label: React.ReactNode;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 bg-white cursor-pointer hover:bg-gray-50 transition-colors">
+      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <button
+        type="button"
+        onClick={() => onChange(!value)}
+        className={[
+          "h-6 w-11 rounded-full border transition-colors relative",
+          value ? "bg-black border-black" : "bg-gray-200 border-gray-300",
+        ].join(" ")}
+      >
+        <span
+          className={[
+            "absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full shadow transition-all",
+            value ? "left-6 bg-white" : "left-1 bg-white",
+          ].join(" ")}
+        />
+      </button>
+    </label>
+  );
+}
+
 // --- HELPERS ---
 function toMoney(v: any) {
   const n = Number(v ?? 0);
@@ -865,28 +896,7 @@ export function AgreementForm({
             <Share2 className="w-5 h-5" />
           </button>
         </div>
-        <div className="flex gap-2 w-full md:w-auto">
-          {isEdit &&
-            isSuperadmin &&
-            (isDeleted ? (
-              <Button
-                onClick={handleRestoreClick}
-                loading={busy}
-                variant="secondary"
-                className="flex-1 md:flex-none bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
-              >
-                Restore
-              </Button>
-            ) : (
-              <Button
-                onClick={handleDeleteClick}
-                loading={busy}
-                variant="secondary"
-                className="flex-1 md:flex-none text-red-600 border-red-200 hover:bg-red-50 shadow-sm"
-              >
-                {deleteStage === "confirm" ? "Confirm?" : "Delete"}
-              </Button>
-            ))}
+        <div className="flex gap-2 w-full md:w-auto justify-between">
           <Button
             onClick={handleDeleteClick}
             loading={busy}
@@ -897,6 +907,27 @@ export function AgreementForm({
               <ArrowLeft className="w-4 h-4" /> Cancel & Exit
             </Link>
           </Button>
+          {isEdit &&
+            isSuperadmin &&
+            (isDeleted ? (
+              <Button
+                onClick={handleRestoreClick}
+                loading={busy}
+                variant="secondary"
+                className="p-6 flex-1 md:flex-none bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm"
+              >
+                Restore
+              </Button>
+            ) : (
+              <Button
+                onClick={handleDeleteClick}
+                loading={busy}
+                variant="secondary"
+                className="p-6 flex text-red-600 border-red-200 hover:bg-red-50 shadow-sm"
+              >
+                {deleteStage === "confirm" ? "Confirm?" : "Delete"}
+              </Button>
+            ))}
         </div>
       </div>
 
@@ -1182,16 +1213,17 @@ export function AgreementForm({
             <div className="flex flex-col w-full md:w-auto gap-3">
               <div className="flex flex-row flex-wrap gap-4 justify-end">
                 {/* Regenerate PDF removed as requested */}
-                <label className="flex items-center gap-2 text-xs font-bold text-gray-500 select-none cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={eligibleForEvent}
-                    onChange={(e) => setEligibleForEvent(e.target.checked)}
-                  // global css handles styling now, but we keep basic tailwind for override if needed
-                  />
-                  <Sparkles className="w-3 h-3 text-yellow-500" /> Eligible for
-                  Event?
-                </label>
+                {/* Regenerate PDF removed as requested */}
+                <Toggle
+                  label={
+                    <span className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-yellow-500" />
+                      Eligible for Event?
+                    </span>
+                  }
+                  value={!!eligibleForEvent}
+                  onChange={setEligibleForEvent}
+                />
               </div>
               <div className="flex gap-3">
                 <Button
@@ -1201,7 +1233,7 @@ export function AgreementForm({
                   disabled={
                     idStatus === "danger" || mobileStatus === "danger" || busy
                   }
-                  className="flex-1 md:flex-none shadow-sm p-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 md:flex-none shadow-sm p-8 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Preview PDF
                 </Button>
@@ -1213,7 +1245,7 @@ export function AgreementForm({
                     disabled={
                       idStatus === "danger" || mobileStatus === "danger" || busy
                     }
-                    className="flex-1 md:flex-none bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm p-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="p-8 flex-1 md:flex-none bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Save Changes & Exit
                   </Button>
@@ -1224,7 +1256,7 @@ export function AgreementForm({
                   disabled={
                     idStatus === "danger" || mobileStatus === "danger" || busy
                   }
-                  className="p-6 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                  className="p-8 flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 shadow-lg shadow-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
                 >
                   Save & WhatsApp
                 </Button>

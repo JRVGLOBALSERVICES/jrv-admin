@@ -18,8 +18,8 @@ export async function generateAdCopy(context: any, prompt: string) {
     throw new Error("Missing GEMINI_API_KEY");
   }
 
-  // Using gemini-2.0-flash as referenced in landing page generation working logic
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  // Using gemini-2.5-pro for better knowledge/reasoning
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
   const systemPrompt = `
     You are an expert marketing copywriter for a Car Rental service in Malaysia (JRV Services).
@@ -55,7 +55,7 @@ export async function generateAdCopy(context: any, prompt: string) {
 
 export async function generateImagePrompt(context: any, userPrompt: string) {
     // Use Gemini to refine the image prompt based on car details
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
     const prompt = `
       Refine this image generation prompt for a car rental ad.
       Context: ${JSON.stringify(context)}
@@ -63,6 +63,11 @@ export async function generateImagePrompt(context: any, userPrompt: string) {
       
       CRITICAL INSTRUCTION:
       The output prompt must create a PHOTOREALISTIC, CINEMATIC image.
+      You MUST explicitly describe the specific visual design cues of the 2025-2026 Facelift model to ensure the image generator draws the correct version.
+      - Describe the shape of the headlights (e.g., "sharp slim LEDs").
+      - Describe the grille (e.g., "large diamond pattern grille" or "frameless grille").
+      - Describe the body shape if it has changed (e.g., "fastback silhouette").
+      - INDEED, use the term "Latest 2026 Facelift", but ALSO describe it.
       It must NOT include any text, letters, words, logos, or UI elements inside the image itself.
       Focus on the visual scene, lighting, composition, and the car.
       Example good output: "A shiny white Perodua Axia driving along a scenic Malaysian coastal road during golden hour, ultra-realistic, 8k resolution, cinematic lighting."
@@ -81,29 +86,50 @@ export async function generateRealImage(prompt: string, count: number = 1) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY is not configured.");
 
-  // Use Imagen 4.0 matching the working configuration
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict?key=${apiKey}`;
+  // Use gemini-3-pro-image-preview with Grounding
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`;
 
   try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        instances: [{ prompt }],
-        parameters: { sampleCount: count, aspectRatio: "16:9" },
-      }),
+    const promises = Array.from({ length: count }).map(async () => {
+        const payload = {
+            contents: [{ parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }], // Enable Grounding
+            generationConfig: {
+                responseModalities: ["IMAGE"], // camelCase as per docs
+                imageConfig: {
+                    aspectRatio: "16:9",
+                    imageSize: "2K"
+                }
+            }
+        };
+
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const result = await response.json();
+        if (result.error) throw new Error(`Gemini Image Error: ${result.error.message}`);
+        
+        // Response uses "inlineData" (camelCase)
+        const part = result.candidates?.[0]?.content?.parts?.[0];
+        const inlineData = part?.inlineData || part?.inline_data;
+
+        if (!inlineData) {
+             console.error("Missing inlineData. Parts:", result.candidates?.[0]?.content?.parts);
+             throw new Error("No image data.");
+        }
+        
+        return inlineData;
     });
 
-    const result = await response.json();
-    if (result.error) throw new Error(`Gemini Image Error: ${result.error.message}`);
-
-    const predictions = result.predictions || [];
-    if (predictions.length === 0) throw new Error("No image data returned.");
+    const results = await Promise.all(promises);
 
     // Upload all to Cloudinary
-    const uploadPromises = predictions.map(async (p: any) => {
-        const base64Image = p.bytesBase64Encoded;
-        const mimeType = p.mimeType || "image/png";
+    const uploadPromises = results.map(async (inlineData: any) => {
+        const base64Image = inlineData.data;
+        const mimeType = inlineData.mime_type || "image/jpeg";
         const dataUrl = `data:${mimeType};base64,${base64Image}`;
         
         const uploadResult = await cloudinary.uploader.upload(dataUrl, {
