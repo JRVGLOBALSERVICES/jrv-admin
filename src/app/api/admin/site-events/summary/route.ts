@@ -57,8 +57,36 @@ const KNOWN_EVENTS = [
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const from = url.searchParams.get("from") || "";
-    const to = url.searchParams.get("to") || "";
+    let from = url.searchParams.get("from") || "";
+    let to = url.searchParams.get("to") || "";
+
+    // 🚀 STRENGTHEN TIMEZONES: Ensure from/to are KL 06:00 boundaries
+    // If the string is just "2026-01-12", convert it.
+    // If it has "T06:00:00+08:00", it's already perfect from SiteEventsFilters.
+    const normalizeToKl6amStr = (val: string, isEnd = false) => {
+      if (!val) return val;
+      if (val.includes("T")) {
+        // trust specific ISO strings with offsets
+        return val;
+      }
+      // If it's a date only "2026-01-12"
+      if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+        const d = new Date(val); // will be UTC midnight
+        // If it's the end date, we actually want NEXT day 06:00 (exclusive boundary)
+        if (isEnd) {
+          const next = new Date(d.getTime() + 24 * 60 * 60 * 1000);
+          const y = next.getUTCFullYear();
+          const m = String(next.getUTCMonth() + 1).padStart(2, "0");
+          const day = String(next.getUTCDate()).padStart(2, "0");
+          return `${y}-${m}-${day}T06:00:00+08:00`;
+        }
+        return `${val}T06:00:00+08:00`;
+      }
+      return val;
+    };
+
+    from = normalizeToKl6amStr(from);
+    to = normalizeToKl6amStr(to, true);
 
     const event = (url.searchParams.get("event") || "").trim();
     const traffic = (url.searchParams.get("traffic") || "").trim();
@@ -75,33 +103,50 @@ export async function GET(req: Request) {
     }
 
     // Parallel fetch:
-    // 1. Full data for analysis (limit 20k)
-    // 2. Event names only for dropdown (limit 50k to ensure we capture all types)
-    // 3. Cars for slug matching
     // 4. Realtime Active Users independent of range
     const activeThresholdDate = new Date(Date.now() - 5 * 60 * 1000);
 
+    // 🚀 DEEP DATA FETCHING: Bypassing Supabase 1,000-row limit
+    async function fetchAllInWindow(table: string, filter: any) {
+      let all: any[] = [];
+      let page = 0;
+      const PAGE_SIZE = 1000;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabaseAdmin
+          .from(table)
+          .select("*")
+          .gte("created_at", from)
+          .lte("created_at", to)
+          .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+
+        if (table === "site_events") {
+          query = query
+            .not("page_url", "ilike", "%localhost%")
+            .neq("event_name", "heartbeat");
+          if (filter?.gpsOnly) {
+            query = query.not("exact_address", "is", null);
+          }
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+
+        all = [...all, ...data];
+        if (data.length < PAGE_SIZE) hasMore = false;
+        page++;
+        // Safety cap at 50k for now to avoid heap issues, though 20k is total records
+        if (all.length > 50000) break;
+      }
+      return { data: all };
+    }
+
     const [mainRes, gpsRes, carsRes, landingPagesRes, realtimeRes] =
       await Promise.all([
-        supabaseAdmin
-          .from("site_events")
-          .select("*")
-          .gte("created_at", from)
-          .lt("created_at", to)
-          .not("page_url", "ilike", "%localhost%")
-          .neq("event_name", "heartbeat")
-          .order("created_at", { ascending: false })
-          .limit(100000),
-
-        supabaseAdmin
-          .from("site_events")
-          .select("*")
-          .gte("created_at", from)
-          .lt("created_at", to)
-          .not("page_url", "ilike", "%localhost%")
-          .not("exact_address", "is", null)
-          .order("created_at", { ascending: false })
-          .limit(20000),
+        fetchAllInWindow("site_events", {}),
+        fetchAllInWindow("site_events", { gpsOnly: true }),
 
         supabaseAdmin
           .from("cars")
@@ -141,7 +186,7 @@ export async function GET(req: Request) {
       realtimeActiveUsers = uniqueRealtime.size;
     }
 
-    if (mainRes.error) throw mainRes.error;
+    // Errors are already thrown inside the fetch helpers or Promise.all if anything rejects
 
     // Cache car slugs for mapping
     const carSlugMap = new Map<string, string>();
@@ -186,8 +231,8 @@ export async function GET(req: Request) {
       if (r.event_name) allEventNames.add(String(r.event_name));
     });
 
-    // Build per-identity sessions (anon_id → session_id → ip)
-    const byIdentity = new Map<string, any[]>();
+    // Build per-identity-day grouping
+    const byIdentityDay = new Map<string, any[]>();
     const anonSet = new Set<string>();
     const sessionSet = new Set<string>();
     const ipSet = new Set<string>();
@@ -201,11 +246,12 @@ export async function GET(req: Request) {
     });
 
     for (const r of filteredBase) {
-      const k = getIdentityKey(r);
-      if (!byIdentity.has(k)) byIdentity.set(k, []);
-      byIdentity.get(k)!.push(r);
+      // 🚀 FORCE ADDITIVE: Identity + Business Day
+      const idKey = getIdentityKey(r); // Already contains _bizDay from lib/site-events
 
-      // Populate sets for uniqueness
+      if (!byIdentityDay.has(idKey)) byIdentityDay.set(idKey, []);
+      byIdentityDay.get(idKey)!.push(r);
+
       if (isTruthy(r.anon_id)) anonSet.add(String(r.anon_id));
       if (isTruthy(r.session_id)) sessionSet.add(String(r.session_id));
       if (isTruthy(r.ip)) ipSet.add(String(r.ip));
@@ -235,31 +281,35 @@ export async function GET(req: Request) {
 
     // GPS Data
     const gpsEvents: any[] = [];
-    const activeThreshold = new Date(Date.now() - 5 * 60 * 1000).getTime();
-    let activeUsers = realtimeActiveUsers; // Override with Independent Realtime Count
+    let activeUsers = realtimeActiveUsers;
 
     let pageViews = 0;
     let whatsappClicks = 0;
     let phoneClicks = 0;
 
-    const identities = Array.from(byIdentity.keys());
+    const identities = Array.from(byIdentityDay.keys());
 
     // 1. Check for Returning Users efficiently (MOVED AFTER populating anonSet)
-    const anonIdsToCheck = Array.from(anonSet)
-      .filter((id) => id && id !== "null")
-      .slice(0, 100);
+    const anonIdsToCheck = Array.from(anonSet).filter(
+      (id) => id && id !== "null"
+    );
     const returningAnonIds = new Set<string>();
 
     if (anonIdsToCheck.length > 0) {
-      const { data: returningData } = await supabaseAdmin
-        .from("site_events")
-        .select("anon_id")
-        .in("anon_id", anonIdsToCheck)
-        .lt("created_at", from);
+      // Batch in 1000s to avoid URL length or parameter limits
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < anonIdsToCheck.length; i += BATCH_SIZE) {
+        const batch = anonIdsToCheck.slice(i, i + BATCH_SIZE);
+        const { data: returningData } = await supabaseAdmin
+          .from("site_events")
+          .select("anon_id")
+          .in("anon_id", batch)
+          .lt("created_at", from);
 
-      (returningData || []).forEach((r: any) =>
-        returningAnonIds.add(r.anon_id)
-      );
+        (returningData || []).forEach((r: any) =>
+          returningAnonIds.add(String(r.anon_id))
+        );
+      }
     }
 
     const sessions: any[] = [];
@@ -267,9 +317,9 @@ export async function GET(req: Request) {
 
     // Identity-based aggregation
     for (const identity of identities) {
-      const fullSession = byIdentity.get(identity) || [];
+      const fullSession = byIdentityDay.get(identity) || [];
       fullSession.sort(
-        (a, b) =>
+        (a: any, b: any) =>
           new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
 
@@ -388,63 +438,87 @@ export async function GET(req: Request) {
         }
       }
 
-      // 2. Apply Filters
-      if (traffic) {
-        const t = inf.traffic || "direct";
-        const want = traffic.toLowerCase();
-        if (want === "paid" && t !== "paid") continue;
-        if (want === "organic" && t !== "organic") continue;
-        if (want === "direct" && t !== "direct") continue;
-        if (want === "referral" && t !== "referral") continue;
-      }
+      // 2. Identify if session matches the filters
+      const sessionMatches = (() => {
+        if (traffic) {
+          const t = (inf.traffic || "direct").toLowerCase();
+          const want = traffic.toLowerCase();
+          if (want === "paid" && t !== "paid") return false;
+          if (want === "organic" && t !== "organic") return false;
+          if (want === "direct" && t !== "direct") return false;
+          if (want === "referral" && t !== "referral") return false;
+        }
 
-      const matchingEvs = fullSession.filter((r) => {
+        // Check if ANY event in the session matches the specific filters
+        return fullSession.some((r: any) => {
+          if (event) {
+            const wanted = event.split(",").map((s) => s.trim().toLowerCase());
+            const en = String(r.event_name || "").toLowerCase();
+            const url = String(r.page_url || r.page_path || "").toLowerCase();
+            if (
+              wanted.includes("whatsapp_click") &&
+              en === "page_view" &&
+              url.includes("walink")
+            ) {
+              // matched
+            } else if (!wanted.includes(en)) return false;
+          }
+          if (device) {
+            const d = getDeviceType(r.user_agent);
+            if (d.toLowerCase() !== device.toLowerCase()) return false;
+          }
+          if (path) {
+            const pp = String(r.page_path || "");
+            const pu = String(r.page_url || "");
+            if (!pp.includes(path) && !pu.includes(path)) return false;
+          }
+          if (model) {
+            const mk = getModelKey(r);
+            const norm = normalizeModel(mk);
+            if (
+              norm !== model &&
+              !norm.toLowerCase().includes(model.toLowerCase())
+            )
+              return false;
+          }
+          if (plate) {
+            const p = safeParseProps(r.props);
+            if (p?.plate !== plate && p?.plate_number !== plate) return false;
+          }
+          return true;
+        });
+      })();
+
+      if (!sessionMatches) continue;
+
+      // For Lists (Sessions/GPS), we want the WHOLE session context for matching users
+      const displayEvs = fullSession;
+
+      // For Stats (Top Pages/Events), we still only count events that match the filter
+      const statEvs = fullSession.filter((r: any) => {
         if (event) {
           const wanted = event.split(",").map((s) => s.trim().toLowerCase());
           const en = String(r.event_name || "").toLowerCase();
           const url = String(r.page_url || r.page_path || "").toLowerCase();
-
-          // Fix: If explicitly filtering for whatsapp_click, allow page_views that are actually walinks
           if (
             wanted.includes("whatsapp_click") &&
             en === "page_view" &&
             url.includes("walink")
           ) {
-            return true;
-          }
-
-          if (!wanted.includes(en)) return false;
-        }
-        if (device) {
-          const d = getDeviceType(r.user_agent);
-          const want = device.toLowerCase();
-          if (d.toLowerCase() !== want) return false;
+            // matched
+          } else if (!wanted.includes(en)) return false;
         }
         if (path) {
           const pp = String(r.page_path || "");
           const pu = String(r.page_url || "");
           if (!pp.includes(path) && !pu.includes(path)) return false;
         }
-        if (model) {
-          const mk = getModelKey(r);
-          const norm = normalizeModel(mk);
-          // Allow sub-model matching e.g. "Perodua Myvi" matches "Perodua Myvi G3"
-          if (
-            norm !== model &&
-            !norm.toLowerCase().includes(model.toLowerCase())
-          )
-            return false;
-        }
-        if (plate) {
-          const p = safeParseProps(r.props);
-          // Most events don't have plate, so this effectively filters to only plate-related events
-          if (p?.plate !== plate && p?.plate_number !== plate) return false;
-        }
+        // Device/Model/Plate filters are session-level, so if the session matched, all its events are valid for those filters
         return true;
       });
 
-      if (matchingEvs.length === 0) continue;
-      const evs = matchingEvs;
+      const evs = displayEvs;
+      const filteredForStats = statEvs;
 
       let isOnline = false;
       const userModels = new Set<string>();
@@ -468,12 +542,12 @@ export async function GET(req: Request) {
       }
 
       const userAnonIds = Array.from(
-        fullSession.map((s) => s.anon_id).filter(isTruthy)
+        fullSession.map((s: any) => s.anon_id).filter(isTruthy)
       );
       // if (isOnline) activeUsers++; // Handled by realtime query
 
       const isReturning = Array.from(userAnonIds).some((id) =>
-        returningAnonIds.has(id)
+        returningAnonIds.has(String(id))
       );
       if (isReturning) returningUsers++;
 
@@ -511,14 +585,14 @@ export async function GET(req: Request) {
       prev.count += 1;
       if (campaignId) prev.id = campaignId;
 
-      const hasConversion = evs.some((r) => {
+      const hasConversion = evs.some((r: any) => {
         const en = String(r.event_name || "").toLowerCase();
         return en === "whatsapp_click" || en === "phone_click";
       });
       if (hasConversion) prev.conversions += 1;
       campaignCounts.set(campaign, prev);
 
-      const firstIsp = evs.find((r) => isTruthy(r.isp))?.isp;
+      const firstIsp = evs.find((r: any) => isTruthy(r.isp))?.isp;
       if (firstIsp) {
         ispCounts.set(
           String(firstIsp),
@@ -527,14 +601,31 @@ export async function GET(req: Request) {
       }
 
       const parseAddress = (addr: string) => {
-        // Pattern: Postcode City, State, Country
-        // e.g. "70300 Seremban, Negeri Sembilan, Malaysia"
-        const match = addr.match(/\b\d{5}\s+([^,]+),\s*([^,]+)/);
-        if (match) {
+        if (!addr) return null;
+        // 1. Clean Plus Codes (e.g. PXRH+Q4 or 3P24+2F)
+        const clean = addr.replace(/[A-Z0-9]{4,8}\+[A-Z0-9]{2,}\b/g, "").trim();
+
+        // 2. Try Postcode pattern: "70300 Seremban, Negeri Sembilan"
+        const postcodeMatch = clean.match(/\b\d{5}\s+([^,]+),\s*([^,]+)/);
+        if (postcodeMatch) {
           return {
-            city: match[1].trim(),
-            region: match[2].trim(),
+            city: postcodeMatch[1].trim(),
+            region: postcodeMatch[2].trim(),
           };
+        }
+
+        // 3. Fallback: Split by comma and pick parts
+        const parts = clean
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean);
+        if (parts.length >= 2) {
+          const len = parts.length;
+          // Strategy: Last part is Country (Malaysia), 2nd to last is State, 3rd to last is City
+          // If 2 parts: City, State
+          // If 3+ parts: ...City, State, Country
+          if (len === 2) return { city: parts[0], region: parts[1] };
+          return { city: parts[len - 3], region: parts[len - 2] };
         }
         return null;
       };
@@ -546,8 +637,8 @@ export async function GET(req: Request) {
           (r) => isTruthy(r.city) || isTruthy(r.region) || isTruthy(r.country)
         );
 
-      let finalCity = cleanPart(locRow?.city);
-      let finalRegion = cleanPart(locRow?.region);
+      let finalCity = "";
+      let finalRegion = "";
 
       let lastSeenAddr = "";
       for (const e of evs) {
@@ -557,6 +648,9 @@ export async function GET(req: Request) {
           lastSeenAddr = e.exact_address!;
 
           const parsed = parseAddress(e.exact_address!);
+          if (parsed?.city) finalCity = parsed.city;
+          if (parsed?.region) finalRegion = parsed.region;
+
           gpsEvents.push({
             created_at: e.created_at,
             parsed: {
@@ -569,11 +663,24 @@ export async function GET(req: Request) {
         }
       }
 
+      // If no GPS data, fall back to IP-based location
+      if (!finalCity || !finalRegion) {
+        const locRow = evs
+          .slice()
+          .reverse()
+          .find(
+            (r: any) =>
+              isTruthy(r.city) || isTruthy(r.region) || isTruthy(r.country)
+          );
+        if (!finalCity) finalCity = cleanPart(locRow?.city);
+        if (!finalRegion) finalRegion = cleanPart(locRow?.region);
+      }
+
       const loc =
         [finalCity, finalRegion].filter(Boolean).join(", ") || "Unknown";
       locationCounts.set(loc, (locationCounts.get(loc) || 0) + 1);
 
-      for (const r of evs) {
+      for (const r of filteredForStats) {
         const en = String(r.event_name || "").toLowerCase();
 
         eventCounts.set(
@@ -670,7 +777,7 @@ export async function GET(req: Request) {
           if (b.count !== a.count) return b.count - a.count;
           return a.key.localeCompare(b.key);
         }),
-      topPages: toList(pathCounts, 12, "key")
+      topPages: toList(pathCounts, 100, "key")
         .map((p) => {
           // Dynamic Naming Logic
           const cleanKey = cleanPagePath(p.key).toLowerCase();
@@ -693,7 +800,7 @@ export async function GET(req: Request) {
           if (p.name === "All Cars") return false;
           return true;
         }),
-      topModels: toList(modelCounts, 12, "key").map((m) => {
+      topModels: toList(modelCounts, 50, "key").map((m) => {
         // Try to find a representative carId for this model
         // We'll search for the first car that matches this normalized model string
         let carId: string | null = null;
@@ -712,18 +819,18 @@ export async function GET(req: Request) {
           carId,
         };
       }),
-      topReferrers: toList(referrerCounts, 10, "name"),
-      topISP: toList(ispCounts, 10, "name"),
-      topLocations: toList(locationCounts, 10, "name"),
-      topCities: toList(locationCounts, 10, "name"),
-      latestGps: latestGps.slice(0, 5000),
-      campaigns: campaigns.sort((a, b) => b.count - a.count).slice(0, 12),
+      topReferrers: toList(referrerCounts, 50, "name"),
+      topISP: toList(ispCounts, 50, "name"),
+      topLocations: toList(locationCounts, 100, "name"),
+      topCities: toList(locationCounts, 100, "name"),
+      latestGps: latestGps.slice(0, 10000),
+      campaigns: campaigns.sort((a, b) => b.count - a.count).slice(0, 50),
       sessions: sessions
         .sort(
           (a, b) =>
             new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
         )
-        .slice(0, 5000),
+        .slice(0, 10000),
     });
   } catch (e: any) {
     return NextResponse.json(

@@ -103,19 +103,7 @@ function startOfDayInKLToUTC(baseUtc: Date) {
   return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
 }
 
-function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 6) {
-  const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
-  const y = kl.getUTCFullYear();
-  const m = kl.getUTCMonth();
-  const d = kl.getUTCDate();
-  let start = new Date(Date.UTC(y, m, d, hour, 0, 0, 0) - KL_OFFSET_MS);
-  return start;
-}
-
-function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 6) {
-  const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
-  return new Date(start.getTime() + DAY_MS - 1);
-}
+// Redundant helpers removed - using klTimeWindow.ts instead
 
 function parseKLMidnightToUTC(dateYYYYMMDD: string) {
   const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
@@ -581,8 +569,7 @@ export default async function AdminDashboard({
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
   // Cards data
-  const todayStartUTC = startOfBusinessDayInKLToUTC(now);
-  const todayEndUTC = endOfBusinessDayInKLToUTC(now);
+  const { start: todayStartUTC, end: todayEndUTC } = currentBusinessDay(now);
 
   const { data: expiringToday } = await supabase
     .from("agreements")

@@ -117,12 +117,12 @@ export async function GET(req: Request) {
   const nowIso = now.toISOString();
   let sentCount = 0;
 
-  // --- AUTO REPAIR: If 'Completed' but date_end > now -> 'Extended' ---
-  // This handles cases where user extends AFTER it auto-completed
+  // --- AUTO REPAIR: If ('Completed' OR 'Editted') but date_end > now -> 'Extended' ---
+  // This handles cases where user extends AFTER it auto-completed or just missed the status flip
   const { data: repairedRows, error: repairErr } = await supabase
     .from("agreements")
     .update({ status: "Extended" })
-    .eq("status", "Completed")
+    .in("status", ["Completed", "Editted"])
     .gt("date_end", nowIso)
     .select("id, car_id, plate_number");
 

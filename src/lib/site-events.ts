@@ -152,20 +152,29 @@ export function getSessionKey(r: SiteEventRow): string {
 }
 
 // ✅ identity grouping rule = anon_id → session_id → ip
-export function getIdentityKey(event: any): string {
-  if (event.anon_id) return String(event.anon_id);
-  if (event.session_id) return String(event.session_id);
+export function getIdentityKey(event: any) {
+  // 🚀 ADDITIVE ANALYTICS: Every identity is now (Fingerprint + BizDay)
+  // This ensures Weekly/Monthly counts are the SUM of daily unique reach.
 
-  // High entropy fallback for missing IDs
-  // Combine IP, UserAgent, and a rough time window (10 min) to avoid merging distinct users
-  const ip = event.ip || "unknown_ip";
-  const ua = event.user_agent || "unknown_ua";
-  const u = event.page_url || event.page_path || "unknown_url";
-  const timeWindow = Math.floor(
-    new Date(event.created_at).getTime() / (10 * 60 * 1000)
-  );
+  const dUtc = new Date(event.created_at);
+  const klMs = dUtc.getTime() + 8 * 60 * 60 * 1000;
+  const dKl = new Date(klMs);
 
-  return `fb_${ip}_${ua.slice(0, 20)}_${u.slice(0, 20)}_${timeWindow}`;
+  // 6 AM KL Business Day Window
+  const hour = dKl.getUTCHours();
+  let bizDay = dKl.toISOString().split("T")[0];
+  if (hour < 6) {
+    const prev = new Date(klMs - 24 * 60 * 60 * 1000);
+    bizDay = prev.toISOString().split("T")[0];
+  }
+
+  // Use explicit IDs if available, else fallback to fingerprint
+  const coreId =
+    event.anon_id ||
+    event.session_id ||
+    `fb_${event.ip || "unknown"}_${(event.user_agent || "").slice(0, 50)}`;
+
+  return `${coreId}_${bizDay}`;
 }
 
 export function referrerLabelFromFirstEvent(first: SiteEventRow): string {

@@ -17,6 +17,7 @@ interface GaStatCardProps {
     title: string;
     value: string | number;
     prevValue?: string | number;
+    prevDateRange?: string; // e.g. "Jan 10 - Jan 11"
     sub?: string; // Expecting "+10%" or "-5%" string
     color?: KpiColor;
     className?: string;
@@ -30,6 +31,7 @@ export default function GaStatCard({
     title,
     value,
     prevValue,
+    prevDateRange,
     sub,
     color = "blue",
     className = "",
@@ -90,8 +92,21 @@ export default function GaStatCard({
                             </div>
                         )}
                         {prevValue !== undefined && !loading && (
-                            <div className="text-[10px] font-bold text-gray-400">
-                                vs {typeof prevValue === 'number' ? prevValue.toLocaleString() : prevValue} prev.
+                            <div className="group relative">
+                                <div className="text-[10px] font-bold text-gray-400 cursor-help border-b border-dotted border-gray-200 hover:text-gray-600 transition-colors">
+                                    vs {typeof prevValue === 'number' ? prevValue.toLocaleString() : prevValue} prev.
+                                </div>
+                                {prevDateRange && (
+                                    <div className="pointer-events-none opacity-0 group-hover:opacity-100 absolute bottom-full left-0 mb-2 bg-gray-900 text-white text-[9px] px-2 py-1.5 rounded-lg w-max max-w-[180px] whitespace-normal z-50 shadow-2xl border border-gray-700 flex flex-col gap-0.5 transition-all duration-200 translate-y-1 group-hover:translate-y-0">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-1 h-1 rounded-full bg-indigo-400" />
+                                            <span className="font-bold text-gray-400 uppercase tracking-tighter">Comparison Period</span>
+                                        </div>
+                                        <div className="font-medium text-gray-200 pl-2.5">
+                                            {prevDateRange}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>

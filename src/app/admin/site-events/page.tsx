@@ -135,15 +135,6 @@ function rangeToIso(rangeKey: string, from?: string, to?: string) {
     if (custom) return custom;
   }
 
-  if (rangeKey === "7d_rolling") {
-    const { start, end } = rangeDays6amKlUtc(now, 7);
-    return {
-      initialFrom: start.toISOString(),
-      initialTo: end.toISOString(),
-      rangeKey: "custom" as const,
-    };
-  }
-
   // ✅ 24h / 7d / 30d are all aligned to KL 06:00 boundaries
   return rangeKeyToIso(rangeKey || "24h", now);
 }

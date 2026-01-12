@@ -66,6 +66,7 @@ function klDayEndUtcIso(dateYYYYMMDD: string) {
 
 async function syncCarStatus(carId: string) {
   const nowIso = new Date().toISOString();
+  // Check for any active agreement for this car
   const { data } = await supabaseAdmin
     .from("agreements")
     .select("id")
@@ -442,28 +443,33 @@ export async function POST(req: Request) {
         existingWhatsappUrl = prev?.whatsapp_url;
       }
 
-      // ✅ LOGIC: If updated, force status to "Editted"
+      // ✅ LOGIC: If updated, force status to "Editted" or "Extended"
       let newStatus = payload.status || "New";
-      if (isEdit) {
-        if (
-          newStatus !== "Cancelled" &&
-          newStatus !== "Completed" &&
-          newStatus !== "Deleted" &&
-          newStatus !== "Extended"
-        ) {
-          // Check for extension
-          const oldEnd = prevRow?.date_end
-            ? new Date(prevRow.date_end).getTime()
-            : 0;
-          const newEnd = payload.date_end_iso
-            ? new Date(payload.date_end_iso).getTime()
-            : 0;
+      const nowMs = Date.now();
+      const newEndMs = payload.date_end_iso
+        ? new Date(payload.date_end_iso).getTime()
+        : 0;
 
-          if (newEnd > oldEnd) {
+      if (isEdit) {
+        // If it's an edit and not explicitly set to terminal status
+        if (
+          !["Cancelled", "Completed", "Deleted", "Extended"].includes(newStatus)
+        ) {
+          // If the new end date is in the future, mark as Extended
+          if (newEndMs > nowMs) {
             newStatus = "Extended";
           } else {
             newStatus = "Editted";
           }
+        } else if (newStatus === "Extended" && newEndMs <= nowMs) {
+          // If it was marked as Extended but the date is in the past, fall back to Editted
+          newStatus = "Editted";
+        }
+      } else {
+        // For new agreements, if expiry is in the future, it's just "New"
+        // (If it was somehow created in the past, maybe call it Completed?)
+        if (newEndMs < nowMs && newStatus === "New") {
+          newStatus = "Completed";
         }
       }
 

@@ -45,15 +45,17 @@ function GlossyBadge({
 
 function Card({ title, children, headerExtras, icon: Icon }: any) {
   return (
-    <div className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white flex flex-col h-full">
-      <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex justify-between items-center">
+    <div className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white flex flex-col h-full animate-in fade-in zoom-in-95 duration-500">
+      <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex justify-between items-center shrink-0">
         <div className="font-black text-indigo-900 text-sm uppercase tracking-wide flex items-center gap-2">
           {Icon && <Icon className="w-4 h-4 text-indigo-400" />}
           {title}
         </div>
         {headerExtras && <div>{headerExtras}</div>}
       </div>
-      <div className="p-0 flex-1">{children}</div>
+      <div className="flex-1 overflow-y-auto max-h-[800px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+        {children}
+      </div>
     </div>
   );
 }
@@ -124,6 +126,7 @@ export default function SiteEventsClient({
   // Trends state
   const [trends, setTrends] = useState<any>({});
   const [prevStats, setPrevStats] = useState<any>({});
+  const [prevRangeText, setPrevRangeText] = useState("");
 
   // Session Detail Modal
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -164,22 +167,123 @@ export default function SiteEventsClient({
         const start = new Date(initialFrom);
         const end = new Date(initialTo);
         const diffTime = end.getTime() - start.getTime();
-        const prevFrom = new Date(start.getTime() - diffTime).toISOString();
-        const prevTo = new Date(end.getTime() - diffTime).toISOString();
 
-        const prevParams = { ...params, from: prevFrom, to: prevTo };
-        const prevQs = new URLSearchParams(prevParams);
+        let currentQs = qs;
+        let previousQs;
+        let isComparisonAnchor = false;
 
-        const [res, prevRes] = await Promise.all([
-          fetch(`/api/admin/site-events/summary?${qs}`),
-          fetch(`/api/admin/site-events/summary?${prevQs}`),
+        if (initialRange === "custom") {
+          isComparisonAnchor = true;
+          // 🚀 CUSTOM LOGIC: Compare Target (End) vs Anchor (Start)
+          // Current Day = Last 24h of the window
+          const currFrom = new Date(end.getTime() - 24 * 60 * 60 * 1000).toISOString();
+          const currParams = { ...params, from: currFrom, to: initialTo };
+          currentQs = new URLSearchParams(currParams);
+
+          // Previous Day = First 24h of the window
+          const prevTo = new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
+          const prevParams = { ...params, from: initialFrom, to: prevTo };
+          previousQs = new URLSearchParams(prevParams);
+        } else {
+          // 📊 STANDARD LOGIC: Compare whole range vs previous identical period
+          const prevFrom = new Date(start.getTime() - diffTime).toISOString();
+          const prevTo = new Date(end.getTime() - diffTime).toISOString();
+          const prevParams = { ...params, from: prevFrom, to: prevTo };
+          previousQs = new URLSearchParams(prevParams);
+        }
+
+        // Fetch data. If custom, we need 3 requests: Full (for lists), Current (for KPI), Prev (for KPI)
+        const [currRes, prevRes] = await Promise.all([
+          fetch(`/api/admin/site-events/summary?${currentQs}`),
+          fetch(`/api/admin/site-events/summary?${previousQs}`),
         ]);
 
-        const json = await res.json();
+        const currJson = await currRes.json();
         const prevJson = await prevRes.json();
 
-        if (mounted && json.ok) {
-          setData(json);
+        if (mounted && currJson.ok && prevJson.ok) {
+          // 🚀 DATA FLOW:
+          // 1. json = Target Data (Used for StatCards)
+          // 2. compiled = Merged Data (Used for Charts/Lists)
+
+          let compiled = currJson;
+          let json = currJson;
+
+          if (isComparisonAnchor) {
+            // Helpers to merge categorical lists
+            const mergeCategorical = (listA: any[], listB: any[]) => {
+              const map = new Map();
+              [...(listA || []), ...(listB || [])].forEach(item => {
+                const val = map.get(item.key) || { ...item, count: 0 };
+                val.count += (item.count || 0);
+                map.set(item.key, val);
+              });
+              return Array.from(map.values()).sort((a, b) => b.count - a.count);
+            };
+
+            const mergeCampaigns = (listA: any[], listB: any[]) => {
+              const map = new Map();
+              [...(listA || []), ...(listB || [])].forEach(item => {
+                const val = map.get(item.campaign) || { ...item, count: 0, conversions: 0 };
+                val.count += (item.count || 0);
+                val.conversions += (item.conversions || 0);
+                map.set(item.campaign, val);
+              });
+              return Array.from(map.values()).sort((a, b) => b.count - a.count);
+            };
+
+            const mergedTraffic: any = { ...currJson.traffic };
+            if (prevJson.traffic) {
+              Object.keys(prevJson.traffic).forEach(k => {
+                mergedTraffic[k] = (mergedTraffic[k] || 0) + prevJson.traffic[k];
+              });
+            }
+
+            compiled = {
+              ...currJson,
+              traffic: mergedTraffic,
+              uniqueVisitors: currJson.uniqueVisitors + prevJson.uniqueVisitors,
+              returningUsers: (currJson.returningUsers || 0) + (prevJson.returningUsers || 0),
+              pageViews: currJson.pageViews + prevJson.pageViews,
+              whatsappClicks: currJson.whatsappClicks + prevJson.whatsappClicks,
+              phoneClicks: currJson.phoneClicks + prevJson.phoneClicks,
+
+              uniqueAnonIds: (currJson.uniqueAnonIds || 0) + (prevJson.uniqueAnonIds || 0),
+              uniqueSessions: (currJson.uniqueSessions || 0) + (prevJson.uniqueSessions || 0),
+              uniqueIps: (currJson.uniqueIps || 0) + (prevJson.uniqueIps || 0),
+
+              events: mergeCategorical(currJson.events, prevJson.events),
+              topPages: mergeCategorical(currJson.topPages, prevJson.topPages),
+              locations: mergeCategorical(currJson.locations, prevJson.locations),
+              regions: mergeCategorical(currJson.regions, prevJson.regions),
+              devices: mergeCategorical(currJson.devices, prevJson.devices),
+              topIsp: mergeCategorical(currJson.topIsp, prevJson.topIsp),
+              topModels: mergeCategorical(currJson.topModels, prevJson.topModels),
+              topReferrers: mergeCategorical(currJson.topReferrers, prevJson.topReferrers),
+              campaigns: mergeCampaigns(currJson.campaigns, prevJson.campaigns),
+
+              latestGps: [...(currJson.latestGps || []), ...(prevJson.latestGps || [])].sort((a, b) =>
+                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+              ),
+              sessions: [...(currJson.sessions || []), ...(prevJson.sessions || [])].sort((a, b) =>
+                new Date(b.start_time).getTime() - new Date(a.start_time).getTime()
+              ),
+              compilationReach: currJson.uniqueVisitors + prevJson.uniqueVisitors
+            };
+          }
+
+          setData({ ...currJson, compiled });
+
+          // Update comparison label
+          if (isComparisonAnchor) {
+            const startDayStr = fmtD(initialFrom);
+            const endDayStr = fmtD(new Date(new Date(initialTo).getTime() - 24 * 60 * 60 * 1000).toISOString());
+            setPrevRangeText(`${endDayStr} vs ${startDayStr}`);
+          } else {
+            const startRange = new Date(start.getTime() - diffTime).toISOString();
+            const endRange = new Date(end.getTime() - diffTime).toISOString();
+            setPrevRangeText(`${fmtD(startRange)} — ${fmtD(endRange)} (Previous Period)`);
+          }
 
           // Pulse effect if active users changed
           const prevActive = prevActiveUsersRef.current;
@@ -190,11 +294,11 @@ export default function SiteEventsClient({
             prevActiveUsersRef.current = json.activeUsers;
           }
 
-          // Calculate trends (Refined logic)
+          // Calculate trends relative to prevJson (Anchor day if custom, or Prev Period if weekly)
           if (prevJson.ok) {
             const getTrend = (curr: number, prev: number) => {
               if (prev === 0 && curr === 0) return "0%";
-              if (prev === 0) return "+100%"; // Or "New"
+              if (prev === 0) return "+100%";
               const diff = ((curr - prev) / prev) * 100;
               if (diff === 0) return "0%";
               return `${diff > 0 ? "+" : ""}${Math.round(diff)}%`;
@@ -282,7 +386,8 @@ export default function SiteEventsClient({
   }, [selectedSessionId]);
 
   const s = data;
-  const showTrends = initialRange === "custom";
+  const c = (s as any)?.compiled || s;
+  const showTrends = true;
 
   const fmtD = (iso: string) => {
     if (!iso) return "";
@@ -343,6 +448,7 @@ export default function SiteEventsClient({
           title="Unique Users"
           value={s?.uniqueVisitors || 0}
           prevValue={showTrends ? prevStats.uniqueVisitors : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.uniqueVisitors : undefined}
           color="blue"
           loading={loading && !data}
@@ -352,6 +458,7 @@ export default function SiteEventsClient({
           title="Returning"
           value={s?.returningUsers || 0}
           prevValue={showTrends ? prevStats.returningUsers : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.returningUsers : undefined}
           color="purple"
           loading={loading && !data}
@@ -361,6 +468,7 @@ export default function SiteEventsClient({
           title="Page Views"
           value={s?.pageViews || 0}
           prevValue={showTrends ? prevStats.pageViews : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.pageViews : undefined}
           color="amber"
           loading={loading && !data}
@@ -370,6 +478,7 @@ export default function SiteEventsClient({
           title="WhatsApp"
           value={s?.whatsappClicks || 0}
           prevValue={showTrends ? prevStats.whatsappClicks : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.whatsappClicks : undefined}
           color="green"
           loading={loading && !data}
@@ -379,6 +488,7 @@ export default function SiteEventsClient({
           title="Calls"
           value={s?.phoneClicks || 0}
           prevValue={showTrends ? prevStats.phoneClicks : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.phoneClicks : undefined}
           color="indigo"
           loading={loading && !data}
@@ -388,6 +498,7 @@ export default function SiteEventsClient({
           title="Google Ads"
           value={s?.traffic?.["Google Ads"] || 0}
           prevValue={showTrends ? prevStats.ads : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.ads : undefined}
           color="orange"
           loading={loading && !data}
@@ -397,6 +508,7 @@ export default function SiteEventsClient({
           title="Search Partners"
           value={s?.traffic?.["Google Search Partners"] || 0}
           prevValue={showTrends ? prevStats.partners : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.partners : undefined}
           color="indigo"
           loading={loading && !data}
@@ -406,6 +518,7 @@ export default function SiteEventsClient({
           title="Google Organic"
           value={s?.traffic?.["Google Organic"] || 0}
           prevValue={showTrends ? prevStats.organic : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.organic : undefined}
           color="green"
           loading={loading && !data}
@@ -415,6 +528,7 @@ export default function SiteEventsClient({
           title="Facebook"
           value={s?.traffic?.Facebook || 0}
           prevValue={showTrends ? prevStats.facebook : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.facebook : undefined}
           color="indigo"
           loading={loading && !data}
@@ -424,6 +538,7 @@ export default function SiteEventsClient({
           title="Instagram"
           value={s?.traffic?.Instagram || 0}
           prevValue={showTrends ? prevStats.instagram : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.instagram : undefined}
           color="pink"
           loading={loading && !data}
@@ -433,6 +548,7 @@ export default function SiteEventsClient({
           title="TikTok"
           value={s?.traffic?.TikTok || 0}
           prevValue={showTrends ? prevStats.tiktok : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.tiktok : undefined}
           color="rose"
           loading={loading && !data}
@@ -442,6 +558,7 @@ export default function SiteEventsClient({
           title="Direct"
           value={s?.traffic?.Direct || 0}
           prevValue={showTrends ? prevStats.direct : undefined}
+          prevDateRange={prevRangeText}
           sub={showTrends ? trends.direct : undefined}
           color="slate"
           loading={loading && !data}
@@ -449,21 +566,31 @@ export default function SiteEventsClient({
         />
       </div>
 
-      <div className="text-[11px] text-gray-500 font-semibold -mt-2">
-        identity breakdown: anon {s?.uniqueAnonIds || 0} • session{" "}
-        {s?.uniqueSessions || 0} • ip {s?.uniqueIps || 0}
+      <div className="text-[11px] text-gray-500 font-semibold -mt-2 flex items-center gap-2">
+        <span className="opacity-70">Identity breakdown:</span>
+        {c && (c as any).compilationReach ? (
+          <span className="bg-indigo-600 px-2 py-0.5 rounded text-white shadow-sm flex items-center gap-1.5">
+            <span className="w-1 h-1 rounded-full bg-indigo-200 animate-ping" />
+            Compilation Total (A+B): {(c as any).compilationReach}
+          </span>
+        ) : (
+          <span className="bg-gray-100 px-2 py-0.5 rounded text-gray-700">Total Visitors: {c?.uniqueVisitors || 0}</span>
+        )}
+        <span className="bg-indigo-50 px-2 py-0.5 rounded text-indigo-700">Real People (Distinct): {c?.uniqueAnonIds || 0}</span>
+        <span className="text-gray-300">•</span>
+        <span className="text-gray-400">sessions {c?.uniqueSessions || 0} • ip {c?.uniqueIps || 0}</span>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Card title="Traffic Distribution" headerExtras={<Globe className="w-4 h-4 text-sky-500" />}>
           <div className="py-2 space-y-1">
-            <MixRow label="Google Ads" value={s?.traffic?.["Google Ads"] || 0} total={s?.uniqueVisitors || 1} color="amber" icon={Megaphone} />
-            <MixRow label="Search Partners" value={s?.traffic?.["Google Search Partners"] || 0} total={s?.uniqueVisitors || 1} color="indigo" icon={Search} />
-            <MixRow label="Google Organic" value={s?.traffic?.["Google Organic"] || 0} total={s?.uniqueVisitors || 1} color="emerald" icon={Search} />
-            <MixRow label="Facebook" value={s?.traffic?.Facebook || 0} total={s?.uniqueVisitors || 1} color="sky" icon={FacebookIcon} />
-            <MixRow label="Instagram" value={s?.traffic?.Instagram || 0} total={s?.uniqueVisitors || 1} color="pink" icon={InstagramIcon} />
-            <MixRow label="TikTok" value={s?.traffic?.TikTok || 0} total={s?.uniqueVisitors || 1} color="rose" icon={Zap} />
-            <MixRow label="Direct" value={s?.traffic?.Direct || 0} total={s?.uniqueVisitors || 1} color="slate" icon={Car} />
+            <MixRow label="Google Ads" value={c?.traffic?.["Google Ads"] || 0} total={c?.uniqueVisitors || 1} color="amber" icon={Megaphone} />
+            <MixRow label="Search Partners" value={c?.traffic?.["Google Search Partners"] || 0} total={c?.uniqueVisitors || 1} color="indigo" icon={Search} />
+            <MixRow label="Google Organic" value={c?.traffic?.["Google Organic"] || 0} total={c?.uniqueVisitors || 1} color="emerald" icon={Search} />
+            <MixRow label="Facebook" value={c?.traffic?.Facebook || 0} total={c?.uniqueVisitors || 1} color="sky" icon={FacebookIcon} />
+            <MixRow label="Instagram" value={c?.traffic?.Instagram || 0} total={c?.uniqueVisitors || 1} color="pink" icon={InstagramIcon} />
+            <MixRow label="TikTok" value={c?.traffic?.TikTok || 0} total={c?.uniqueVisitors || 1} color="rose" icon={Zap} />
+            <MixRow label="Direct" value={c?.traffic?.Direct || 0} total={c?.uniqueVisitors || 1} color="slate" icon={Car} />
           </div>
         </Card>
 
@@ -473,7 +600,7 @@ export default function SiteEventsClient({
           headerExtras={<Megaphone className="w-4 h-4 text-amber-500" />}
         >
           <div className="p-4 space-y-2">
-            {(s?.campaigns || []).map((c: any, i: number) => (
+            {(c?.campaigns || []).map((c: any, i: number) => (
               <div
                 key={i}
                 className="flex justify-between items-center text-sm p-3 hover:bg-amber-50/50 rounded-xl transition-colors border border-transparent hover:border-amber-100"
@@ -501,7 +628,7 @@ export default function SiteEventsClient({
                 <GlossyBadge value={c.count} color="amber" />
               </div>
             ))}
-            {!s?.campaigns?.length && (
+            {!c?.campaigns?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No active ad campaigns detected
               </div>
@@ -527,7 +654,7 @@ export default function SiteEventsClient({
           }
         >
           <div className="p-4 space-y-2">
-            {(s?.topModels || []).slice(0, 10).map((m: any, i: number) => (
+            {(c?.topModels || []).map((m: any, i: number) => (
               <div
                 key={i}
                 className="group flex items-center justify-between p-2.5 hover:bg-emerald-50/50 rounded-2xl transition-all border border-transparent hover:border-emerald-100/50"
@@ -561,7 +688,7 @@ export default function SiteEventsClient({
                 </div>
               </div>
             ))}
-            {!s?.topModels?.length && (
+            {!c?.topModels?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No model data available
               </div>
@@ -579,7 +706,7 @@ export default function SiteEventsClient({
           }
         >
           <div className="p-4 space-y-2">
-            {(s?.topPages || []).slice(0, 10).map((p: any, i: number) => (
+            {(c?.topPages || []).map((p: any, i: number) => (
               <div
                 key={i}
                 className="flex justify-between items-center text-sm p-3 hover:bg-blue-50/50 rounded-xl transition-colors group border border-transparent hover:border-blue-100"
@@ -614,7 +741,7 @@ export default function SiteEventsClient({
                 </div>
               </div>
             ))}
-            {!s?.topPages?.length && (
+            {!c?.topPages?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No page data available
               </div>
@@ -624,7 +751,7 @@ export default function SiteEventsClient({
 
         <Card title="Event Actions" icon={Activity}>
           <div className="p-4 space-y-2">
-            {(s?.events || []).filter((e: any) => e.count > 0).map((e: any, i: number) => {
+            {(c?.events || []).filter((e: any) => e.count > 0).map((e: any, i: number) => {
               let color: any = "indigo";
               let Icon: any = Activity;
               const lower = e.key.toLowerCase();
@@ -658,7 +785,7 @@ export default function SiteEventsClient({
                 </div>
               );
             })}
-            {!s?.events?.length && (
+            {!c?.events?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No event data available
               </div>
@@ -672,19 +799,19 @@ export default function SiteEventsClient({
           headerExtras={<Globe className="w-4 h-4 text-emerald-500" />}
         >
           <div className="p-4 space-y-2">
-            {(s?.topCities || []).slice(0, 10).map((c: any, i: number) => (
+            {(c?.locations || []).map((cty: any, i: number) => (
               <div
                 key={i}
                 className="flex justify-between items-center text-sm p-3 hover:bg-emerald-50/50 rounded-xl transition-colors border border-transparent hover:border-emerald-100"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ring-2 ring-emerald-100" />
-                  <span className="font-bold text-gray-700 truncate max-w-[180px]">{c.name || c.key}</span>
+                  <span className="font-bold text-gray-700 truncate max-w-[180px]">{cty.name || cty.key}</span>
                 </div>
-                <GlossyBadge value={c.count || c.users} color="emerald" />
+                <GlossyBadge value={cty.count || cty.users} color="emerald" />
               </div>
             ))}
-            {!s?.topCities?.length && (
+            {!c?.locations?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No city data available
               </div>
@@ -700,7 +827,7 @@ export default function SiteEventsClient({
           <div className="p-4 space-y-4">
             <div className="space-y-2">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Primary Devices</span>
-              {(s?.devices || []).slice(0, 3).map((d: any, i: number) => (
+              {(c?.devices || []).map((d: any, i: number) => (
                 <div
                   key={i}
                   className="flex justify-between items-center text-sm p-2.5 bg-gray-50 rounded-xl border border-gray-100"
@@ -718,7 +845,7 @@ export default function SiteEventsClient({
 
             <div className="space-y-2">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Top ISPs</span>
-              {(s?.topISP || []).slice(0, 3).map((isp: any, i: number) => (
+              {(c?.topIsp || []).map((isp: any, i: number) => (
                 <div
                   key={i}
                   className="flex justify-between items-center text-sm p-2.5 bg-sky-50/30 rounded-xl border border-sky-100/50"
@@ -742,7 +869,7 @@ export default function SiteEventsClient({
           headerExtras={<Link2 className="w-4 h-4 text-purple-500" />}
         >
           <div className="p-4 space-y-2">
-            {(s?.topReferrers || []).slice(0, 10).map((r: any, i: number) => {
+            {(c?.topReferrers || []).map((r: any, i: number) => {
               let color: any = "slate";
               let Icon: any = Globe;
               const lower = (r.name || r.key || "").toLowerCase();
@@ -777,7 +904,7 @@ export default function SiteEventsClient({
                 </div>
               );
             })}
-            {!s?.topReferrers?.length && (
+            {!c?.topReferrers?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No referral data available
               </div>
@@ -802,7 +929,7 @@ export default function SiteEventsClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {(s?.sessions || []).slice((sessionPage - 1) * 15, sessionPage * 15).map((sess: any, i: number) => (
+              {(c?.sessions || []).slice((sessionPage - 1) * 15, sessionPage * 15).map((sess: any, i: number) => (
                 <tr
                   key={i}
                   className="hover:bg-indigo-50/40 cursor-pointer group transition-all duration-200"
@@ -865,7 +992,7 @@ export default function SiteEventsClient({
                   </td>
                 </tr>
               ))}
-              {!s?.sessions?.length && (
+              {!c?.sessions?.length && (
                 <tr>
                   <td colSpan={4} className="p-12 text-center text-gray-400 font-bold text-sm uppercase tracking-widest italic">
                     No session data discovered
@@ -875,7 +1002,7 @@ export default function SiteEventsClient({
             </tbody>
           </table>
         </div>
-        {(s?.sessions?.length || 0) > 15 && (
+        {(c?.sessions?.length || 0) > 15 && (
           <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50/50">
             <button
               onClick={() => setSessionPage((p) => Math.max(1, p - 1))}
@@ -885,16 +1012,16 @@ export default function SiteEventsClient({
               <ChevronLeft className="w-3 h-3" /> Prev
             </button>
             <span className="text-[10px] font-black text-gray-400">
-              Page {sessionPage} of {Math.ceil((s?.sessions?.length || 0) / 15)}
+              Page {sessionPage} of {Math.ceil((c?.sessions?.length || 0) / 15)}
             </span>
             <button
               onClick={() =>
                 setSessionPage((p) =>
-                  Math.min(Math.ceil((s?.sessions?.length || 0) / 15), p + 1)
+                  Math.min(Math.ceil((c?.sessions?.length || 0) / 15), p + 1)
                 )
               }
               disabled={
-                sessionPage >= Math.ceil((s?.sessions?.length || 0) / 15)
+                sessionPage >= Math.ceil((c?.sessions?.length || 0) / 15)
               }
               className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-500 hover:text-indigo-600 disabled:opacity-30 transition-colors"
             >

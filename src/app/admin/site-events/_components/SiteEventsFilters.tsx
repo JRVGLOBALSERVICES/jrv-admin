@@ -308,9 +308,8 @@ export default function SiteEventsFilters({
               className={inputClass}
             >
               <option value="24h">Daily (Today)</option>
-              <option value="7d">Weekly (This Week)</option>
-              <option value="7d_rolling">Last 7 Days (Rolling)</option>
-              <option value="30d">Monthly (This Month)</option>
+              <option value="7d">Weekly (Last 7 Days)</option>
+              <option value="30d">Monthly (Last 30 Days)</option>
               <option value="custom">Custom Range</option>
             </select>
           </div>

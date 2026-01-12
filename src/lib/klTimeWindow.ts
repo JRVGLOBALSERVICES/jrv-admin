@@ -3,9 +3,9 @@
 
 const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
-const BUSINESS_START_HOUR = 6;
+export const BUSINESS_START_HOUR = 6;
 
-function toKlMs(nowUtc: Date) {
+export function toKlMs(nowUtc: Date) {
   return nowUtc.getTime() + KL_OFFSET_MS;
 }
 
@@ -38,20 +38,21 @@ export function windowStart6amKlUtc(nowUtc: Date = new Date()) {
  */
 export function currentWeek6amKlUtc(nowUtc: Date) {
   const dailyStart = windowStart6amKlUtc(nowUtc);
-  // dailyStart is in UTC, but represents KL 06:00 of "Today".
-  // We need to find the Monday of this week relative to KL Time.
-
-  // Get KL Day of Week (0=Sun, 1=Mon...)
   const klTime = new Date(dailyStart.getTime() + KL_OFFSET_MS);
   const day = klTime.getUTCDay(); // 0-6
 
-  // Calculate days to subtract to get to Monday.
-  // If Mon (1), sub 0.
-  // If Tue (2), sub 1.
-  // If Sun (0), sub 6.
+  // diffToMon: days to subtract to get to this week's Monday.
+  // Sun(0) -> -6, Mon(1) -> 0, Tue(2) -> -1 ...
   const diffToMon = day === 0 ? 6 : day - 1;
 
-  const startMs = dailyStart.getTime() - diffToMon * DAY_MS;
+  let startMs = dailyStart.getTime() - diffToMon * DAY_MS;
+
+  // IMPROVEMENT: If today is Monday, showing "This Week" as just 1 day is often useless.
+  // We'll show the rolling Last 7 Days instead if it's Monday.
+  if (diffToMon === 0) {
+    startMs = dailyStart.getTime() - 7 * DAY_MS;
+  }
+
   const start = new Date(startMs);
   const end = new Date(dailyStart.getTime() + DAY_MS); // Tomorrow 6am
 
@@ -102,8 +103,8 @@ export function currentBusinessDay(nowUtc: Date) {
 
 export function rangeKeyToIso(rangeKey: string, nowUtc: Date = new Date()) {
   if (rangeKey === "7d") {
-    // Interpreted as "Weekly" (WTD)
-    const { start, end } = currentWeek6amKlUtc(nowUtc);
+    // Rolling 7 Days (Today vs Last Week)
+    const { start, end } = rangeDays6amKlUtc(nowUtc, 7);
     return {
       initialFrom: start.toISOString(),
       initialTo: end.toISOString(),
@@ -112,8 +113,8 @@ export function rangeKeyToIso(rangeKey: string, nowUtc: Date = new Date()) {
   }
 
   if (rangeKey === "30d") {
-    // Interpreted as "Monthly" (MTD)
-    const { start, end } = currentMonth6amKlUtc(nowUtc);
+    // Rolling 30 Days (Today vs Last Month)
+    const { start, end } = rangeDays6amKlUtc(nowUtc, 30);
     return {
       initialFrom: start.toISOString(),
       initialTo: end.toISOString(),
@@ -121,7 +122,7 @@ export function rangeKeyToIso(rangeKey: string, nowUtc: Date = new Date()) {
     };
   }
 
-  // default: 24h returns CURRENT business day (including now)
+  // default: 24h returns CURRENT business day
   const { start, end } = currentBusinessDay(nowUtc);
   return {
     initialFrom: start.toISOString(),

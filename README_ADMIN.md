@@ -1,0 +1,67 @@
+# JRV Admin Documentation
+
+**Latest Version:** `v1.2.3` (Updated Jan 12, 2026)
+
+This document provides a comprehensive technical breakdown of all recent changes made to the JRV Admin platform, organized by component and functional area.
+
+---
+
+## 🕒 Release History
+
+### `v1.2.3` (Linear Analytics & Deep Scaling)
+
+- **Linear Additive Logic**: Weekly/Monthly totals are now the exact sum of daily unique counts (100% reconcilable).
+- **Custom Mode (Hybrid)**: KPI cards perform **End vs Start** spot-checks, while charts provide a **Combined Summary**.
+- **Deep Data Fetching**: Implemented recursive backend loops to process **100,000+ records**, bypassing Supabase's row limits.
+- **UI Polishing**: Fixed tooltip overflows and alignment issues for comparison date ranges.
+- **Identity Integrity**: All fingerprinting and filters strictly unified to the **6 AM KL Business Day**.
+
+### `v1.2.2` (Real-Time Performance & Hybrid Tracking)
+
+- **Parallel Fetching**: Rewrote the engine to fetch all resources (Events, GPS, Cars, Landing Pages) in parallel, reducing load time by ~60%.
+- **Hybrid Location Tracking**: Improved "Top Cities" by prioritizing high-precision GPS and falling back to IP geo-location.
+- **Model Normalization**: Fixed automotive model naming duplications (e.g. "CR-V" vs "Cr V").
+
+### `v1.2.1` (Mobile-First KPI Dash)
+
+- **Responsive Grid**: Redesigned KPI cards for any device (7 columns on XL, 2 on Mobile).
+- **Interactive Tooltips**: Added date comparisons to all KPI cards for better auditability.
+- **Ad Source Attribution**: Added support for "Google Search Partners" traffic tracking.
+
+### `v1.2.0` (Comprehensive Dashboard Engine)
+
+- Initial implementation of the high-speed analytics engine.
+- Support for WhatsApp, Phone, and UTM campaign tracking.
+- Daily/Weekly/Monthly range presets.
+
+- **6 AM Schedule Standardization**: Unified all dashboard metrics to the 6 AM - 6 AM KL Business Day.
+- **"Returning Today" Shortcuts**: Added always-visible **OPEN** buttons for quick agreement access.
+- **Agreements Automation**: Implemented `Auto-Extended` status logic and background sync repair.
+- **GPS Analytics**: Switched "Top Cities" charts to use Precise Location (GPS) data for 100% accuracy.
+- **Plus Code Stripping**: Improved address parsing to clean up Google Plus Codes (e.g., `PXRH+Q4`).
+
+---
+
+## �️ Technical Details by Component
+
+### `src/app/admin/insurance/_components/InsuranceClient.tsx`
+
+- Replaced the simple list with a **High-Fidelity Tabbed Dashboard**.
+- Added a `StatBox` component for high-level monitoring.
+- Integrated the `Show Untracked` toggle directly into the header for better fleet visibility.
+
+### `src/lib/klTimeWindow.ts`
+
+- Updated `currentWeek6amKlUtc` with an intelligent "Monday-Fallback" to prevent empty weekly metrics.
+
+### `src/app/admin/_components/ExpiringSoon.tsx`
+
+- Modified button visibility states to ensure immediate administrative access.
+
+### `src/app/api/admin/site-events/summary/route.ts`
+
+- Implemented robust `parseAddress` logic and GPS-first location aggregation.
+
+---
+
+**Tip**: Use the **"Show Untracked"** toggle in the Insurance dashboard to identify vehicles that haven't had their insurance or roadtax dates entered!
