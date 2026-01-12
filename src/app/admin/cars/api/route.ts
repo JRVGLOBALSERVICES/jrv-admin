@@ -39,6 +39,7 @@ type CarPayload = {
   promo_label: string | null;
   insurance_expiry?: string | null;
   roadtax_expiry?: string | null;
+  track_insurance?: boolean;
 };
 
 const toNumOrNull = (v: any) => {
@@ -188,6 +189,7 @@ export async function POST(req: Request) {
     promo_label: payload.promo_label ?? null,
     insurance_expiry: payload.insurance_expiry || null,
     roadtax_expiry: payload.roadtax_expiry || null,
+    track_insurance: !!payload.track_insurance,
   };
 
   if (!clean.plate_number) return jsonError("Plate number required");

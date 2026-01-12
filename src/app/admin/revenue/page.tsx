@@ -139,32 +139,42 @@ function StatCard({
   trend?: string;
   color?: string;
 }) {
-  const colors: any = {
-    blue: "bg-blue-50 text-blue-700 border-blue-100",
-    green: "bg-emerald-50 text-emerald-700 border-emerald-100",
-    purple: "bg-violet-50 text-violet-700 border-violet-100",
-    orange: "bg-amber-50 text-amber-700 border-amber-100",
+  const styles: any = {
+    blue: { text: "text-blue-600", blob: "bg-blue-50" },
+    green: { text: "text-emerald-600", blob: "bg-emerald-50" },
+    purple: { text: "text-purple-600", blob: "bg-purple-50" },
+    orange: { text: "text-orange-600", blob: "bg-orange-50" },
   };
+  const s = styles[color] || styles.blue;
+
   return (
-    <div
-      className={`p-5 rounded-xl border ${colors[color]} flex flex-col justify-between h-full`}
-    >
-      <div>
-        <div className="text-xs font-bold uppercase tracking-wider opacity-70">
+    <div className="relative overflow-hidden rounded-2xl p-5 bg-white border border-gray-100 shadow-xl group hover:shadow-2xl transition-all duration-300 h-full flex flex-col justify-between">
+      <div
+        className={`absolute -top-6 -right-6 w-24 h-24 rounded-full ${s.blob} transition-transform group-hover:scale-110`}
+      />
+
+      <div className="relative z-10">
+        <div className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
           {title}
         </div>
-        <div className="text-3xl font-black mt-2">{value}</div>
-      </div>
-      {(sub || trend) && (
-        <div className="mt-4 flex items-center justify-between text-sm font-medium opacity-80">
-          <span>{sub}</span>
-          {trend && (
-            <span className="px-2 py-0.5 bg-white/50 rounded-full text-xs">
-              {trend}
-            </span>
-          )}
+        <div className="text-3xl font-black text-gray-900 tracking-tight leading-none mb-1">
+          {value}
         </div>
-      )}
+        {(sub || trend) && (
+          <div className="flex items-center gap-2 mt-2">
+            {sub && (
+              <span className="text-xs font-medium text-gray-500">{sub}</span>
+            )}
+            {trend && (
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-50 ${s.text} border border-gray-100`}
+              >
+                {trend}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -206,8 +216,7 @@ export default async function RevenuePage({
     id: c.id,
     plate: c.plate_number,
     model: normalizeModel(
-      `${(Array.isArray(c.catalog) ? c.catalog[0] : c.catalog)?.make ?? ""} ${
-        (Array.isArray(c.catalog) ? c.catalog[0] : c.catalog)?.model ?? ""
+      `${(Array.isArray(c.catalog) ? c.catalog[0] : c.catalog)?.make ?? ""} ${(Array.isArray(c.catalog) ? c.catalog[0] : c.catalog)?.model ?? ""
       }`
     ),
   }));
@@ -307,13 +316,13 @@ export default async function RevenuePage({
     const dKL = new Date(d.getTime() + KL_OFFSET_MS);
     const key = isLongPeriod
       ? `${dKL.getUTCFullYear()}-${String(dKL.getUTCMonth() + 1).padStart(
-          2,
-          "0"
-        )}`
+        2,
+        "0"
+      )}`
       : `${dKL.getUTCFullYear()}-${String(dKL.getUTCMonth() + 1).padStart(
-          2,
-          "0"
-        )}-${String(dKL.getUTCDate()).padStart(2, "0")}`;
+        2,
+        "0"
+      )}-${String(dKL.getUTCDate()).padStart(2, "0")}`;
     trendMap.set(key, (trendMap.get(key) || 0) + Number(r.total_price));
   });
   const sortedTrend = Array.from(trendMap.entries()).sort((a, b) =>
@@ -377,7 +386,7 @@ export default async function RevenuePage({
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white p-6 rounded-xl border shadow-sm flex flex-col">
+          <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-xl flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-gray-800">Revenue Trend</h3>
               <div className="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-500 uppercase">
@@ -421,47 +430,50 @@ export default async function RevenuePage({
             </div>
           </div>
 
-          <div className="bg-white p-0 rounded-xl border shadow-sm overflow-hidden flex flex-col">
-            <div className="p-5 border-b bg-gray-50/50">
-              <h3 className="font-bold text-gray-800">Top Earning Models</h3>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex items-center justify-between">
+              <h3 className="font-black text-indigo-900 text-sm uppercase tracking-wide">
+                Top Models
+              </h3>
             </div>
-            <div className="flex-1 overflow-y-auto p-2">
-              {topModels.map(([model, rev], i) => (
-                <div
-                  key={model}
-                  className="flex items-center justify-between p-3 hover:bg-gray-50 rounded-lg group transition"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold ${
-                        i < 3
-                          ? "bg-amber-100 text-amber-700"
+            <div className="flex-1 overflow-y-auto p-0">
+              <div className="divide-y divide-gray-50">
+                {topModels.map(([model, rev], i) => (
+                  <div
+                    key={model}
+                    className="p-3 flex items-center justify-between hover:bg-indigo-50/30 transition-colors group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-[10px] font-bold shadow-sm ${i < 3
+                          ? "bg-amber-100 text-amber-700 ring-1 ring-amber-200"
                           : "bg-gray-100 text-gray-500"
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="text-sm font-medium text-gray-700 group-hover:text-black">
-                      {model}
+                          }`}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="text-sm font-bold text-gray-700 group-hover:text-indigo-700 transition-colors">
+                        {model}
+                      </span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900 tabular-nums">
+                      {fmtMoney(rev)}
                     </span>
                   </div>
-                  <span className="text-sm font-bold text-gray-900">
-                    {fmtMoney(rev)}
-                  </span>
-                </div>
-              ))}
-              {topModels.length === 0 && (
-                <div className="p-8 text-center text-gray-400 text-sm">
-                  No models found
-                </div>
-              )}
+                ))}
+                {topModels.length === 0 && (
+                  <div className="p-8 text-center text-gray-400 text-sm italic">
+                    No models found
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="p-3 border-t bg-gray-50 text-center">
+            <div className="p-3 bg-gray-50 text-center border-t border-gray-100">
               <Link
                 href="/admin/cars"
-                className="text-xs font-bold text-indigo-600 hover:underline"
+                className="inline-block text-[10px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-100 px-4 py-2 rounded-lg hover:bg-indigo-600 hover:text-white transition-all shadow-sm"
               >
-                View All Cars →
+                View All Cars
               </Link>
             </div>
           </div>

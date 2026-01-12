@@ -3,7 +3,7 @@ import { pageMetadata } from "@/lib/seo";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import SiteEventsClient from "./_components/SiteEventsClient";
 import SiteEventsFilters from "./_components/SiteEventsFilters";
-import { rangeKeyToIso } from "@/lib/klTimeWindow";
+import { rangeKeyToIso, rangeDays6amKlUtc } from "@/lib/klTimeWindow";
 
 export const metadata: Metadata = pageMetadata({
   title: "Site Events",
@@ -49,17 +49,23 @@ function isIsoLike(v?: string | null) {
   return v.includes("T");
 }
 
-function clampToDateInput(iso: string) {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 const KL_OFFSET_MS = 8 * 60 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function clampToDateInput(iso: string) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+
+  // Shift to KL Time (UTC+8)
+  const klTime = new Date(d.getTime() + KL_OFFSET_MS);
+
+  // Use UTC methods on the shifted time to get the "local" KL date components
+  const yyyy = klTime.getUTCFullYear();
+  const mm = String(klTime.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(klTime.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 function dateOnlyToIsoStart(dateOnly: string) {
   // fallback: interpret as KL 06:00 boundary
@@ -127,6 +133,15 @@ function rangeToIso(rangeKey: string, from?: string, to?: string) {
   if (rangeKey === "custom") {
     const custom = normalizeCustomRange(from, to);
     if (custom) return custom;
+  }
+
+  if (rangeKey === "7d_rolling") {
+    const { start, end } = rangeDays6amKlUtc(now, 7);
+    return {
+      initialFrom: start.toISOString(),
+      initialTo: end.toISOString(),
+      rangeKey: "custom" as const,
+    };
   }
 
   // ✅ 24h / 7d / 30d are all aligned to KL 06:00 boundaries

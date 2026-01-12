@@ -129,11 +129,10 @@ export default function ExpiringSoon({
             return (
               <div
                 key={r.id}
-                className={`p-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-red-50/20 transition-colors text-sm group ${
-                  isUrgent ? "bg-red-50/40" : ""
-                }`}
+                className={`p-3 flex flex-col gap-3 md:flex-row md:items-center md:justify-between hover:bg-red-50/20 transition-colors text-sm group ${isUrgent ? "bg-red-50/40" : ""
+                  }`}
               >
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 relative">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="font-bold text-gray-900">
                       {r.plate_number || "—"}
@@ -150,15 +149,15 @@ export default function ExpiringSoon({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 justify-end">
+                <div className="flex items-center gap-2 justify-end relative z-20">
                   <div
                     className={[
                       "px-3 py-1 rounded-md text-xs font-bold tabular-nums border shadow-sm min-w-17.5 text-center",
                       isExpired
                         ? "bg-gray-100 text-gray-500 border-gray-200"
                         : isUrgent
-                        ? "animate-pulse bg-linear-to-r from-red-500 to-rose-600 text-white border-red-600 shadow-red-200"
-                        : "bg-amber-50 text-amber-700 border-amber-200",
+                          ? "animate-pulse bg-linear-to-r from-red-500 to-rose-600 text-white border-red-600 shadow-red-200"
+                          : "bg-amber-50 text-amber-700 border-amber-200",
                     ].join(" ")}
                   >
                     {formatCountdown(endMs - nowMs)}
@@ -180,6 +179,14 @@ export default function ExpiringSoon({
                       <PhoneIcon />
                     </a>
                   </div>
+                  <Link
+                    href={`/admin/agreements/${r.id}`}
+                    className="hidden group-hover:block ml-2"
+                  >
+                    <span className="bg-white border border-red-200 text-red-600 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm hover:bg-red-50 transition-colors">
+                      OPEN
+                    </span>
+                  </Link>
                 </div>
               </div>
             );

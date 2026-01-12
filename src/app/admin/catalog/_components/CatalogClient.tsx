@@ -104,7 +104,7 @@ export default function CatalogClient({ data }: { data: CatalogRow[] }) {
                                         onClick={() => setEditingRow(row)}
                                         className="group relative bg-white border border-gray-100 rounded-xl p-3 shadow-sm hover:shadow-md transition-all flex items-center gap-3 overflow-hidden text-left w-full hover:border-black/10"
                                     >
-                                        <div className="w-16 h-12 bg-gray-50 rounded-lg flex-shrink-0 border border-gray-100 flex items-center justify-center overflow-hidden">
+                                        <div className="w-16 h-12 bg-gray-50 rounded-lg shrink-0 border border-gray-100 flex items-center justify-center overflow-hidden">
                                             {row.default_images ? (
                                                 <img src={row.default_images} className="w-full h-full object-cover" />
                                             ) : (

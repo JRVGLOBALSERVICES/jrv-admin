@@ -63,34 +63,26 @@ function anyToDateInput(v: string) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+
+// Force KL Timezone (UTC+8)
+// 6:00 AM KL = 22:00 PM UTC (Previous Day)
+// But simpler: just construct ISO with offset.
+// YYYY-MM-DD -> YYYY-MM-DDT06:00:00+08:00
+
 function localDayStartISO(dateOnly: string) {
-  const base = dateInputToLocalDate(dateOnly);
-  if (!base) return "";
-  const d = new Date(
-    base.getFullYear(),
-    base.getMonth(),
-    base.getDate(),
-    6,
-    0,
-    0,
-    0
-  );
-  return d.toISOString();
+  if (!dateOnly) return "";
+  // Explicitly construct an ISO string with +08:00 offset
+  // This represents 06:00 AM in Kuala Lumpur
+  return `${dateOnly}T06:00:00+08:00`;
 }
 
 function localDayEndISO(dateOnly: string) {
-  const base = dateInputToLocalDate(dateOnly);
-  if (!base) return "";
-  const start = new Date(
-    base.getFullYear(),
-    base.getMonth(),
-    base.getDate(),
-    6,
-    0,
-    0,
-    0
-  );
-  return new Date(start.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  if (!dateOnly) return "";
+  const startIso = localDayStartISO(dateOnly);
+  const startDate = new Date(startIso);
+  // Add 24 hours
+  const endDate = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+  return endDate.toISOString();
 }
 
 export default function SiteEventsFilters({
@@ -315,9 +307,10 @@ export default function SiteEventsFilters({
               onChange={(e) => setLocalRange(e.target.value)}
               className={inputClass}
             >
-              <option value="24h">Last 24 Hours</option>
-              <option value="7d">Last 7 Days</option>
-              <option value="30d">Last 30 Days</option>
+              <option value="24h">Daily (Today)</option>
+              <option value="7d">Weekly (This Week)</option>
+              <option value="7d_rolling">Last 7 Days (Rolling)</option>
+              <option value="30d">Monthly (This Month)</option>
               <option value="custom">Custom Range</option>
             </select>
           </div>
@@ -370,7 +363,7 @@ export default function SiteEventsFilters({
               </button>
 
               {isEventOpen && (
-                <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-100 rounded-lg shadow-xl z-[100] max-h-60 overflow-y-auto p-1">
+                <div className="absolute top-full left-0 w-full mt-1 bg-white border border-gray-100 rounded-lg shadow-xl z-100 max-h-60 overflow-y-auto p-1">
                   {eventOptions.length === 0 && (
                     <div className="p-2 text-xs text-gray-400 italic">No events found</div>
                   )}

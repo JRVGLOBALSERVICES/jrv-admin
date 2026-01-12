@@ -137,24 +137,29 @@ export function parseAddress(fullAddress: string | null) {
   let region = "Unknown";
   let city = "Unknown";
 
-  if (parts.length >= 2) {
-    // Region is usually 2nd to last (e.g. "Selangor", "Negeri Sembilan")
-    const potentialRegion = parts[parts.length - 2];
-    // Filter out obvious postcodes if they appear alone in this slot
-    if (!/^\d{5}$/.test(potentialRegion)) {
-      region = potentialRegion.replace(/\d{5}/g, "").trim(); // Remove postcode if mixed
-    }
-  }
+  // New Strategy: Precise Location
+  // Keep the first part as "City" (often neighborhood) if it's not the country
+  // Keep the second-to-last part as "Region" (State)
 
-  if (parts.length >= 3) {
-    // City is usually 3rd to last (e.g. "45300 Sungai Besar")
-    let potentialCity = parts[parts.length - 3];
-    // Strip postcode (5 digits) to get pure city name
-    potentialCity = potentialCity.replace(/\b\d{5}\b/g, "").trim();
-    if (potentialCity) city = potentialCity;
-  } else if (parts.length === 2) {
-    // Fallback for short addresses like "Gamuda Cove, Selangor"
+  if (parts.length === 1) {
     city = parts[0];
+  } else {
+    // General structure: [Specific, ..., State, Country]
+    // Region = 2nd to last (if length >= 2)
+    // City = First part (Most precise)
+
+    region = parts[parts.length - 2].replace(/\d{5}/g, "").trim(); // Remove postcode from state if present
+
+    // City is the first component, but clean postcodes
+    let precise = parts[0];
+    precise = precise.replace(/^\d{5}\s+/, "").replace(/\s+\d{5}$/, "");
+
+    // If we have more detail (e.g. "Taman Foo, Bar City, State, Country"), maybe combine?
+    // User said "Update cities to match precise locations".
+    // Let's stick to the most specific part (index 0).
+    city = precise;
+
+    // Edge case: if city is same as region, try next part? No, usually distinct.
   }
 
   return { city, region, country };

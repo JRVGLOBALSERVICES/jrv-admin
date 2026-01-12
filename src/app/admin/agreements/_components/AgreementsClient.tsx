@@ -51,6 +51,8 @@ function StatusBadge({ status }: { status: string }) {
     color = "bg-red-50 text-red-700 border-red-200";
   else if (s === "completed")
     color = "bg-green-50 text-green-700 border-green-200";
+  else if (s === "extended")
+    color = "bg-purple-50 text-purple-700 border-purple-200";
   return (
     <span
       className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${color}`}
@@ -316,123 +318,123 @@ export default function AgreementsClient() {
                   </td>
                 </tr>
               ) : (
-                rows.map((row: any) => (
-                  <tr
-                    key={row.id}
-                    className="hover:bg-indigo-50/30 transition group"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-bold text-gray-900">
-                        {row.customer_name}
-                      </div>
-                      <div className="text-[10px] text-gray-400 font-mono">
-                        {row.mobile}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">
-                        {row.plate_number}
-                      </div>
-                      <div className="text-[10px] text-gray-500">
-                        {row.car_label}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-xs font-medium text-gray-700">
-                        {fmtDate(row.date_start)}
-                      </div>
-                      <div className="text-[10px] text-gray-400">
-                        to {fmtDate(row.date_end)}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 font-bold text-gray-900">
-                      RM {row.total_price}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <div className="font-bold text-gray-900">
-                          RM {row.deposit_price || "0.00"}
-                        </div>
+                rows.map((row: any) => {
+                  const end = new Date(row.date_end);
+                  const now = new Date();
+                  // Check if due today or past due, but not completed/deleted
+                  const isActive = !["completed", "cancelled", "deleted"].includes((row.status || "").toLowerCase());
+                  // 12 hours buffer or same day check?
+                  // Simple check: is end time < now + 24h?
+                  // Or just: is it "today"?
+                  const isDue = end.getTime() < (now.getTime() + 24 * 60 * 60 * 1000);
 
-                        {Number(row.deposit_price || 0) > 0 ? (
-                          row.deposit_refunded ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-lg">
-                              <Check className="w-3.5 h-3.5" /> Refunded
-                            </span>
+                  return (
+                    <tr
+                      key={row.id}
+                      className="hover:bg-indigo-50/30 transition group"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-bold text-gray-900">
+                          {row.customer_name}
+                        </div>
+                        <div className="text-[10px] text-gray-400 font-mono">
+                          {row.mobile}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-800">
+                          {row.plate_number}
+                        </div>
+                        <div className="text-[10px] text-gray-500">
+                          {row.car_label}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-xs font-medium text-gray-700">
+                          {fmtDate(row.date_start)}
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          to {fmtDate(row.date_end)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 font-bold text-gray-900">
+                        RM {row.total_price}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          <div className="font-bold text-gray-900">
+                            RM {row.deposit_price || "0.00"}
+                          </div>
+
+                          {Number(row.deposit_price || 0) > 0 ? (
+                            row.deposit_refunded ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700 bg-green-50 border border-green-200 px-2 py-1 rounded-lg">
+                                <Check className="w-3.5 h-3.5" /> Refunded
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                                Not refunded
+                              </span>
+                            )
                           ) : (
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                              Not refunded
+                            <span className="text-[10px] text-gray-400 uppercase tracking-wide">
+                              —
                             </span>
-                          )
-                        ) : (
-                          <span className="text-[10px] text-gray-400 uppercase tracking-wide">
-                            —
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={row.status} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        {row.whatsapp_url && (
-                          <a
-                            href={row.whatsapp_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 rounded-lg hover:bg-green-100 text-green-600 transition-colors"
-                          >
-                            <WhatsAppIcon className="w-4 h-4" />
-                          </a>
-                        )}
-                        {row.agreement_url && (
-                          <a
-                            href={row.agreement_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-2 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors"
-                          >
-                            <FileDown className="w-4 h-4" />
-                          </a>
-                        )}
-                        <Link href={`/admin/agreements/${row.id}`}>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            className="h-8 text-xs px-3"
-                          >
-                            Edit
-                          </Button>
-                        </Link>
-                        {isSuperadmin && (
-                          // <button
-                          //   type="button"
-                          //   onClick={(e) => {
-                          //     e.preventDefault();
-                          //     forceDelete(row.id);
-                          //   }}
-                          //   disabled={deletingId === row.id}
-                          //   className="ml-1 bg-red-50 text-red-600 text-[10px] font-bold px-2 py-1.5 rounded hover:bg-red-100 disabled:opacity-50"
-                          // >
-                          //   {deletingId === row.id ? "..." : "DEL"}
-                          // </button>
-                          <Button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              forceDelete(row.id);
-                            }}
-                            disabled={deletingId === row.id}
-                            variant="tertiary"
-                            className="ml-1 text-black bg-red-50 text-[10px] font-bold px-2 py-1.5 rounded hover:bg-red-100 disabled:opacity-50"
-                          >
-                            {deletingId === row.id ? "..." : "DELETE"}
-                          </Button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={row.status} />
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {row.whatsapp_url && (
+                            <a
+                              href={row.whatsapp_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 rounded-lg hover:bg-green-100 text-green-600 transition-colors"
+                            >
+                              <WhatsAppIcon className="w-4 h-4" />
+                            </a>
+                          )}
+                          {row.agreement_url && (
+                            <a
+                              href={row.agreement_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-2 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors"
+                            >
+                              <FileDown className="w-4 h-4" />
+                            </a>
+                          )}
+                          <Link href={`/admin/agreements/${row.id}`}>
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              className="h-8 text-xs px-3"
+                            >
+                              Edit
+                            </Button>
+                          </Link>
+                          {isSuperadmin && (
+                            <Button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                forceDelete(row.id);
+                              }}
+                              disabled={deletingId === row.id}
+                              variant="tertiary"
+                              className="ml-1 text-black bg-red-50 text-[10px] font-bold px-2 py-1.5 rounded hover:bg-red-100 disabled:opacity-50"
+                            >
+                              {deletingId === row.id ? "..." : "DELETE"}
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

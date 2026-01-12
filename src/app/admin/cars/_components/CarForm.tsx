@@ -133,6 +133,7 @@ export function CarForm({
   const [year, setYear] = useState(initial.year ?? "2025");
   const [insuranceExpiry, setInsuranceExpiry] = useState(initial.insurance_expiry ?? "");
   const [roadtaxExpiry, setRoadtaxExpiry] = useState(initial.roadtax_expiry ?? "");
+  const [trackInsurance, setTrackInsurance] = useState(initial.track_insurance ?? true);
 
   const [dailyPrice, setDailyPrice] = useState(
     String(initial.daily_price ?? "")
@@ -312,6 +313,7 @@ export function CarForm({
             is_featured: isFeatured,
             promo_price: toNumberOrNull(promoPrice),
             promo_label: promoLabel.trim() || null,
+            track_insurance: trackInsurance,
           },
         }),
       });
@@ -463,26 +465,32 @@ export function CarForm({
             <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 uppercase tracking-wider">
               <CalendarDays className="w-4 h-4" /> Expiry Dates (Internal)
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className={labelClass}>Insurance Expiry</label>
-                <input
-                  type="date"
-                  className={inputClass}
-                  value={insuranceExpiry}
-                  onChange={(e) => setInsuranceExpiry(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Roadtax Expiry</label>
-                <input
-                  type="date"
-                  className={inputClass}
-                  value={roadtaxExpiry}
-                  onChange={(e) => setRoadtaxExpiry(e.target.value)}
-                />
-              </div>
+            <div className="flex items-center gap-4 mb-2">
+              <Toggle label="Track Insurance/Roadtax" value={trackInsurance} onChange={setTrackInsurance} />
+              <p className="text-xs text-gray-400 italic">If disabled, this car won't appear in the Insurance Dashboard.</p>
             </div>
+            {trackInsurance && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className={labelClass}>Insurance Expiry</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={insuranceExpiry}
+                    onChange={(e) => setInsuranceExpiry(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Roadtax Expiry</label>
+                  <input
+                    type="date"
+                    className={inputClass}
+                    value={roadtaxExpiry}
+                    onChange={(e) => setRoadtaxExpiry(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="bg-emerald-50/30 p-5 rounded-2xl border border-emerald-100/50 space-y-6">
@@ -761,7 +769,7 @@ export function CarForm({
             </Button>
           </div>
         </div>
-      </Card>
-    </div>
+      </Card >
+    </div >
   );
 }

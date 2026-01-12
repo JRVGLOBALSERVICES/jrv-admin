@@ -20,6 +20,7 @@ interface GlossyKpiProps {
   color?: KpiColor;
   icon?: React.ElementType;
   pulse?: boolean;
+  trend?: "up" | "down";
 }
 
 export default function GlossyKpi({
@@ -29,49 +30,67 @@ export default function GlossyKpi({
   color = "blue",
   icon: Icon,
   pulse = false,
+  trend = "up",
 }: GlossyKpiProps) {
-  const gradients: Record<KpiColor, string> = {
-    blue: "from-cyan-500 to-blue-600 shadow-blue-200",
-    green: "from-emerald-400 to-green-600 shadow-green-200",
-    emerald: "from-emerald-500 to-teal-600 shadow-emerald-300",
-    purple: "from-violet-400 to-purple-600 shadow-purple-200",
-    orange: "from-amber-400 to-orange-600 shadow-orange-200",
-    pink: "from-rose-400 to-red-600 shadow-rose-200",
-    indigo: "from-indigo-400 to-blue-800 shadow-indigo-200",
-    amber: "from-amber-400 to-orange-500 shadow-amber-200",
-    rose: "from-rose-400 to-red-600 shadow-rose-200",
-    slate: "from-slate-500 to-slate-700 shadow-slate-200",
+  const styles: Record<KpiColor, { bg: string; text: string; blob: string }> = {
+    blue: { bg: "bg-blue-50", text: "text-blue-600", blob: "bg-linear-to-br from-cyan-400 to-blue-600" },
+    green: { bg: "bg-green-50", text: "text-green-600", blob: "bg-linear-to-br from-emerald-400 to-green-600" },
+    emerald: {
+      bg: "bg-emerald-50",
+      text: "text-emerald-600",
+      blob: "bg-linear-to-br from-emerald-400 to-teal-600",
+    },
+    purple: {
+      bg: "bg-purple-50",
+      text: "text-purple-600",
+      blob: "bg-linear-to-br from-violet-400 to-purple-600",
+    },
+    orange: {
+      bg: "bg-orange-50",
+      text: "text-orange-600",
+      blob: "bg-linear-to-br from-amber-400 to-orange-600",
+    },
+    pink: { bg: "bg-pink-50", text: "text-pink-600", blob: "bg-linear-to-br from-rose-400 to-pink-600" },
+    indigo: {
+      bg: "bg-indigo-50",
+      text: "text-indigo-600",
+      blob: "bg-linear-to-br from-indigo-400 to-blue-600",
+    },
+    amber: { bg: "bg-amber-50", text: "text-amber-600", blob: "bg-linear-to-br from-amber-400 to-orange-500" },
+    rose: { bg: "bg-rose-50", text: "text-rose-600", blob: "bg-linear-to-br from-rose-400 to-red-600" },
+    slate: { bg: "bg-slate-50", text: "text-slate-600", blob: "bg-linear-to-br from-slate-400 to-gray-600" },
   };
 
-  const selectedGradient = gradients[color] || gradients.blue;
+  const s = styles[color] || styles.blue;
+  const ringColor = trend === "down" ? "ring-rose-400" : "ring-emerald-400";
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl p-5 text-white shadow-lg bg-linear-to-br ${selectedGradient} group transition-all duration-500 ${pulse
-          ? "scale-105 animate-pulse ring-4 ring-emerald-400 shadow-2xl"
-          : "hover:scale-[1.02]"
+      className={`relative overflow-hidden rounded-2xl p-4 md:p-5 bg-white border border-gray-100 shadow-xl group transition-all duration-300 h-full flex flex-col justify-between ${pulse ? `scale-105 ring-4 ${ringColor} shadow-2xl animate-pulse` : "hover:shadow-2xl hover:scale-[1.02]"
         }`}
     >
-      <div className="absolute inset-x-0 top-0 h-1/3 bg-linear-to-b from-white/30 to-transparent pointer-events-none" />
-      <div className="relative z-10 flex flex-col h-full justify-between">
-        <div className="flex justify-between items-start">
-          <span className="text-[10px] font-bold uppercase tracking-widest opacity-80">
+      {/* Decorative Blob */}
+      <div
+        className={`absolute -top-6 -right-6 w-24 h-24 rounded-full ${s.blob} opacity-20 transition-transform group-hover:scale-110`}
+      />
+
+      <div className="relative z-10">
+        <div className="flex justify-between items-start mb-2">
+          <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest">
             {title}
-          </span>
-          {Icon && (
-            <Icon
-              className={`w-4 h-4 ${pulse ? "animate-bounce" : "opacity-60"}`}
-            />
-          )}
+          </h3>
+          {Icon && <Icon className={`w-5 h-5 ${s.text} opacity-80`} />}
         </div>
-        <div className="text-3xl font-black mt-2 tracking-tight drop-shadow-sm">
-          {typeof value === 'number' ? value.toLocaleString() : value}
+
+        <div className="text-2xl md:text-3xl font-black text-gray-900 tracking-tight leading-none mb-1">
+          {typeof value === "number" ? value.toLocaleString() : value}
         </div>
+
         {sub && (
-          <div className="text-xs font-medium mt-1 opacity-90 flex items-center gap-1">
-            <span className="bg-white/20 px-1.5 py-0.5 rounded text-[10px]">
-              {sub}
-            </span>
+          <div
+            className={`text-[10px] font-bold ${s.text} bg-white/50 backdrop-blur-md inline-block px-2 py-1 rounded-md mt-1 border border-gray-100 shadow-sm`}
+          >
+            {sub}
           </div>
         )}
       </div>

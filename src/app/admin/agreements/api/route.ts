@@ -448,9 +448,22 @@ export async function POST(req: Request) {
         if (
           newStatus !== "Cancelled" &&
           newStatus !== "Completed" &&
-          newStatus !== "Deleted"
+          newStatus !== "Deleted" &&
+          newStatus !== "Extended"
         ) {
-          newStatus = "Editted";
+          // Check for extension
+          const oldEnd = prevRow?.date_end
+            ? new Date(prevRow.date_end).getTime()
+            : 0;
+          const newEnd = payload.date_end_iso
+            ? new Date(payload.date_end_iso).getTime()
+            : 0;
+
+          if (newEnd > oldEnd) {
+            newStatus = "Extended";
+          } else {
+            newStatus = "Editted";
+          }
         }
       }
 

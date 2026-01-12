@@ -117,6 +117,22 @@ export async function GET(req: Request) {
   const nowIso = now.toISOString();
   let sentCount = 0;
 
+  // --- AUTO REPAIR: If 'Completed' but date_end > now -> 'Extended' ---
+  // This handles cases where user extends AFTER it auto-completed
+  const { data: repairedRows, error: repairErr } = await supabase
+    .from("agreements")
+    .update({ status: "Extended" })
+    .eq("status", "Completed")
+    .gt("date_end", nowIso)
+    .select("id, car_id, plate_number");
+
+  if (repairErr) console.error("repairErr:", repairErr);
+  else if (repairedRows && repairedRows.length > 0) {
+    console.log(`Repaired ${repairedRows.length} agreements to Extended.`);
+    // Force car status sync for these
+    await syncCarsFromAgreementsNow(nowIso);
+  }
+
   // --- REMINDERS ---
   for (const check of CHECKS) {
     const targetTime = new Date(now.getTime() + check.minutes * 60 * 1000);

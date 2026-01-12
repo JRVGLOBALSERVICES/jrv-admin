@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { format } from "date-fns";
 
 type Row = {
   agreement_id: string;
@@ -40,9 +41,8 @@ function Pill({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full text-white shadow-md bg-linear-to-r ${
-        gradients[tone] || gradients.dark
-      }`}
+      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-3 py-1 rounded-full text-white shadow-md bg-linear-to-r ${gradients[tone] || gradients.dark
+        }`}
     >
       <span className="opacity-90">{label}</span>
       <span className="bg-white/20 px-1.5 rounded-md tabular-nums">
@@ -83,9 +83,11 @@ export default function CurrentlyRented({
   rentedCount: number;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [asOf, setAsOf] = useState("");
 
   useEffect(() => {
     const t = setInterval(() => setNowMs(Date.now()), 1000);
+    setAsOf(format(new Date(), "HH:mm dd MMM"));
     return () => clearInterval(t);
   }, []);
 
@@ -102,8 +104,9 @@ export default function CurrentlyRented({
           <div className="font-black text-blue-900 text-sm uppercase tracking-wide">
             {title}
           </div>
-          <div className="text-[10px] text-blue-600 font-medium mt-0.5">
-            Active on the road
+          <div className="text-[10px] text-blue-600 font-medium mt-0.5 flex items-center gap-1">
+            <span>Active on the road</span>
+            {asOf && <span className="opacity-70">• As of {asOf}</span>}
           </div>
         </div>
 
@@ -169,11 +172,10 @@ export default function CurrentlyRented({
                     href={whatsappLink}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`p-2 rounded-full border transition-all shadow-sm ${
-                      mobileRaw
-                        ? "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-500 hover:text-white"
-                        : "bg-gray-50 text-gray-300 border-gray-200 pointer-events-none"
-                    }`}
+                    className={`p-2 rounded-full border transition-all shadow-sm ${mobileRaw
+                      ? "bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-500 hover:text-white"
+                      : "bg-gray-50 text-gray-300 border-gray-200 pointer-events-none"
+                      }`}
                     title="WhatsApp"
                   >
                     <WhatsAppIcon />

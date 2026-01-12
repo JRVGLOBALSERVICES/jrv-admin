@@ -155,15 +155,17 @@ export function getSessionKey(r: SiteEventRow): string {
 export function getIdentityKey(event: any): string {
   if (event.anon_id) return String(event.anon_id);
   if (event.session_id) return String(event.session_id);
-  
+
   // High entropy fallback for missing IDs
   // Combine IP, UserAgent, and a rough time window (10 min) to avoid merging distinct users
   const ip = event.ip || "unknown_ip";
   const ua = event.user_agent || "unknown_ua";
   const u = event.page_url || event.page_path || "unknown_url";
-  const timeWindow = Math.floor(new Date(event.created_at).getTime() / (10 * 60 * 1000));
-  
-  return `fb_${ip}_${ua.slice(0,20)}_${u.slice(0,20)}_${timeWindow}`;
+  const timeWindow = Math.floor(
+    new Date(event.created_at).getTime() / (10 * 60 * 1000)
+  );
+
+  return `fb_${ip}_${ua.slice(0, 20)}_${u.slice(0, 20)}_${timeWindow}`;
 }
 
 export function referrerLabelFromFirstEvent(first: SiteEventRow): string {
@@ -233,7 +235,10 @@ export function inferAcquisitionFromFirstEvent(first: SiteEventRow): {
   };
 }
 
-export function classifyTrafficSource(referrer: string | null, url: string | null) {
+export function classifyTrafficSource(
+  referrer: string | null,
+  url: string | null
+) {
   const ref = (referrer || "").toLowerCase();
   const u = (url || "").toLowerCase();
 
@@ -366,7 +371,7 @@ export function normalizeModel(rawName: string | null) {
       // e.g. "myvi g3" -> "Perodua Myvi G3"
       const variant = rawName.split(/\s+/).slice(1).join(" ").trim();
       if (variant && !variant.toLowerCase().includes(search)) {
-         // This is a bit complex, let's stick to a simpler "smart replace"
+        // This is a bit complex, let's stick to a simpler "smart replace"
       }
     }
   };
@@ -409,12 +414,16 @@ export function normalizeModel(rawName: string | null) {
   }
   if (lower.includes("civic")) return "Honda Civic";
   if (lower.includes("brv") || lower.includes("br-v")) return "Honda BR-V";
-  if (lower.includes("crv") || lower.includes("cr-v") || lower.includes("cr v")) return "Honda CR-V";
+  if (lower.includes("crv") || lower.includes("cr-v") || lower.includes("cr v"))
+    return "Honda CR-V";
   if (lower.includes("xpander")) return "Mitsubishi Xpander";
   if (lower.includes("triton")) return "Mitsubishi Triton";
-  if (lower.includes("hr-v") || lower.includes("hrv") || lower.includes("hr v")) return "Honda HR-V";
-  if (lower.includes("wr-v") || lower.includes("wrv") || lower.includes("wr v")) return "Honda WR-V";
-  if (lower.includes("brv") || lower.includes("br-v") || lower.includes("br v")) return "Honda BR-V";
+  if (lower.includes("hr-v") || lower.includes("hrv") || lower.includes("hr v"))
+    return "Honda HR-V";
+  if (lower.includes("wr-v") || lower.includes("wrv") || lower.includes("wr v"))
+    return "Honda WR-V";
+  if (lower.includes("brv") || lower.includes("br-v") || lower.includes("br v"))
+    return "Honda BR-V";
   if (lower.includes("preve")) return "Proton Prevé";
   if (lower.includes("iriz")) return "Proton Iriz";
 
@@ -442,6 +451,7 @@ export const PAGE_NAMES: Record<string, string> = {
   "/": "Homepage",
   "/cars/": "All Cars",
   "/about/": "About Us",
+  "/about-us/": "About Us",
   "/contact/": "Contact Us",
   "/events/": "Our Events",
   "/how-it-works/": "How It Works",

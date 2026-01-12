@@ -1,10 +1,13 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { createSupabaseServer } from "@/lib/supabase/server";
-import { rangeDays6amKlUtc, currentBusinessDay } from "@/lib/klTimeWindow";
-// ...
-// 1. SITE ANALYTICS (KL 6am→6am business window)
-// Moved inside AdminDashboard
+import {
+  rangeDays6amKlUtc,
+  currentBusinessDay,
+  currentWeek6amKlUtc,
+  currentMonth6amKlUtc,
+} from "@/lib/klTimeWindow";
+
 import { differenceInDays, parseISO } from "date-fns";
 import UrgentActionsModal from "../admin/_components/UrgentActionsModal";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
@@ -12,7 +15,6 @@ import AvailableNow from "../admin/_components/AvailableNow";
 import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
 import CurrentlyRented from "../admin/_components/CurrentlyRented";
 import DashboardFilters from "../admin/_components/DashboardFilters";
-// import UrgentActionsModal from "../admin/_components/UrgentActionsModal";
 import ClockKpi from "./_components/ClockKpi";
 import MiniSiteAnalytics from "./_components/MiniSiteAnalytics";
 import GlossyKpi from "./_components/GlossyKpi";
@@ -27,6 +29,7 @@ import {
   classifyTrafficSource,
   getIdentityKey,
   getPageName,
+  safeParseProps,
   type SiteEventRow,
 } from "@/lib/site-events";
 import type { Metadata } from "next";
@@ -100,7 +103,7 @@ function startOfDayInKLToUTC(baseUtc: Date) {
   return new Date(Date.UTC(y, m, d, 0, 0, 0, 0) - KL_OFFSET_MS);
 }
 
-function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 6) {
   const kl = new Date(baseUtc.getTime() + KL_OFFSET_MS);
   const y = kl.getUTCFullYear();
   const m = kl.getUTCMonth();
@@ -109,7 +112,7 @@ function startOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
   return start;
 }
 
-function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 7) {
+function endOfBusinessDayInKLToUTC(baseUtc: Date, hour = 6) {
   const start = startOfBusinessDayInKLToUTC(baseUtc, hour);
   return new Date(start.getTime() + DAY_MS - 1);
 }
@@ -133,39 +136,28 @@ function getRange(
   toParam: string,
   now = new Date()
 ) {
+  // Custom: YYYY-MM-DD inputs -> 6 AM KL boundaries
   if (period === "custom" && fromParam && toParam) {
-    const s = parseKLMidnightToUTC(fromParam);
-    const e = parseKLEndOfDayToUTC(toParam);
-    if (s && e) return { start: s, end: e };
+    // Start at 06:00 KL on the "from" date
+    const s = new Date(`${fromParam}T06:00:00+08:00`);
+    // End at 06:00 KL on the day AFTER the "to" date (covering the full "to" business day)
+    const eStart = new Date(`${toParam}T06:00:00+08:00`);
+    const e = new Date(eStart.getTime() + 24 * 60 * 60 * 1000);
+
+    if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+      return { start: s, end: e };
+    }
   }
 
   if (period === "all") return { start: new Date(0), end: now };
 
-  let start: Date;
+  if (period === "weekly") return currentWeek6amKlUtc(now);
+  if (period === "monthly") return currentMonth6amKlUtc(now);
+  if (period === "quarterly") return rangeDays6amKlUtc(now, 90);
+  if (period === "yearly") return rangeDays6amKlUtc(now, 365);
 
-  if (period === "daily") {
-    start = startOfDayInKLToUTC(now);
-  } else if (period === "weekly") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 7);
-    start = startOfDayInKLToUTC(d);
-  } else if (period === "monthly") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 30);
-    start = startOfDayInKLToUTC(d);
-  } else if (period === "quarterly") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 90);
-    start = startOfDayInKLToUTC(d);
-  } else if (period === "yearly") {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 365);
-    start = startOfDayInKLToUTC(d);
-  } else {
-    start = startOfDayInKLToUTC(now);
-  }
-
-  return { start, end: now };
+  // default: daily (Today 6am - Tomorrow 6am)
+  return currentBusinessDay(now);
 }
 
 
@@ -234,8 +226,9 @@ export default async function AdminDashboard({
     .gte("created_at", windowStart.toISOString())
     .lt("created_at", windowEnd.toISOString())
     .not("page_url", "ilike", "%localhost%")
+    .neq("event_name", "heartbeat")
     .order("created_at", { ascending: false })
-    .limit(5000);
+    .limit(50000);
 
   // FETCH cars for slug matching
   const { data: carsData } = await supabase
@@ -293,6 +286,21 @@ export default async function AdminDashboard({
     const url = String(e.page_url || e.page_path || "").toLowerCase();
     const ref = String(e.referrer || "").toLowerCase();
     if (url.includes("localhost") || ref.includes("localhost")) continue;
+
+    // Apply Filters (Model / Plate) matching route.ts logic
+    if (filterModel) {
+      const mk = getModelKey(e);
+      const norm = normalizeModel(mk);
+      if (
+        norm !== filterModel &&
+        !norm.toLowerCase().includes(filterModel.toLowerCase())
+      )
+        continue;
+    }
+    if (filterPlate) {
+      const p = safeParseProps(e.props);
+      if (p?.plate !== filterPlate && p?.plate_number !== filterPlate) continue;
+    }
 
     // Identity grouping: Use robust lib version
     const userKey = getIdentityKey(e);
@@ -573,8 +581,8 @@ export default async function AdminDashboard({
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
   // Cards data
-  const todayStartUTC = startOfBusinessDayInKLToUTC(now, 7);
-  const todayEndUTC = endOfBusinessDayInKLToUTC(now, 7);
+  const todayStartUTC = startOfBusinessDayInKLToUTC(now);
+  const todayEndUTC = endOfBusinessDayInKLToUTC(now);
 
   const { data: expiringToday } = await supabase
     .from("agreements")
@@ -745,42 +753,52 @@ export default async function AdminDashboard({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col">
-          <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-            <h3 className="font-semibold text-gray-800">Top Performing Cars</h3>
-            <span className="text-xs bg-black text-white px-2 py-1 rounded">
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden flex flex-col">
+          <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex justify-between items-center">
+            <h3 className="font-black text-indigo-900 text-sm uppercase tracking-wide">
+              Top Performing Cars
+            </h3>
+            <span className="text-[10px] bg-indigo-100 text-indigo-700 font-bold px-2 py-0.5 rounded-md uppercase tracking-wide shadow-sm border border-indigo-200">
               By Plate
             </span>
           </div>
-          <div className="divide-y overflow-y-auto max-h-96">
+          <div className="divide-y divide-gray-50 overflow-y-auto max-h-96">
             {breakdownPlate.map((p: any, i: number) => (
               <div
                 key={p.key}
-                className="p-3 flex items-center justify-between hover:bg-gray-50 text-sm"
+                className="p-3 flex items-center justify-between hover:bg-indigo-50/30 transition-colors group"
               >
                 <div className="flex items-center gap-3">
                   <span
-                    className={`w-5 h-5 flex items-center justify-center text-[10px] font-bold rounded-full ${rankBadge(
+                    className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-full shadow-sm ${rankBadge(
                       i
                     )}`}
                   >
                     {i + 1}
                   </span>
                   <div>
-                    <div className="font-semibold text-gray-900">{p.key}</div>
-                    <div className="text-xs text-gray-500">{p.model}</div>
+                    <div className="font-bold text-gray-800 group-hover:text-indigo-700 transition-colors">
+                      {p.key}
+                    </div>
+                    <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">
+                      {p.model}
+                    </div>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="font-bold text-gray-800">
+                  <div className="font-black text-gray-900">
                     {fmtMoney(p.revenue)}
                   </div>
-                  <div className="text-xs text-gray-500">{p.count} trips</div>
+                  <div className="text-[10px] text-gray-400 font-bold">
+                    {p.count} trips
+                  </div>
                 </div>
               </div>
             ))}
             {breakdownPlate.length === 0 && (
-              <div className="p-6 text-center text-gray-400">No data</div>
+              <div className="p-8 text-center text-gray-400 text-sm italic">
+                No data
+              </div>
             )}
           </div>
         </div>
@@ -790,25 +808,29 @@ export default async function AdminDashboard({
             {breakdownBrand.map((b: any) => (
               <div
                 key={b.key}
-                className="bg-white border shadow-sm rounded-lg px-4 py-2 flex items-center gap-3"
+                className="bg-white border border-gray-100 shadow-lg rounded-xl px-4 py-2 flex items-center gap-3 hover:translate-y-[-2px] transition-transform"
               >
-                <span className="font-semibold text-gray-700">{b.key}</span>
-                <div className="h-4 w-px bg-gray-200"></div>
-                <span className="text-emerald-600 font-bold">
+                <span className="font-bold text-gray-700 text-sm">{b.key}</span>
+                <div className="h-4 w-px bg-gray-100"></div>
+                <span className="text-emerald-600 font-black text-sm">
                   {fmtMoney(b.revenue)}
                 </span>
               </div>
             ))}
           </div>
 
-          <div className="bg-white rounded-xl border shadow-sm overflow-hidden flex flex-col">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-              <h3 className="font-semibold text-gray-800">Revenue by Model</h3>
-              <div className="text-xs text-gray-500">Includes ADR</div>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden flex flex-col">
+            <div className="px-5 py-4 border-b border-purple-100 bg-linear-to-r from-purple-50 via-pink-50 to-white flex justify-between items-center">
+              <h3 className="font-black text-purple-900 text-sm uppercase tracking-wide">
+                Revenue by Model
+              </h3>
+              <div className="text-[10px] font-bold text-purple-400 uppercase tracking-widest">
+                Includes ADR
+              </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-gray-50 text-gray-500 font-medium border-b">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-gray-50/50 text-gray-400 uppercase font-black border-b border-gray-100">
                   <tr>
                     <th className="px-4 py-3 whitespace-nowrap">Model</th>
                     <th className="px-4 py-3 text-right whitespace-nowrap">
@@ -826,8 +848,19 @@ export default async function AdminDashboard({
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {breakdownModel.map((b: any) => {
+                  {breakdownModel.map((b: any, i: number) => {
                     const percent = (b.revenue / maxModelRev) * 100;
+                    const gradients = [
+                      "from-cyan-400 to-blue-600",
+                      "from-violet-400 to-purple-600",
+                      "from-emerald-400 to-green-600",
+                      "from-amber-400 to-orange-600",
+                      "from-rose-400 to-red-600",
+                      "from-fuchsia-400 to-pink-600",
+                      "from-sky-400 to-indigo-600",
+                    ];
+                    const grad = gradients[i % gradients.length];
+
                     return (
                       <tr key={b.key} className="hover:bg-gray-50 group">
                         <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
@@ -836,7 +869,7 @@ export default async function AdminDashboard({
                         <td className="px-4 py-3 w-1/4 align-middle">
                           <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden shadow-inner">
                             <div
-                              className="h-full rounded-full bg-linear-to-r from-emerald-400 to-green-500 relative overflow-hidden"
+                              className={`h-full rounded-full bg-linear-to-r ${grad} relative overflow-hidden`}
                               style={{ width: `${percent}%` }}
                             >
                               <div className="absolute inset-x-0 top-0 h-1/2 bg-white/30" />
@@ -869,7 +902,7 @@ export default async function AdminDashboard({
         </div>
       </div>
 
-      <MiniSiteAnalytics data={miniSiteData} />
+      <MiniSiteAnalytics initialData={miniSiteData} dateRange={{ from: windowStart.toISOString(), to: windowEnd.toISOString() }} filters={{ model: filterModel, plate: filterPlate }} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ExpiringSoon

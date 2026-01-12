@@ -16,6 +16,9 @@ import {
   Facebook as FacebookIcon,
   Search,
   Zap,
+  Car,
+  Phone,
+  Megaphone,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useRef } from "react";
@@ -31,6 +34,14 @@ type TopLoc = { name: string; users: number; status?: string; trend?: string };
 /* =========================
    UI Components
    ========================= */
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.008-.57-.008-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
 
 function GlossyBadge({
   value,
@@ -64,11 +75,13 @@ function MixRow({
   value,
   total,
   color,
+  icon: Icon,
 }: {
   label: string;
   value: number;
   total: number;
   color: "slate" | "emerald" | "amber" | "sky" | "pink" | "indigo" | "rose";
+  icon?: any;
 }) {
   const pct = Math.round((value / Math.max(1, total)) * 100);
   const gradients = {
@@ -84,10 +97,16 @@ function MixRow({
   const chosenGradient = gradients[color] || gradients.slate;
 
   return (
-    <div className="group">
+    <div className="group px-4 py-2 hover:bg-gray-50 transition-colors border-b border-gray-50 last:border-0">
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
         <div className="flex items-center gap-2">
-          <div className={`w-1.5 h-1.5 rounded-full bg-linear-to-br ${chosenGradient} shadow-xs ring-2 ring-white`} />
+          {Icon ? (
+            <Icon className={`w-3.5 h-3.5 text-gray-400`} />
+          ) : (
+            <div
+              className={`w-1.5 h-1.5 rounded-full bg-linear-to-br ${chosenGradient} shadow-xs ring-2 ring-white`}
+            />
+          )}
           <span className="font-bold text-gray-700 group-hover:text-black transition-colors">
             {label}
           </span>
@@ -96,7 +115,7 @@ function MixRow({
           <span className="font-bold text-gray-900">{value}</span> ({pct}%)
         </span>
       </div>
-      <div className="h-2 rounded-full bg-gray-100/80 overflow-hidden shadow-inner border border-gray-200/50">
+      <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden shadow-inner">
         <div
           className={`h-full rounded-full bg-linear-to-r ${chosenGradient} shadow-sm transition-all duration-1000 relative overflow-hidden`}
           style={{ width: `${pct}%` }}
@@ -120,15 +139,15 @@ function Card({
   headerExtras?: any;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-100 shadow-sm bg-white overflow-hidden flex flex-col h-full">
-      <div className="px-4 py-3 border-b border-gray-50 bg-gray-50/30 flex items-center justify-between">
-        <div className="font-bold text-gray-800 text-xs uppercase tracking-wide flex items-center gap-2">
-          {Icon && <Icon className="w-3 h-3 text-gray-400" />}
+    <div className="rounded-2xl border border-gray-100 shadow-xl bg-white overflow-hidden flex flex-col h-full">
+      <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex items-center justify-between">
+        <div className="font-black text-indigo-900 text-sm uppercase tracking-wide flex items-center gap-2">
+          {Icon && <Icon className="w-4 h-4 text-indigo-400" />}
           {title}
         </div>
         {headerExtras && <div>{headerExtras}</div>}
       </div>
-      <div className="p-4 flex-1 overflow-x-auto">{children}</div>
+      <div className="p-0 flex-1 overflow-x-auto">{children}</div>
     </div>
   );
 }
@@ -175,9 +194,11 @@ function ListRow({
 }
 
 export default function MiniSiteAnalytics({
-  data,
+  initialData,
+  dateRange,
+  filters = {},
 }: {
-  data: {
+  initialData: {
     activeUsersRealtime: number;
     uniqueVisitors24h: number;
     uniqueAnonIds24h: number;
@@ -195,42 +216,89 @@ export default function MiniSiteAnalytics({
       Direct: number;
     };
     topModels: { key: string; count: number; carId?: string }[];
-    topPages: { key: string; name: string; count: number; carId?: string | null }[];
+    topPages: {
+      key: string;
+      name: string;
+      count: number;
+      carId?: string | null;
+    }[];
     topReferrers: { name: string; count: number }[];
     topISP: { name: string; count: number }[];
     topLocations: TopLoc[];
   };
+  dateRange: { from: string; to: string };
+  filters?: { model?: string; plate?: string };
 }) {
-  const router = useRouter();
-  const [countdown, setCountdown] = useState(30);
+  const [data, setData] = useState(initialData);
+  const [countdown, setCountdown] = useState(15);
   const [isNewUserEntry, setIsNewUserEntry] = useState(false);
-  const prevUserCount = useRef(data.activeUsersRealtime);
+  const [trend, setTrend] = useState<"up" | "down">("up");
+  const prevUserCount = useRef(initialData.activeUsersRealtime);
 
+  // Polling
   useEffect(() => {
-    if (data.activeUsersRealtime > prevUserCount.current) {
+    const poll = async () => {
+      try {
+        const params: any = {
+          from: dateRange.from,
+          to: dateRange.to,
+        };
+        if (filters?.model) params.model = filters.model;
+        if (filters?.plate) params.plate = filters.plate;
+
+        const qs = new URLSearchParams(params);
+        const res = await fetch(`/api/admin/site-events/summary?${qs}`);
+        const json = await res.json();
+        if (json.ok) {
+          setData((prev) => ({
+            ...prev,
+            activeUsersRealtime: json.activeUsers,
+            uniqueVisitors24h: json.uniqueVisitors,
+            uniqueAnonIds24h: json.uniqueAnonIds,
+            uniqueSessions24h: json.uniqueSessions,
+            uniqueIps24h: json.uniqueIps,
+            whatsappClicks: json.whatsappClicks,
+            phoneClicks: json.phoneClicks,
+            traffic: json.traffic,
+            topModels: json.topModels,
+            topPages: json.topPages,
+            topReferrers: json.topReferrers,
+            topISP: json.topISP,
+            topLocations: json.topLocations,
+          }));
+          setCountdown(15);
+        }
+      } catch (e) {
+        console.error("Poll failed", e);
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 15000);
+    return () => clearInterval(interval);
+  }, [dateRange, filters]);
+
+  // Pulse Effect
+  useEffect(() => {
+    if (data.activeUsersRealtime !== prevUserCount.current) {
+      if (data.activeUsersRealtime > prevUserCount.current) setTrend("up");
+      else if (data.activeUsersRealtime < prevUserCount.current) setTrend("down");
+
       setIsNewUserEntry(true);
-      const timeout = setTimeout(() => setIsNewUserEntry(false), 4000);
+      const timeout = setTimeout(() => setIsNewUserEntry(false), 14000);
       prevUserCount.current = data.activeUsersRealtime;
       return () => clearTimeout(timeout);
     }
     prevUserCount.current = data.activeUsersRealtime;
   }, [data.activeUsersRealtime]);
 
+  // Countdown Timer
   useEffect(() => {
-    const refreshInterval = setInterval(() => {
-      router.refresh();
-      setCountdown(30);
-    }, 30000);
-
     const timerInterval = setInterval(() => {
-      setCountdown((prev) => (prev > 0 ? prev - 1 : 30));
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
-
-    return () => {
-      clearInterval(refreshInterval);
-      clearInterval(timerInterval);
-    };
-  }, [router]);
+    return () => clearInterval(timerInterval);
+  }, []);
 
   const {
     activeUsersRealtime,
@@ -242,7 +310,7 @@ export default function MiniSiteAnalytics({
     phoneClicks,
     traffic,
     topModels,
-    topPages, // Added
+    topPages,
     topReferrers,
     topISP,
     topLocations,
@@ -288,11 +356,12 @@ export default function MiniSiteAnalytics({
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4">
         <GlossyKpi
-          title="Active Users"
+          title="Active Users (5M)"
           value={activeUsersRealtime}
-          color={isNewUserEntry ? "emerald" : "indigo"}
+          color={isNewUserEntry ? (trend === "up" ? "emerald" : "rose") : "indigo"}
           icon={Users}
           pulse={isNewUserEntry}
+          trend={trend}
         />
         <div className="flex flex-col gap-1">
           <GlossyKpi
@@ -310,19 +379,27 @@ export default function MiniSiteAnalytics({
           title="Google Ads"
           value={traffic["Google Ads"]}
           color="blue"
+          icon={Megaphone}
         />
         <GlossyKpi
           title="Google Organic"
           value={traffic["Google Organic"]}
           color="green"
+          icon={Search}
         />
         <GlossyKpi
           title="Direct Traffic"
           value={traffic["Direct"]}
           color="slate"
+          icon={Car}
         />
-        <GlossyKpi title="WhatsApp" value={whatsappClicks} color="green" />
-        <GlossyKpi title="Calls" value={phoneClicks} color="pink" />
+        <GlossyKpi
+          title="WhatsApp"
+          value={whatsappClicks}
+          color="green"
+          icon={WhatsAppIcon}
+        />
+        <GlossyKpi title="Calls" value={phoneClicks} color="pink" icon={Phone} />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -333,50 +410,57 @@ export default function MiniSiteAnalytics({
               value={traffic["Google Ads"]}
               total={trafficTotal}
               color="amber"
+              icon={Megaphone}
             />
             <MixRow
               label="Search Partners"
               value={traffic["Google Search Partners"]}
               total={trafficTotal}
               color="indigo"
+              icon={Search}
             />
             <MixRow
               label="Google Organic"
               value={traffic["Google Organic"]}
               total={trafficTotal}
               color="emerald"
+              icon={Search}
             />
             <MixRow
               label="Facebook"
               value={traffic["Facebook"]}
               total={trafficTotal}
               color="sky"
+              icon={FacebookIcon}
             />
             <MixRow
               label="Instagram"
               value={traffic["Instagram"]}
               total={trafficTotal}
               color="pink"
+              icon={InstagramIcon}
             />
             <MixRow
               label="TikTok"
               value={traffic["TikTok"]}
               total={trafficTotal}
               color="rose"
+              icon={Zap}
             />
             <MixRow
               label="Direct"
               value={traffic["Direct"]}
               total={trafficTotal}
               color="slate"
+              icon={Car}
             />
           </div>
         </Card>
 
         <Card title="Top Models" icon={Zap}>
-          <div className="space-y-1">
+          <div className="space-y-1 px-5 py-4">
             {topModels?.length ? (
-              topModels.slice(0, 5).map((m, i) => (
+              topModels.slice(0, 10).map((m, i) => (
                 <div key={m.key} className="group relative">
                   <ListRow
                     rank={i}
@@ -405,14 +489,14 @@ export default function MiniSiteAnalytics({
         </Card>
 
         <Card title="Referrers" icon={Globe}>
-          <div className="space-y-1">
+          <div className="space-y-1 px-5 py-4">
             {topReferrers?.length ? (
-              topReferrers.slice(0, 5).map((r, i) => {
+              topReferrers.slice(0, 10).map((r, i) => {
                 let color: any = "slate";
                 let Icon: any = Globe;
                 const lower = r.name.toLowerCase();
 
-                if (lower.includes("whatsapp")) { color = "emerald"; Icon = MessageCircle; }
+                if (lower.includes("whatsapp")) { color = "emerald"; Icon = WhatsAppIcon; }
                 else if (lower.includes("instagram")) { color = "pink"; Icon = InstagramIcon; }
                 else if (lower.includes("facebook")) { color = "sky"; Icon = FacebookIcon; }
                 else if (lower.includes("google")) { color = "amber"; Icon = Search; }
@@ -449,9 +533,9 @@ export default function MiniSiteAnalytics({
         //   </Link>
         // }
         >
-          <div className="space-y-3">
+          <div className="space-y-1 px-5 py-4">
             {topPages?.length ? (
-              topPages.slice(0, 6).map((p, i) => (
+              topPages.slice(0, 10).map((p, i) => (
                 <div
                   key={i}
                   className="flex items-center justify-between text-sm group py-1 border-b border-gray-50 last:border-0 pb-1"

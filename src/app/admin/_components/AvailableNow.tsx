@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { format } from "date-fns";
 
 type Row = {
   id: string;
@@ -28,9 +29,8 @@ function Pill({
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-md bg-linear-to-r ${
-        gradients[tone] || gradients.dark
-      }`}
+      className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-md bg-linear-to-r ${gradients[tone] || gradients.dark
+        }`}
     >
       <span className="opacity-90 font-medium">{label}</span>
       <span className="bg-white/20 px-1.5 rounded-md tabular-nums">
@@ -51,6 +51,12 @@ export default function AvailableNow({
   availableCount: number;
   rentedCount: number;
 }) {
+  const [asOf, setAsOf] = useState("");
+
+  useEffect(() => {
+    setAsOf(format(new Date(), "HH:mm dd MMM"));
+  }, []);
+
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) =>
       String(a.plate_number || "").localeCompare(String(b.plate_number || ""))
@@ -68,8 +74,9 @@ export default function AvailableNow({
             {title}
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-emerald-300 shadow-sm" />
           </div>
-          <div className="text-[10px] text-emerald-600 font-medium mt-0.5">
-            Ready for pickup
+          <div className="text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1">
+            <span>Ready for rental</span>
+            {asOf && <span className="opacity-70">• As of {asOf}</span>}
           </div>
         </div>
 

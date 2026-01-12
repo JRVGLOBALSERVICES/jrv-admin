@@ -1,29 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Wifi, Megaphone, MapPin, Globe, Activity, Smartphone, Link2, Users, Clock, Eye, X, ExternalLink, MessageCircle, Instagram as InstagramIcon, Facebook as FacebookIcon, Search, Zap } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Wifi, Megaphone, MapPin, Globe, Activity, Smartphone, Link2, Users, Clock, Eye, X, ExternalLink, MessageCircle, Instagram as InstagramIcon, Facebook as FacebookIcon, Search, Zap, Car, Phone, ChevronLeft, ChevronRight } from "lucide-react";
 import { rankBadge } from "../../_lib/utils";
 import { getPageName } from "@/lib/site-events";
 import GaStatCard from "./GaStatCard";
 
-const PAGE_NAMES: Record<string, string> = {
-  "/": "Homepage",
-  "/cars": "Car List",
-  "/about": "About Us",
-  "/contact": "Contact Us",
-  "/events": "Our Events",
-  "/how-it-works": "How It Works",
-  "/terms": "Terms & Conditions",
-  "/privacy": "Privacy Policy",
-  "/news-and-promotions": "News & Promotions",
-  "/kereta-sewa-seremban/": "Kereta Sewa Seremban",
-  "/kereta-sewa-senawang/": "Kereta Sewa Senawang",
-  "/kereta-sewa-nilai/": "Kereta Sewa Nilai",
-  "/kereta-sewa-klia-klia2/": "Kereta Sewa KLIA/KLIA2",
-  "/sewa-kereta-mewah/": "Luxury Car Rental",
-  "/honda-city-rs/": "Car: Honda City RS",
-  "/sewa-kereta-pelajar/": "Sewa Kereta Pelajar",
-};
+
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.008-.57-.008-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
+  );
+}
 
 function GlossyBadge({
   value,
@@ -54,13 +45,13 @@ function GlossyBadge({
 
 function Card({ title, children, headerExtras, icon: Icon }: any) {
   return (
-    <div className="rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 overflow-hidden bg-white flex flex-col h-full">
-      <div className="px-5 py-4 border-b border-gray-100 bg-white flex justify-between items-center">
-        <div className="font-bold text-gray-800 text-sm uppercase tracking-wide flex items-center gap-2">
-          {Icon && <Icon className="w-4 h-4 text-gray-400" />}
+    <div className="rounded-2xl border border-gray-100 shadow-xl overflow-hidden bg-white flex flex-col h-full">
+      <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex justify-between items-center">
+        <div className="font-black text-indigo-900 text-sm uppercase tracking-wide flex items-center gap-2">
+          {Icon && <Icon className="w-4 h-4 text-indigo-400" />}
           {title}
         </div>
-        {headerExtras}
+        {headerExtras && <div>{headerExtras}</div>}
       </div>
       <div className="p-0 flex-1">{children}</div>
     </div>
@@ -72,11 +63,13 @@ function MixRow({
   value,
   total,
   color,
+  icon: Icon,
 }: {
   label: string;
   value: number;
   total: number;
   color: "slate" | "emerald" | "amber" | "sky" | "pink" | "indigo" | "rose";
+  icon?: any;
 }) {
   const pct = Math.round((value / Math.max(1, total)) * 100);
   const gradients = {
@@ -92,10 +85,16 @@ function MixRow({
   const chosenGradient = gradients[color] || gradients.slate;
 
   return (
-    <div className="group px-4 py-2 hover:bg-gray-50/50 rounded-xl transition-colors">
+    <div className="group px-4 py-2 hover:bg-gray-50/50 transition-colors border-b border-gray-50 last:border-0">
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
         <div className="flex items-center gap-2">
-          <div className={`w-1.5 h-1.5 rounded-full bg-linear-to-br ${chosenGradient} shadow-xs ring-2 ring-white`} />
+          {Icon ? (
+            <Icon className={`w-3.5 h-3.5 text-gray-400`} />
+          ) : (
+            <div
+              className={`w-1.5 h-1.5 rounded-full bg-linear-to-br ${chosenGradient} shadow-xs ring-2 ring-white`}
+            />
+          )}
           <span className="font-bold text-gray-700 group-hover:text-black transition-colors">
             {label}
           </span>
@@ -104,7 +103,7 @@ function MixRow({
           <span className="font-bold text-gray-900">{value}</span> ({pct}%)
         </span>
       </div>
-      <div className="h-2 rounded-full bg-gray-100/80 overflow-hidden shadow-inner border border-gray-200/50">
+      <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden shadow-inner">
         <div
           className={`h-full rounded-full bg-linear-to-r ${chosenGradient} shadow-sm transition-all duration-1000 relative overflow-hidden`}
           style={{ width: `${pct}%` }}
@@ -134,8 +133,18 @@ export default function SiteEventsClient({
   // UI State
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const prevActiveUsersRef = useRef(0);
   const [countdown, setCountdown] = useState(5);
   const [isNewUserEntry, setIsNewUserEntry] = useState(false);
+  const [trend, setTrend] = useState<"up" | "down">("up");
+  const [gpsPage, setGpsPage] = useState(1);
+  const [sessionPage, setSessionPage] = useState(1);
+
+  // Reset page on filter change
+  useEffect(() => {
+    setGpsPage(1);
+    setSessionPage(1);
+  }, [initialFrom, initialTo, initialFilters]);
 
   useEffect(() => {
     let mounted = true;
@@ -152,8 +161,6 @@ export default function SiteEventsClient({
         };
         const qs = new URLSearchParams(params);
 
-        // Parallel fetch for current and previous period (for trends)
-        // Calculate previous period
         const start = new Date(initialFrom);
         const end = new Date(initialTo);
         const diffTime = end.getTime() - start.getTime();
@@ -165,7 +172,7 @@ export default function SiteEventsClient({
 
         const [res, prevRes] = await Promise.all([
           fetch(`/api/admin/site-events/summary?${qs}`),
-          fetch(`/api/admin/site-events/summary?${prevQs}`)
+          fetch(`/api/admin/site-events/summary?${prevQs}`),
         ]);
 
         const json = await res.json();
@@ -174,10 +181,13 @@ export default function SiteEventsClient({
         if (mounted && json.ok) {
           setData(json);
 
-          // Pulse effect if active users increased
-          if (json.activeUsers > (data?.activeUsers || 0)) {
+          // Pulse effect if active users changed
+          const prevActive = prevActiveUsersRef.current;
+          if (json.activeUsers !== prevActive) {
+            setTrend(json.activeUsers > prevActive ? "up" : "down");
             setIsNewUserEntry(true);
-            setTimeout(() => setIsNewUserEntry(false), 3000);
+            setTimeout(() => setIsNewUserEntry(false), 4800);
+            prevActiveUsersRef.current = json.activeUsers;
           }
 
           // Calculate trends (Refined logic)
@@ -232,7 +242,7 @@ export default function SiteEventsClient({
 
     // Countdown Timer
     const timer = setInterval(() => {
-      setCountdown((prev) => (prev <= 1 ? 30 : prev - 1));
+      setCountdown((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
 
     const interval = setInterval(() => {
@@ -272,13 +282,29 @@ export default function SiteEventsClient({
   }, [selectedSessionId]);
 
   const s = data;
+  const showTrends = initialRange === "custom";
+
+  const fmtD = (iso: string) => {
+    if (!iso) return "";
+    const d = new Date(iso);
+    // Shift to KL for display
+    const kl = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+    return `${kl.getUTCDate()}/${kl.getUTCMonth() + 1}`;
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header / Countdown */}
       <div className="flex justify-between items-center bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-bold text-gray-700">Realtime Overview</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-black text-gray-900 uppercase tracking-tighter bg-gray-100 px-2 py-0.5 rounded">
+            {initialRange === "24h" ? "Daily" :
+              initialRange === "7d" ? "Weekly" :
+                initialRange === "30d" ? "Monthly" : "Custom"}
+          </span>
+          <span className="text-xs font-bold text-gray-500 bg-gray-50 border border-gray-100 px-2 py-0.5 rounded-lg shadow-inner">
+            {fmtD(initialFrom)} — {fmtD(initialTo)}
+          </span>
         </div>
         <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 px-3 py-1 rounded-full">
           <span className="relative flex h-2 w-2">
@@ -293,115 +319,133 @@ export default function SiteEventsClient({
         </div>
       </div>
 
-      {/* 1. KEY METRICS (GA4 Style Grid) */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
-        {/* New Active Users KPI */}
+      {/* 1. KEY METRICS */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
         <GaStatCard
-          title="Active Users"
+          title="Active Users (5M)"
           value={s?.activeUsers || 0}
-          prevValue={prevStats.activeUsers}
-          sub={trends.activeUsers}
+          prevValue={undefined}
+          sub={undefined}
           color="emerald"
           loading={loading && !data}
+          pulse={true}
+          trendDirection={trend}
+          icon={Activity}
+          className={
+            isNewUserEntry && trend === "up"
+              ? "ring-4 ring-emerald-400"
+              : isNewUserEntry && trend === "down"
+                ? "ring-4 ring-rose-400"
+                : ""
+          }
         />
         <GaStatCard
           title="Unique Users"
           value={s?.uniqueVisitors || 0}
-          prevValue={prevStats.uniqueVisitors}
-          sub={trends.uniqueVisitors}
-          color="orange"
+          prevValue={showTrends ? prevStats.uniqueVisitors : undefined}
+          sub={showTrends ? trends.uniqueVisitors : undefined}
+          color="blue"
           loading={loading && !data}
+          icon={Users}
         />
         <GaStatCard
           title="Returning"
           value={s?.returningUsers || 0}
-          prevValue={prevStats.returningUsers}
-          sub={trends.returningUsers}
-          color="indigo"
+          prevValue={showTrends ? prevStats.returningUsers : undefined}
+          sub={showTrends ? trends.returningUsers : undefined}
+          color="purple"
           loading={loading && !data}
+          icon={Clock}
         />
         <GaStatCard
           title="Page Views"
           value={s?.pageViews || 0}
-          prevValue={prevStats.pageViews}
-          sub={trends.pageViews}
-          color="blue"
+          prevValue={showTrends ? prevStats.pageViews : undefined}
+          sub={showTrends ? trends.pageViews : undefined}
+          color="amber"
           loading={loading && !data}
+          icon={Eye}
         />
         <GaStatCard
           title="WhatsApp"
           value={s?.whatsappClicks || 0}
-          prevValue={prevStats.whatsappClicks}
-          sub={trends.whatsappClicks}
+          prevValue={showTrends ? prevStats.whatsappClicks : undefined}
+          sub={showTrends ? trends.whatsappClicks : undefined}
           color="green"
           loading={loading && !data}
+          icon={WhatsAppIcon}
         />
         <GaStatCard
           title="Calls"
           value={s?.phoneClicks || 0}
-          prevValue={prevStats.phoneClicks}
-          sub={trends.phoneClicks}
-          color="pink"
+          prevValue={showTrends ? prevStats.phoneClicks : undefined}
+          sub={showTrends ? trends.phoneClicks : undefined}
+          color="indigo"
           loading={loading && !data}
+          icon={Phone}
         />
         <GaStatCard
           title="Google Ads"
           value={s?.traffic?.["Google Ads"] || 0}
-          prevValue={prevStats.ads}
-          sub={trends.ads}
-          color="amber"
+          prevValue={showTrends ? prevStats.ads : undefined}
+          sub={showTrends ? trends.ads : undefined}
+          color="orange"
           loading={loading && !data}
+          icon={Megaphone}
         />
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <GaStatCard
           title="Search Partners"
           value={s?.traffic?.["Google Search Partners"] || 0}
-          prevValue={prevStats.partners}
-          sub={trends.partners}
-          color="slate"
+          prevValue={showTrends ? prevStats.partners : undefined}
+          sub={showTrends ? trends.partners : undefined}
+          color="indigo"
           loading={loading && !data}
+          icon={Search}
         />
         <GaStatCard
           title="Google Organic"
           value={s?.traffic?.["Google Organic"] || 0}
-          prevValue={prevStats.organic}
-          sub={trends.organic}
+          prevValue={showTrends ? prevStats.organic : undefined}
+          sub={showTrends ? trends.organic : undefined}
           color="green"
           loading={loading && !data}
+          icon={Search}
         />
         <GaStatCard
           title="Facebook"
           value={s?.traffic?.Facebook || 0}
-          prevValue={prevStats.facebook}
-          sub={trends.facebook}
+          prevValue={showTrends ? prevStats.facebook : undefined}
+          sub={showTrends ? trends.facebook : undefined}
           color="indigo"
           loading={loading && !data}
+          icon={FacebookIcon}
         />
         <GaStatCard
           title="Instagram"
           value={s?.traffic?.Instagram || 0}
-          prevValue={prevStats.instagram}
-          sub={trends.instagram}
+          prevValue={showTrends ? prevStats.instagram : undefined}
+          sub={showTrends ? trends.instagram : undefined}
           color="pink"
           loading={loading && !data}
+          icon={InstagramIcon}
         />
         <GaStatCard
           title="TikTok"
           value={s?.traffic?.TikTok || 0}
-          prevValue={prevStats.tiktok}
-          sub={trends.tiktok}
+          prevValue={showTrends ? prevStats.tiktok : undefined}
+          sub={showTrends ? trends.tiktok : undefined}
           color="rose"
           loading={loading && !data}
+          icon={Zap}
         />
         <GaStatCard
           title="Direct"
           value={s?.traffic?.Direct || 0}
-          prevValue={prevStats.direct}
-          sub={trends.direct}
+          prevValue={showTrends ? prevStats.direct : undefined}
+          sub={showTrends ? trends.direct : undefined}
           color="slate"
           loading={loading && !data}
+          icon={Car}
         />
       </div>
 
@@ -413,13 +457,13 @@ export default function SiteEventsClient({
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         <Card title="Traffic Distribution" headerExtras={<Globe className="w-4 h-4 text-sky-500" />}>
           <div className="py-2 space-y-1">
-            <MixRow label="Google Ads" value={s?.traffic?.["Google Ads"] || 0} total={s?.uniqueVisitors || 1} color="amber" />
-            <MixRow label="Search Partners" value={s?.traffic?.["Google Search Partners"] || 0} total={s?.uniqueVisitors || 1} color="indigo" />
-            <MixRow label="Google Organic" value={s?.traffic?.["Google Organic"] || 0} total={s?.uniqueVisitors || 1} color="emerald" />
-            <MixRow label="Facebook" value={s?.traffic?.Facebook || 0} total={s?.uniqueVisitors || 1} color="sky" />
-            <MixRow label="Instagram" value={s?.traffic?.Instagram || 0} total={s?.uniqueVisitors || 1} color="pink" />
-            <MixRow label="TikTok" value={s?.traffic?.TikTok || 0} total={s?.uniqueVisitors || 1} color="rose" />
-            <MixRow label="Direct" value={s?.traffic?.Direct || 0} total={s?.uniqueVisitors || 1} color="slate" />
+            <MixRow label="Google Ads" value={s?.traffic?.["Google Ads"] || 0} total={s?.uniqueVisitors || 1} color="amber" icon={Megaphone} />
+            <MixRow label="Search Partners" value={s?.traffic?.["Google Search Partners"] || 0} total={s?.uniqueVisitors || 1} color="indigo" icon={Search} />
+            <MixRow label="Google Organic" value={s?.traffic?.["Google Organic"] || 0} total={s?.uniqueVisitors || 1} color="emerald" icon={Search} />
+            <MixRow label="Facebook" value={s?.traffic?.Facebook || 0} total={s?.uniqueVisitors || 1} color="sky" icon={FacebookIcon} />
+            <MixRow label="Instagram" value={s?.traffic?.Instagram || 0} total={s?.uniqueVisitors || 1} color="pink" icon={InstagramIcon} />
+            <MixRow label="TikTok" value={s?.traffic?.TikTok || 0} total={s?.uniqueVisitors || 1} color="rose" icon={Zap} />
+            <MixRow label="Direct" value={s?.traffic?.Direct || 0} total={s?.uniqueVisitors || 1} color="slate" icon={Car} />
           </div>
         </Card>
 
@@ -758,7 +802,7 @@ export default function SiteEventsClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {(s?.sessions || []).map((sess: any, i: number) => (
+              {(s?.sessions || []).slice((sessionPage - 1) * 15, sessionPage * 15).map((sess: any, i: number) => (
                 <tr
                   key={i}
                   className="hover:bg-indigo-50/40 cursor-pointer group transition-all duration-200"
@@ -831,7 +875,34 @@ export default function SiteEventsClient({
             </tbody>
           </table>
         </div>
-      </Card >
+        {(s?.sessions?.length || 0) > 15 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+            <button
+              onClick={() => setSessionPage((p) => Math.max(1, p - 1))}
+              disabled={sessionPage === 1}
+              className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-500 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft className="w-3 h-3" /> Prev
+            </button>
+            <span className="text-[10px] font-black text-gray-400">
+              Page {sessionPage} of {Math.ceil((s?.sessions?.length || 0) / 15)}
+            </span>
+            <button
+              onClick={() =>
+                setSessionPage((p) =>
+                  Math.min(Math.ceil((s?.sessions?.length || 0) / 15), p + 1)
+                )
+              }
+              disabled={
+                sessionPage >= Math.ceil((s?.sessions?.length || 0) / 15)
+              }
+              className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-500 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+            >
+              Next <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </Card>
 
       {/* 5. PRECISE LOCATION LOG (Refined) */}
       < Card
@@ -848,7 +919,7 @@ export default function SiteEventsClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {(s?.latestGps || []).map((g: any, i: number) => (
+              {(s?.latestGps || []).slice((gpsPage - 1) * 15, gpsPage * 15).map((g: any, i: number) => (
                 <tr key={i} className="hover:bg-rose-50/30 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap font-mono text-gray-400">
                     {new Date(g.created_at).toLocaleTimeString([], {
@@ -884,13 +955,40 @@ export default function SiteEventsClient({
             </tbody>
           </table>
         </div>
-      </Card >
+        {(s?.latestGps?.length || 0) > 15 && (
+          <div className="flex items-center justify-between px-6 py-3 border-t border-gray-100 bg-gray-50/50">
+            <button
+              onClick={() => setGpsPage((p) => Math.max(1, p - 1))}
+              disabled={gpsPage === 1}
+              className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-500 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+            >
+              <ChevronLeft className="w-3 h-3" /> Prev
+            </button>
+            <span className="text-[10px] font-black text-gray-400">
+              Page {gpsPage} of {Math.ceil((s?.latestGps?.length || 0) / 15)}
+            </span>
+            <button
+              onClick={() =>
+                setGpsPage((p) =>
+                  Math.min(Math.ceil((s?.latestGps?.length || 0) / 15), p + 1)
+                )
+              }
+              disabled={
+                gpsPage >= Math.ceil((s?.latestGps?.length || 0) / 15)
+              }
+              className="flex items-center gap-1 text-[10px] font-black uppercase text-gray-500 hover:text-indigo-600 disabled:opacity-30 transition-colors"
+            >
+              Next <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+      </Card>
 
       {/* SESSION DETAIL MODAL (Refined) */}
       {
         selectedSessionId && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 scale-in-center animate-in zoom-in-95 duration-200">
+          <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="relative w-full max-w-5xl bg-white rounded-4xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
               {/* Modal Header */}
               <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div className="flex flex-col">

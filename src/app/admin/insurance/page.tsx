@@ -27,7 +27,8 @@ export default async function InsurancePage() {
       insurance_expiry, 
       roadtax_expiry,
       catalog:catalog_id ( make, model ),
-      primary_image_url
+      primary_image_url,
+      track_insurance
     `)
         // Let's get "not deleted". Actually status!=inactive might be better.
         // For now, let's just get all that are NOT sold/deleted (logic usually handled by status).
@@ -47,6 +48,7 @@ export default async function InsurancePage() {
         image: c.primary_image_url,
         insurance_expiry: c.insurance_expiry,
         roadtax_expiry: c.roadtax_expiry,
+        track_insurance: c.track_insurance,
     }));
 
     return (

@@ -741,8 +741,8 @@ export function AgreementForm({
   const handleRestoreClick = async () =>
     await executeSave({ overrideStatus: "Editted" });
   const statusOptions = isSuperadmin
-    ? ["New", "Editted", "Cancelled", "Deleted", "Completed"]
-    : ["New", "Editted", "Cancelled"];
+    ? ["New", "Editted", "Extended", "Cancelled", "Deleted", "Completed"]
+    : ["Editted", "Extended", "Cancelled"];
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
