@@ -13,13 +13,38 @@ async function logMarketing(actorEmail: string, action: string, details: any) {
 
 async function triggerImageExtraction() {
   try {
-    // Trigger the Vercel cron function on the live site
-    // We use a limit of 10 to cover a few recent additions
+    // TRIGGER GITHUB ACTION (Bypasses Vercel IP Limits)
+    // Repo: JRVGLOBALSERVICES/jrvservices_front
+    const repo = "JRVGLOBALSERVICES/jrvservices_front";
+    const workflowFile = "scrape_images.yml";
+    const ref = "main"; // or master, depending on your default branch
+
+    if (!process.env.GITHUB_PAT) {
+      console.warn("Missing GITHUB_PAT. Cannot trigger GitHub Action.");
+      return;
+    }
+
     const res = await fetch(
-      "https://jrvservices.co/api/cron/update_fb_images?limit=10"
+      `https://api.github.com/repos/${repo}/actions/workflows/${workflowFile}/dispatches`,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/vnd.github.v3+json",
+          Authorization: `Bearer ${process.env.GITHUB_PAT}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ref: ref,
+        }),
+      }
     );
-    if (!res.ok) console.error("Failed to trigger extraction:", res.status);
-    else console.log("Triggered FB image extraction via Cron API");
+
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error("Failed to trigger GitHub Action:", res.status, txt);
+    } else {
+      console.log("🚀 Triggered GitHub Action: scrape_images");
+    }
   } catch (e) {
     console.error("Error triggering extraction:", e);
   }
