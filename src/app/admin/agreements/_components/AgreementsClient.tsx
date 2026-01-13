@@ -394,6 +394,7 @@ export default function AgreementsClient() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-2 rounded-lg hover:bg-green-100 text-green-600 transition-colors"
+                              title="Open WhatsApp chat"
                             >
                               <WhatsAppIcon className="w-4 h-4" />
                             </a>
@@ -404,6 +405,7 @@ export default function AgreementsClient() {
                               target="_blank"
                               rel="noopener noreferrer"
                               className="p-2 rounded-lg hover:bg-blue-100 text-blue-600 transition-colors"
+                              title="Download/View Agreement PDF"
                             >
                               <FileDown className="w-4 h-4" />
                             </a>

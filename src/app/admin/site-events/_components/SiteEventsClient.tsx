@@ -53,7 +53,7 @@ function Card({ title, children, headerExtras, icon: Icon }: any) {
         </div>
         {headerExtras && <div>{headerExtras}</div>}
       </div>
-      <div className="flex-1 overflow-y-auto max-h-[800px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+      <div className="flex-1 overflow-y-auto max-h-[480px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
         {children}
       </div>
     </div>
@@ -254,10 +254,10 @@ export default function SiteEventsClient({
 
               events: mergeCategorical(currJson.events, prevJson.events),
               topPages: mergeCategorical(currJson.topPages, prevJson.topPages),
-              locations: mergeCategorical(currJson.locations, prevJson.locations),
-              regions: mergeCategorical(currJson.regions, prevJson.regions),
+              topCities: mergeCategorical(currJson.topCities, prevJson.topCities),
+              topRegions: mergeCategorical(currJson.topRegions, prevJson.topRegions),
               devices: mergeCategorical(currJson.devices, prevJson.devices),
-              topIsp: mergeCategorical(currJson.topIsp, prevJson.topIsp),
+              topISP: mergeCategorical(currJson.topISP, prevJson.topISP),
               topModels: mergeCategorical(currJson.topModels, prevJson.topModels),
               topReferrers: mergeCategorical(currJson.topReferrers, prevJson.topReferrers),
               campaigns: mergeCampaigns(currJson.campaigns, prevJson.campaigns),
@@ -678,7 +678,7 @@ export default function SiteEventsClient({
                     href={m.carId ? `/admin/cars/${m.carId}` : "/admin/cars"}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="p-1.5 text-gray-400 opacity-0 group-hover:opacity-100 flex items-center gap-1 text-[10px] font-bold transition-all hover:bg-emerald-50 hover:text-emerald-600 rounded-lg"
+                    className="p-1.5 text-gray-400 flex items-center gap-1 text-[10px] font-bold transition-all hover:bg-emerald-50 hover:text-emerald-600 rounded-lg"
                     title={m.carId ? "Edit Car" : "View All Cars"}
                   >
                     <ExternalLink className="w-3 h-3" />
@@ -793,13 +793,38 @@ export default function SiteEventsClient({
           </div>
         </Card>
 
-        {/* 5. TOP CITIES (Refined) */}
+        {/* 5. TOP CITIES & REGIONS */}
+        <Card
+          title="Top Regions"
+          headerExtras={<MapPin className="w-4 h-4 text-indigo-500" />}
+        >
+          <div className="p-4 space-y-2">
+            {(c?.topRegions || []).map((reg: any, i: number) => (
+              <div
+                key={i}
+                className="flex justify-between items-center text-sm p-3 hover:bg-indigo-50/50 rounded-xl transition-colors border border-transparent hover:border-indigo-100"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse ring-2 ring-indigo-100" />
+                  <span className="font-bold text-gray-700 truncate max-w-[180px]">{reg.name || reg.key}</span>
+                </div>
+                <GlossyBadge value={reg.count} color="indigo" />
+              </div>
+            ))}
+            {!c?.topRegions?.length && (
+              <div className="text-gray-400 italic text-xs p-4 text-center">
+                No region data available
+              </div>
+            )}
+          </div>
+        </Card>
+
         <Card
           title="Top Cities (GPS)"
           headerExtras={<Globe className="w-4 h-4 text-emerald-500" />}
         >
           <div className="p-4 space-y-2">
-            {(c?.locations || []).map((cty: any, i: number) => (
+            {(c?.topCities || []).map((cty: any, i: number) => (
               <div
                 key={i}
                 className="flex justify-between items-center text-sm p-3 hover:bg-emerald-50/50 rounded-xl transition-colors border border-transparent hover:border-emerald-100"
@@ -808,10 +833,10 @@ export default function SiteEventsClient({
                   <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ring-2 ring-emerald-100" />
                   <span className="font-bold text-gray-700 truncate max-w-[180px]">{cty.name || cty.key}</span>
                 </div>
-                <GlossyBadge value={cty.count || cty.users} color="emerald" />
+                <GlossyBadge value={cty.count} color="emerald" />
               </div>
             ))}
-            {!c?.locations?.length && (
+            {!c?.topCities?.length && (
               <div className="text-gray-400 italic text-xs p-4 text-center">
                 No city data available
               </div>
@@ -845,14 +870,14 @@ export default function SiteEventsClient({
 
             <div className="space-y-2">
               <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-1">Top ISPs</span>
-              {(c?.topIsp || []).map((isp: any, i: number) => (
+              {(c?.topISP || []).map((isp: any, i: number) => (
                 <div
                   key={i}
                   className="flex justify-between items-center text-sm p-2.5 bg-sky-50/30 rounded-xl border border-sky-100/50"
                 >
                   <span className="font-bold text-gray-700 truncate max-w-[180px] flex items-center gap-2">
                     <Wifi className="w-3 h-3 text-sky-400" />
-                    {isp.name}
+                    {isp.name || isp.key}
                   </span>
                   <span className="font-black text-sky-700 text-xs">
                     {isp.count}
@@ -985,7 +1010,7 @@ export default function SiteEventsClient({
                       <span className="font-mono font-black text-sm text-gray-700 bg-gray-100 px-2 py-1 rounded-lg">
                         {sess.duration_seconds < 60 ? `${sess.duration_seconds}s` : `${Math.floor(sess.duration_seconds / 60)}m ${sess.duration_seconds % 60}s`}
                       </span>
-                      <span className="text-[10px] font-black text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity uppercase tracking-widest">
+                      <span className="text-[10px] font-black text-indigo-500 transition-opacity uppercase tracking-widest">
                         Details →
                       </span>
                     </div>

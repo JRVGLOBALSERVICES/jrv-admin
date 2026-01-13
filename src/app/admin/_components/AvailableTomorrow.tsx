@@ -91,7 +91,7 @@ export default function AvailableTomorrow({
                   </div>
                   <Link
                     href={`/admin/agreements/${r.agreement_id}`}
-                    className="mt-1 block opacity-0 group-hover:opacity-100 transition-all"
+                    className="mt-1 block transition-all"
                   >
                     <span className="inline-block bg-white border border-amber-200 text-amber-700 text-[10px] font-bold px-3 py-1 rounded-full shadow-sm hover:bg-amber-50">
                       OPEN

@@ -1,12 +1,23 @@
 # JRV Admin Documentation
 
-**Latest Version:** `v1.2.3` (Updated Jan 12, 2026)
+**Latest Version:** `v1.6.0` (Updated Jan 13, 2026)
 
 This document provides a comprehensive technical breakdown of all recent changes made to the JRV Admin platform, organized by component and functional area.
 
 ---
 
 ## 🕒 Release History
+
+### `v1.6.0` (Identity Unification & Social Import)
+
+- **Analytics Identity Unification**: Unified visitor counts via IP/Browser Fingerprinting to prevent session fragmentation (deduplication). Resolves "Jakarta: 1" vs "Jakarta: 4" issues.
+- **Location Normalization**: Standardized regional synonyms (Kuala Lumpur, Jakarta) and stripped artifacts like "(GPS)" from addresses.
+- **Session Timeline Fix**: Fixed "Zero events captured" by harmonizing identity keys in the detailed session API.
+- **AI Marketing Suite**: Added Bulk Import for Facebook & Instagram posts with selective preview.
+- **ISP Integrity**: Restored missing ISP names in analytics report cards.
+- **Design System Update**: Added `emeraldGreen` and `indigoLight` button variants for consistent branding.
+- **Automation**: Integrated `scripts/bump-version.js` into the build process to automate versioning and documentation updates.
+- **Design System Update**: Added `emeraldGreen` and `indigoLight` button variants for consistent branding.
 
 ### `v1.2.3` (Linear Analytics & Deep Scaling)
 

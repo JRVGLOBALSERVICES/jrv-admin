@@ -169,10 +169,12 @@ export function getIdentityKey(event: any) {
   }
 
   // Use explicit IDs if available, else fallback to fingerprint
-  const coreId =
-    event.anon_id ||
-    event.session_id ||
-    `fb_${event.ip || "unknown"}_${(event.user_agent || "").slice(0, 50)}`;
+  // 🚀 HARMONIZED: Prioritize IP_UA fingerprint OVER session_id to avoid fragmentation from refreshes
+  const fp = `fp_${event.ip || "unknown"}_${(event.user_agent || "").slice(
+    0,
+    70
+  )}`;
+  const coreId = event.anon_id || fp || event.session_id || "unknown";
 
   return `${coreId}_${bizDay}`;
 }
@@ -461,6 +463,8 @@ export const PAGE_NAMES: Record<string, string> = {
   "/cars/": "All Cars",
   "/about/": "About Us",
   "/about-us/": "About Us",
+  "/privacy-policy/": "Privacy Policy",
+  "/privacy-polocy/": "Privacy Policy",
   "/contact/": "Contact Us",
   "/events/": "Our Events",
   "/how-it-works/": "How It Works",

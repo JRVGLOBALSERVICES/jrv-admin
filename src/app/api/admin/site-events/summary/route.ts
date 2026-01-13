@@ -231,13 +231,6 @@ export async function GET(req: Request) {
       if (r.event_name) allEventNames.add(String(r.event_name));
     });
 
-    // Build per-identity-day grouping
-    const byIdentityDay = new Map<string, any[]>();
-    const anonSet = new Set<string>();
-    const sessionSet = new Set<string>();
-    const ipSet = new Set<string>();
-
-    // ✅ Group ALL fetched rows by identity first (Preserves session context)
     // Filter out localhost
     const filteredBase = base.filter((r: any) => {
       const url = String(r.page_url || r.page_path || "").toLowerCase();
@@ -245,16 +238,52 @@ export async function GET(req: Request) {
       return !url.includes("localhost") && !ref.includes("localhost");
     });
 
+    // ✅ HEAL SESSIONS: Ensure every event in a session has the best available anon_id
+    const sessionToAnon = new Map<string, string>();
+    const fpToAnon = new Map<string, string>();
+
     for (const r of filteredBase) {
+      const fp = `fp_${r.ip || "unknown"}_${(r.user_agent || "").slice(0, 70)}`;
+      if (isTruthy(r.session_id) && isTruthy(r.anon_id)) {
+        if (!sessionToAnon.has(String(r.session_id))) {
+          sessionToAnon.set(String(r.session_id), String(r.anon_id));
+        }
+      }
+      if (isTruthy(r.anon_id)) {
+        if (!fpToAnon.has(fp)) {
+          fpToAnon.set(fp, String(r.anon_id));
+        }
+      }
+    }
+
+    // Build per-identity-day grouping
+    const byIdentityDay = new Map<string, any[]>();
+    const anonSet = new Set<string>();
+    const sessionSet = new Set<string>();
+    const ipSet = new Set<string>();
+
+    for (const r of filteredBase) {
+      // Heal the event
+      const fp = `fp_${r.ip || "unknown"}_${(r.user_agent || "").slice(0, 70)}`;
+      const healedAnon =
+        r.anon_id ||
+        (isTruthy(r.session_id)
+          ? sessionToAnon.get(String(r.session_id))
+          : null) ||
+        fpToAnon.get(fp);
+
+      const healedR = { ...r, anon_id: healedAnon };
+
       // 🚀 FORCE ADDITIVE: Identity + Business Day
-      const idKey = getIdentityKey(r); // Already contains _bizDay from lib/site-events
+      const idKey = getIdentityKey(healedR); // Already contains _bizDay from lib/site-events
 
       if (!byIdentityDay.has(idKey)) byIdentityDay.set(idKey, []);
-      byIdentityDay.get(idKey)!.push(r);
+      byIdentityDay.get(idKey)!.push(healedR);
 
-      if (isTruthy(r.anon_id)) anonSet.add(String(r.anon_id));
-      if (isTruthy(r.session_id)) sessionSet.add(String(r.session_id));
-      if (isTruthy(r.ip)) ipSet.add(String(r.ip));
+      if (isTruthy(healedR.anon_id)) anonSet.add(String(healedR.anon_id));
+      if (isTruthy(healedR.session_id))
+        sessionSet.add(String(healedR.session_id));
+      if (isTruthy(healedR.ip)) ipSet.add(String(healedR.ip));
     }
 
     // Derive identity-level attributes
@@ -273,7 +302,9 @@ export async function GET(req: Request) {
     const modelCounts = new Map<string, number>();
     const referrerCounts = new Map<string, number>();
     const ispCounts = new Map<string, number>();
-    const locationCounts = new Map<string, number>();
+    const locationCounts = new Map<string, number>(); // Legacy: City, Region
+    const cityCounts = new Map<string, number>();
+    const regionCounts = new Map<string, number>();
     const campaignCounts = new Map<
       string,
       { count: number; conversions: number; id?: string }
@@ -600,32 +631,82 @@ export async function GET(req: Request) {
         );
       }
 
+      const normalizeLoc = (val: string) => {
+        let s = String(val || "").trim();
+        if (!s) return "";
+
+        // Remove tracking artifacts like "(GPS)" or "1-A" (at start followed by space or comma)
+        s = s.replace(/\s*\(GPS\)\s*/gi, "").trim();
+        s = s.replace(/^[\d-]+\s*,\s*/, "").trim(); // Matches "249, " or "1-A, "
+        if (/^\d+$/.test(s)) return ""; // If it's just a number, it's junk
+
+        const low = s.toLowerCase();
+        // KL Synonyms
+        if (
+          low.includes("kuala lumpur") ||
+          low === "kl" ||
+          low.includes("wilayah persekutuan") ||
+          low.includes("federal territory")
+        ) {
+          return "Kuala Lumpur";
+        }
+        if (low.includes("jakarta")) return "Jakarta";
+        if (low.includes("putrajaya")) return "Putrajaya";
+        if (low.includes("selangor")) return "Selangor";
+        if (low.includes("negeri sembilan")) return "Negeri Sembilan";
+        if (low.includes("jkt utara")) return "Jakarta Utara";
+        if (low.includes("penang") || low.includes("pulau pinang"))
+          return "Penang";
+        if (low.includes("malacca") || low.includes("melaka")) return "Melaka";
+        if (low.includes("johor bahru")) return "Johor Bahru";
+
+        // Remove trailing postcodes like "Jakarta 14250"
+        return s.replace(/\s+\d{5,6}$/, "").trim();
+      };
+
       const parseAddress = (addr: string) => {
         if (!addr) return null;
-        // 1. Clean Plus Codes (e.g. PXRH+Q4 or 3P24+2F)
+        // 1. Clean Plus Codes (e.g. PXRH+Q4)
         const clean = addr.replace(/[A-Z0-9]{4,8}\+[A-Z0-9]{2,}\b/g, "").trim();
 
         // 2. Try Postcode pattern: "70300 Seremban, Negeri Sembilan"
-        const postcodeMatch = clean.match(/\b\d{5}\s+([^,]+),\s*([^,]+)/);
+        const postcodeRegex = /\b(\d{5})\s+([^,]+),\s*([^,]+)/;
+        const postcodeMatch = clean.match(postcodeRegex);
         if (postcodeMatch) {
           return {
-            city: postcodeMatch[1].trim(),
-            region: postcodeMatch[2].trim(),
+            city: normalizeLoc(postcodeMatch[2]),
+            region: normalizeLoc(postcodeMatch[3]),
           };
         }
 
-        // 3. Fallback: Split by comma and pick parts
+        // 3. Fallback: Split by comma and pick parts (Country aware)
+        const countryVariants = [
+          "malaysia",
+          "indonesia",
+          "united arab emirates",
+          "uae",
+          "马来西亚",
+          "马",
+          "印尼",
+        ];
         const parts = clean
           .split(",")
           .map((p) => p.trim())
-          .filter(Boolean);
+          .filter((p) => {
+            if (!p) return false;
+            if (countryVariants.includes(p.toLowerCase())) return false;
+            return true;
+          });
+
         if (parts.length >= 2) {
-          const len = parts.length;
-          // Strategy: Last part is Country (Malaysia), 2nd to last is State, 3rd to last is City
-          // If 2 parts: City, State
-          // If 3+ parts: ...City, State, Country
-          if (len === 2) return { city: parts[0], region: parts[1] };
-          return { city: parts[len - 3], region: parts[len - 2] };
+          const rIdx = parts.length - 1;
+          const cIdx = parts.length - 2;
+          return {
+            city: normalizeLoc(parts[cIdx]),
+            region: normalizeLoc(parts[rIdx]),
+          };
+        } else if (parts.length === 1) {
+          return { city: "", region: normalizeLoc(parts[0]) };
         }
         return null;
       };
@@ -672,13 +753,18 @@ export async function GET(req: Request) {
             (r: any) =>
               isTruthy(r.city) || isTruthy(r.region) || isTruthy(r.country)
           );
-        if (!finalCity) finalCity = cleanPart(locRow?.city);
-        if (!finalRegion) finalRegion = cleanPart(locRow?.region);
+        if (!finalCity) finalCity = normalizeLoc(cleanPart(locRow?.city));
+        if (!finalRegion) finalRegion = normalizeLoc(cleanPart(locRow?.region));
       }
 
       const loc =
         [finalCity, finalRegion].filter(Boolean).join(", ") || "Unknown";
       locationCounts.set(loc, (locationCounts.get(loc) || 0) + 1);
+
+      if (finalCity)
+        cityCounts.set(finalCity, (cityCounts.get(finalCity) || 0) + 1);
+      if (finalRegion)
+        regionCounts.set(finalRegion, (regionCounts.get(finalRegion) || 0) + 1);
 
       for (const r of filteredForStats) {
         const en = String(r.event_name || "").toLowerCase();
@@ -819,10 +905,12 @@ export async function GET(req: Request) {
           carId,
         };
       }),
-      topReferrers: toList(referrerCounts, 50, "name"),
-      topISP: toList(ispCounts, 50, "name"),
-      topLocations: toList(locationCounts, 100, "name"),
-      topCities: toList(locationCounts, 100, "name"),
+      topReferrers: toList(referrerCounts, 50, "key"),
+      topISP: toList(ispCounts, 50, "key"),
+      topLocations: toList(locationCounts, 100, "key"),
+      topCities: toList(cityCounts, 100, "key"),
+      topRegions: toList(regionCounts, 100, "key"),
+      locations: toList(locationCounts, 100, "key"), // Key used by frontend mergeCategorical
       latestGps: latestGps.slice(0, 10000),
       campaigns: campaigns.sort((a, b) => b.count - a.count).slice(0, 50),
       sessions: sessions

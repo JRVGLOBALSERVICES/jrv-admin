@@ -181,7 +181,7 @@ export default function ExpiringSoon({
                   </div>
                   <Link
                     href={`/admin/agreements/${r.id}`}
-                    className="hidden group-hover:block ml-2"
+                    className="ml-2"
                   >
                     <span className="bg-white border border-red-200 text-red-600 text-[10px] font-bold px-3 py-1.5 rounded-full shadow-sm hover:bg-red-50 transition-colors">
                       OPEN

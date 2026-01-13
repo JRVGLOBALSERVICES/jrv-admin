@@ -28,6 +28,14 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
   const [modalOpen, setModalOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
 
+  // Import State
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importPageId, setImportPageId] = useState("");
+  const [importToken, setImportToken] = useState("");
+  const [importResults, setImportResults] = useState<any[]>([]);
+  const [importLoading, setImportLoading] = useState(false);
+  const [selectedImportIndices, setSelectedImportIndices] = useState<number[]>([]);
+
   // Platform-specific configuration
   const config = useMemo(() => {
     return platform === 'instagram' ? {
@@ -63,7 +71,6 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
     // 2. Filter by UI Type Selector (Post vs Video)
     if (typeFilter !== "all") {
       if (typeFilter === 'post') {
-        // Standardize check
         res = res.filter(p => p.type.includes('post') || p.type === 'post');
       } else {
         res = res.filter(p => p.type.includes('video') || p.type === 'video');
@@ -77,20 +84,14 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
           (p.description || "").toLowerCase().includes(q)
       );
     }
-    // Always newest first
     res.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return res;
-  }, [posts, typeFilter, search]);
+  }, [posts, typeFilter, search, config]);
 
   const save = async () => {
     const action = editPost?.id ? "update" : "create";
-    // Ensure new posts get the correct type prefix if generic (e.g. 'post' -> 'ig_post' if instagram)
-    // But actually, we will enforce the type in the dropdown or default
     let finalPayload = { ...editPost };
-
-    // Fallback: If creating new and no type set, use default for platform
     if (!finalPayload.type) finalPayload.type = config.defaultType;
-
     const res = await fetch("/admin/posts/api", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -110,6 +111,50 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
     if (res.ok) setPosts((p) => p.filter((x) => x.id !== id));
   };
 
+  const fetchToImport = async () => {
+    if (!importPageId || !importToken) return alert("Page ID and Access Token are required");
+    setImportLoading(true);
+    try {
+      const res = await fetch("/admin/posts/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform, page_id: importPageId, access_token: importToken }),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setImportResults(json.data);
+      } else {
+        alert(json.error || "Failed to fetch posts");
+      }
+    } catch (e) {
+      alert("Error fetching posts");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleImport = async () => {
+    const selected = importResults.filter((_, i) => selectedImportIndices.includes(i));
+    if (selected.length === 0) return alert("Select at least one post");
+
+    setImportLoading(true);
+    try {
+      for (const post of selected) {
+        await fetch("/admin/posts/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "create", payload: post }),
+        });
+      }
+      alert("Imported successfully!");
+      window.location.reload();
+    } catch (e) {
+      alert("Error during import");
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   if (loading) return <div className="p-12 text-center text-gray-400">Loading posts...</div>;
 
   return (
@@ -122,15 +167,25 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
           </h2>
           <p className="text-sm text-gray-500">{config.desc}</p>
         </div>
-        <Button
-          className="shadow-lg shadow-indigo-200 p-6"
-          onClick={() => {
-            setEditPost({});
-            setModalOpen(true);
-          }}
-        >
-          + New Post
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="emeraldGreen"
+            onClick={() => setImportModalOpen(true)}
+          >
+            <config.icon className="w-4 h-4 mr-2" />
+            Import from {platform === 'facebook' ? 'FB' : 'IG'}
+          </Button>
+          <Button
+          variant="indigoLight"
+            className=""
+            onClick={() => {
+              setEditPost({});
+              setModalOpen(true);
+            }}
+          >
+            + New Post
+          </Button>
+        </div>
       </div>
 
       <div className="bg-white p-5 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50">
@@ -343,7 +398,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
           <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="p-3 border-b flex items-center justify-between shrink-0 bg-white">
               <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full ${platform === 'instagram' ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-500' : 'bg-blue-600'} flex items-center justify-center text-white font-bold shrink-0 text-xs`}>
+                <div className={`w-8 h-8 rounded-full ${platform === 'instagram' ? 'bg-linear-to-tr from-yellow-400 via-red-500 to-purple-500' : 'bg-blue-600'} flex items-center justify-center text-white font-bold shrink-0 text-xs`}>
                   JRV
                 </div>
                 <div>
@@ -410,6 +465,119 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {importModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <Card className="w-full max-w-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center border-b pb-4">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <config.icon className={`w-5 h-5 ${config.color}`} />
+                Import from {platform === 'facebook' ? 'Facebook' : 'Instagram'}
+              </h2>
+              <button onClick={() => setImportModalOpen(false)} className="text-gray-400 hover:text-gray-600">
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                  {platform === 'facebook' ? 'Page ID' : 'IG Business ID'}
+                </label>
+                <input
+                  className={inputClass}
+                  value={importPageId}
+                  onChange={(e) => setImportPageId(e.target.value)}
+                  placeholder="e.g. 1029384756..."
+                />
+              </div>
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                  Access Token
+                </label>
+                <input
+                  className={inputClass}
+                  type="password"
+                  value={importToken}
+                  onChange={(e) => setImportToken(e.target.value)}
+                  placeholder="Paste your token here..."
+                />
+              </div>
+            </div>
+
+            <Button
+              className="w-full h-12"
+              onClick={fetchToImport}
+              disabled={importLoading}
+            >
+              {importLoading ? "Fetching..." : "Fetch Latest Content"}
+            </Button>
+
+            {importResults.length > 0 && (
+              <div className="space-y-4 pt-4 border-t">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-bold text-gray-700">{importResults.length} Posts Found</span>
+                  <button
+                    className="text-xs text-blue-600 font-bold hover:underline"
+                    onClick={() => {
+                      if (selectedImportIndices.length === importResults.length) setSelectedImportIndices([]);
+                      else setSelectedImportIndices(importResults.map((_, i) => i));
+                    }}
+                  >
+                    {selectedImportIndices.length === importResults.length ? "Deselect All" : "Select All"}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                  {importResults.map((res, i) => (
+                    <div
+                      key={i}
+                      className={`p-3 rounded-xl border flex gap-3 transition-all cursor-pointer ${selectedImportIndices.includes(i) ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-gray-100'}`}
+                      onClick={() => {
+                        if (selectedImportIndices.includes(i)) setSelectedImportIndices(p => p.filter(x => x !== i));
+                        else setSelectedImportIndices(p => [...p, i]);
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedImportIndices.includes(i)}
+                        readOnly
+                        className="mt-1"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-xs truncate">{res.title}</div>
+                        <div className="text-[10px] text-gray-500 line-clamp-1">{res.description}</div>
+                        <div className="text-[10px] font-mono text-gray-400 mt-1">
+                          {new Date(res.created_at).toLocaleDateString()}
+                        </div>
+                      </div>
+                      {res.content_url && (
+                        <div className="w-12 h-12 rounded bg-gray-100 overflow-hidden shrink-0 border">
+                          <img src={res.content_url} className="w-full h-full object-cover" alt="" />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 pt-4 border-t">
+                  <Button variant="secondary" className="flex-1 h-12" onClick={() => setImportModalOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200"
+                    onClick={handleImport}
+                    disabled={importLoading || selectedImportIndices.length === 0}
+                  >
+                    {importLoading ? "Importing..." : `Import ${selectedImportIndices.length} Item(s)`}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
       )}
     </div>

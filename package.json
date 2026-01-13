@@ -1,12 +1,16 @@
 {
   "name": "jrv-admin",
-  "version": "1.2.3",
+  "version": "1.6.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "version:patch": "node scripts/bump-version.js",
+    "version:minor": "node scripts/bump-version.js $(npm version minor --no-git-tag-version | sed 's/v//')",
+    "version:major": "node scripts/bump-version.js $(npm version major --no-git-tag-version | sed 's/v//')",
+    "build:version": "npm run build && npm run version:patch"
   },
   "dependencies": {
     "@google-cloud/vision": "^5.3.4",

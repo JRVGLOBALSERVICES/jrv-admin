@@ -359,7 +359,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                     Your marketing assets have been generated. Review them on the right.
                                 </p>
                                 <div className="flex gap-2 mt-4">
-                                    <Button variant="indigo-light" onClick={handleTweak} className="md:p-8 p-8">
+                                    <Button variant="indigoLight" onClick={handleTweak} className="md:p-8 p-8">
                                         <RotateCcw className="w-4 h-4 mr-2" /> Tweak & Regenerate
                                     </Button>
                                     <Button variant="indigo" onClick={() => { setStep('initial'); setLastResult(null); setRefinedPrompt(""); setLogoUrl(""); }} className="md:p-8 p-8 shadow-xl">
@@ -416,7 +416,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-2">
-                                            <Button className="p-6" variant="indigo-light" onClick={handleRegenerateCopy} disabled={isGenerating}>
+                                            <Button className="p-6" variant="indigoLight" onClick={handleRegenerateCopy} disabled={isGenerating}>
                                                 <RotateCcw className="w-4 h-4 mr-2" /> Regenerate with Keywords
                                             </Button>
                                             <Button className="p-6" onClick={() => navigator.clipboard.writeText(lastResult.body)}>
@@ -499,7 +499,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                     </span>
                                     <span className="text-xs text-gray-400">{new Date(asset.created_at).toLocaleDateString()}</span>
                                 </div>
-                                <div className="p-4 text-sm flex-grow">
+                                <div className="p-4 text-sm grow">
                                     {asset.type === 'copy' ? (
                                         <p className="line-clamp-6 font-mono text-xs whitespace-pre-wrap">{asset.content}</p>
                                     ) : (
@@ -515,7 +515,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                     )}
                                 </div>
                                 <div className="p-4 bg-gray-50/50 border-t flex items-center justify-between gap-2">
-                                    <p className="text-[10px] text-gray-400 truncate flex-grow max-w-[50%]">Prompt: {asset.prompt}</p>
+                                    <p className="text-[10px] text-gray-400 truncate grow max-w-[50%]">Prompt: {asset.prompt}</p>
                                     <div className="flex gap-1">
                                         {asset.type === 'copy' ? (
                                             <Button size="sm" variant="secondary" onClick={() => navigator.clipboard.writeText(asset.content)}>

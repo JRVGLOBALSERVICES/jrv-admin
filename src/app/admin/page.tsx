@@ -358,7 +358,15 @@ export default async function AdminDashboard({
   // ---------------------------------------------------------
   // AGGREGATE STATS FROM GROUPED USERS
   // ---------------------------------------------------------
-  const trafficCounts: any = {
+  const trafficCounts: {
+    "Google Ads": number;
+    "Google Search Partners": number;
+    "Google Organic": number;
+    Facebook: number;
+    Instagram: number;
+    TikTok: number;
+    Direct: number;
+  } = {
     "Google Ads": 0,
     "Google Search Partners": 0,
     "Google Organic": 0,
@@ -372,13 +380,16 @@ export default async function AdminDashboard({
   const referrerCounts = new Map<string, number>();
   const ispCounts = new Map<string, number>();
   const locationCounts = new Map<string, number>();
+  const cityCounts = new Map<string, number>();
+  const regionCounts = new Map<string, number>();
   let activeUsersRealtime = 0;
 
   usersMap.forEach((u) => {
     if (u.isOnline) activeUsersRealtime++;
 
     // Traffic Sources
-    if (trafficCounts.hasOwnProperty(u.source)) trafficCounts[u.source]++;
+    const src = u.source as keyof typeof trafficCounts;
+    if (trafficCounts.hasOwnProperty(src)) trafficCounts[src]++;
     else trafficCounts["Direct"]++;
 
     // Referrer breakdown
@@ -394,6 +405,9 @@ export default async function AdminDashboard({
 
     // Location
     locationCounts.set(u.location, (locationCounts.get(u.location) || 0) + 1);
+    const [city, region] = u.location.split(",").map(s => s.trim());
+    if (city && city !== "Unknown") cityCounts.set(city, (cityCounts.get(city) || 0) + 1);
+    if (region && region !== "Unknown") regionCounts.set(region, (regionCounts.get(region) || 0) + 1);
 
     // Models viewed by this user
     u.models.forEach((m) => modelCounts.set(m, (modelCounts.get(m) || 0) + 1));
@@ -453,7 +467,7 @@ export default async function AdminDashboard({
           carId = carSlugMap.get(slug) || null;
         }
 
-        return { key, name, count, carId: carId || undefined };
+        return { key, name, count, carId: carId || null };
       })
       .filter(p => {
         // Remove "All Cars"
@@ -464,17 +478,25 @@ export default async function AdminDashboard({
       .sort((a, b) => b.count - a.count)
       .slice(0, 10),
     topReferrers: Array.from(referrerCounts.entries())
-      .map(([name, count]) => ({ name, count }))
+      .map(([key, count]) => ({ key, name: key, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 8),
     topISP: Array.from(ispCounts.entries())
-      .map(([name, count]) => ({ name, count }))
+      .map(([key, count]) => ({ key, name: key, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 8),
     topLocations: Array.from(locationCounts.entries())
-      .map(([name, users]) => ({ name, users }))
+      .map(([key, users]) => ({ key, name: key, users }))
       .sort((a, b) => b.users - a.users)
       .slice(0, 10),
+    topCities: Array.from(cityCounts.entries())
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20),
+    topRegions: Array.from(regionCounts.entries())
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 20),
   };
 
   // 2. FINANCIAL DATA

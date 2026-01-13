@@ -147,7 +147,9 @@ function Card({
         </div>
         {headerExtras && <div>{headerExtras}</div>}
       </div>
-      <div className="p-0 flex-1 overflow-x-auto">{children}</div>
+      <div className="p-0 flex-1 overflow-y-auto max-h-[440px] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-gray-200 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-track]:bg-transparent">
+        {children}
+      </div>
     </div>
   );
 }
@@ -222,9 +224,11 @@ export default function MiniSiteAnalytics({
       count: number;
       carId?: string | null;
     }[];
-    topReferrers: { name: string; count: number }[];
-    topISP: { name: string; count: number }[];
-    topLocations: TopLoc[];
+    topReferrers: { key: string; name?: string; count: number }[];
+    topISP: { key: string; name?: string; count: number }[];
+    topLocations: (TopLoc & { key: string })[];
+    topCities?: { key: string; count: number }[];
+    topRegions?: { key: string; count: number }[];
   };
   dateRange: { from: string; to: string };
   filters?: { model?: string; plate?: string };
@@ -265,6 +269,8 @@ export default function MiniSiteAnalytics({
             topReferrers: json.topReferrers,
             topISP: json.topISP,
             topLocations: json.topLocations,
+            topCities: json.topCities,
+            topRegions: json.topRegions,
           }));
           setCountdown(15);
         }
@@ -314,6 +320,8 @@ export default function MiniSiteAnalytics({
     topReferrers,
     topISP,
     topLocations,
+    topCities,
+    topRegions,
   } = data;
 
   const trafficTotal = Object.values(traffic).reduce((a, b) => a + b, 0) || 1;
@@ -494,7 +502,8 @@ export default function MiniSiteAnalytics({
               topReferrers.slice(0, 10).map((r, i) => {
                 let color: any = "slate";
                 let Icon: any = Globe;
-                const lower = r.name.toLowerCase();
+                const label = r.name || r.key || "";
+                const lower = label.toLowerCase();
 
                 if (lower.includes("whatsapp")) { color = "emerald"; Icon = WhatsAppIcon; }
                 else if (lower.includes("instagram")) { color = "pink"; Icon = InstagramIcon; }
@@ -504,9 +513,9 @@ export default function MiniSiteAnalytics({
 
                 return (
                   <ListRow
-                    key={r.name}
+                    key={r.key || r.name}
                     rank={i}
-                    label={r.name}
+                    label={r.name || r.key}
                     count={r.count}
                     color={color}
                     icon={Icon}
@@ -521,18 +530,7 @@ export default function MiniSiteAnalytics({
           </div>
         </Card>
 
-        <Card
-          title="Top Pages"
-          icon={Activity}
-        // headerExtras={
-        //   <Link
-        //     href="/admin/cars"
-        //     className="text-[10px] font-black text-indigo-500 hover:text-indigo-700 bg-indigo-50/50 px-2 py-0.5 rounded border border-indigo-100/50"
-        //   >
-        //     Cars Page →
-        //   </Link>
-        // }
-        >
+        <Card title="Top Pages" icon={Activity}>
           <div className="space-y-1 px-5 py-4">
             {topPages?.length ? (
               topPages.slice(0, 10).map((p, i) => (
@@ -568,6 +566,47 @@ export default function MiniSiteAnalytics({
             ) : (
               <div className="text-xs text-gray-400 italic py-4 text-center">
                 No page data
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* New Location Cards */}
+        <Card title="Top Regions" icon={MapPin}>
+          <div className="space-y-1 px-5 py-4">
+            {topRegions?.length ? (
+              topRegions.slice(0, 20).map((r, i) => (
+                <ListRow
+                  key={r.key}
+                  rank={i}
+                  label={r.key}
+                  count={r.count}
+                  color="indigo"
+                />
+              ))
+            ) : (
+              <div className="text-xs text-gray-400 italic py-4 text-center">
+                No region data
+              </div>
+            )}
+          </div>
+        </Card>
+
+        <Card title="Top Cities" icon={MapPin}>
+          <div className="space-y-1 px-5 py-4">
+            {topCities?.length ? (
+              topCities.slice(0, 20).map((c, i) => (
+                <ListRow
+                  key={c.key}
+                  rank={i}
+                  label={c.key}
+                  count={c.count}
+                  color="emerald"
+                />
+              ))
+            ) : (
+              <div className="text-xs text-gray-400 italic py-4 text-center">
+                No city data
               </div>
             )}
           </div>

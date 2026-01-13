@@ -134,7 +134,7 @@ export default function AvailableNow({
 
                 <Link
                   href={`/admin/cars/${r.id}`}
-                  className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm opacity-0 group-hover:opacity-100"
+                  className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-100 px-3 py-1.5 rounded-lg hover:bg-emerald-600 hover:text-white transition-all shadow-sm"
                 >
                   OPEN
                 </Link>
