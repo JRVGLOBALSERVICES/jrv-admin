@@ -11,7 +11,7 @@ async function logMarketing(actorEmail: string, action: string, details: any) {
   });
 }
 
-async function triggerImageExtraction() {
+async function triggerImageExtraction(targetUrl?: string) {
   try {
     // TRIGGER GITHUB ACTION (Bypasses Vercel IP Limits)
     // Repo: JRVGLOBALSERVICES/jrvservices_front
@@ -35,6 +35,9 @@ async function triggerImageExtraction() {
         },
         body: JSON.stringify({
           ref: ref,
+          inputs: {
+            target_url: targetUrl || "",
+          },
         }),
       }
     );
@@ -43,7 +46,11 @@ async function triggerImageExtraction() {
       const txt = await res.text();
       console.error("Failed to trigger GitHub Action:", res.status, txt);
     } else {
-      console.log("🚀 Triggered GitHub Action: scrape_images");
+      console.log(
+        `🚀 Triggered GitHub Action: scrape_images ${
+          targetUrl ? `for ${targetUrl}` : "(global scan)"
+        }`
+      );
     }
   } catch (e) {
     console.error("Error triggering extraction:", e);
@@ -89,23 +96,71 @@ export async function POST(req: Request) {
   }
 
   try {
+    if (action === "extract") {
+      const { url } = payload;
+      if (!url)
+        return NextResponse.json({ error: "URL missing" }, { status: 400 });
+
+      // Lightweight extraction for immediate UI feedback (Googlebot Strategy)
+      const scrapingRes = await fetch(url, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+        },
+      });
+      const html = await scrapingRes.text();
+
+      // Simple regex for og:image
+      const match =
+        html.match(
+          /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i
+        ) ||
+        html.match(
+          /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i
+        );
+
+      let image = match ? match[1] : null;
+
+      // Decode HTML entities if found
+      if (image) image = image.replace(/&amp;/g, "&");
+
+      return NextResponse.json({ ok: true, image });
+    }
+
     if (action === "create") {
+      // If no image_url, mark it as EXTRACTING
+      const insertPayload = {
+        ...payload,
+        image_url: payload.image_url || "EXTRACTING",
+      };
+
       const { data, error } = await supabase
         .from("fb_posts")
-        .insert(payload)
+        .insert(insertPayload)
         .select()
         .single();
       if (error) throw error;
       await logMarketing(actorEmail, "create_post", { title: payload.title });
 
-      // Auto-fetch image
-      await triggerImageExtraction();
+      // Auto-fetch image for new post (triggers background scrapper)
+      if (insertPayload.content_url) {
+        await triggerImageExtraction(insertPayload.content_url);
+      }
 
       return NextResponse.json({ ok: true, data });
     }
 
     if (action === "update") {
       const { id, ...updates } = payload;
+
+      // If user cleared image_url or it was never there, mark as EXTRACTING
+      if (
+        updates.content_url &&
+        (!updates.image_url || updates.image_url === "")
+      ) {
+        updates.image_url = "EXTRACTING";
+      }
+
       const { error } = await supabase
         .from("fb_posts")
         .update(updates)
@@ -113,8 +168,10 @@ export async function POST(req: Request) {
       if (error) throw error;
       await logMarketing(actorEmail, "update_post", { id, updates });
 
-      // Auto-fetch image (in case URL changed)
-      await triggerImageExtraction();
+      // Auto-fetch image ONLY if it's currently marked as EXTRACTING
+      if (updates.content_url && updates.image_url === "EXTRACTING") {
+        await triggerImageExtraction(updates.content_url);
+      }
 
       return NextResponse.json({ ok: true });
     }

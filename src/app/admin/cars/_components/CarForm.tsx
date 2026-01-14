@@ -355,6 +355,7 @@ export function CarForm({
           {mode === "edit" && gateRole === "superadmin" && (
             <Button
               onClick={del}
+              loading={saving}
               variant="secondary"
               className="bg-white border-red-100 text-red-600 shadow-sm text-xs font-bold p-6"
             >

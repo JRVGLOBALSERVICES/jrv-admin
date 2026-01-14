@@ -139,7 +139,10 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
         }
     };
 
+    const [isSavingAsset, setIsSavingAsset] = useState(false);
+
     const saveAsset = async (content: string) => {
+        setIsSavingAsset(true);
         try {
             const res = await fetch("/api/admin/marketing/assets", {
                 method: "POST",
@@ -159,12 +162,15 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                 alert("Failed to save");
             }
         } catch (e) { alert("Error saving"); }
+        finally { setIsSavingAsset(false); }
     };
 
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const confirmDelete = async () => {
         if (!deleteId) return;
+        setIsDeleting(true);
         try {
             const res = await fetch(`/api/admin/marketing/assets?id=${deleteId}`, { method: "DELETE" });
             const data = await res.json();
@@ -173,6 +179,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                 setDeleteId(null); // Close modal
             } else alert("Failed to delete");
         } catch (e) { alert("Error deleting"); }
+        finally { setIsDeleting(false); }
     };
 
     // Wrapper to trigger modal
@@ -447,9 +454,8 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                                             <Button className="p-6" size="sm" variant="secondary" onClick={() => window.open(displayUrl, '_blank')}>
                                                                 <ExternalLink className="w-4 h-4" />
                                                             </Button>
-                                                            <Button className="p-6" size="sm" variant="secondary" onClick={() => saveAsset(displayUrl)}>
-                                                                {/* <Check className="w-4 h-4 mr-1" />  */}
-                                                                Add to assets
+                                                            <Button className="p-6" size="sm" variant="secondary" onClick={() => saveAsset(displayUrl)} disabled={isSavingAsset}>
+                                                                {isSavingAsset ? <Loader2 className="w-4 h-4 animate-spin" /> : "Add to assets"}
                                                             </Button>
                                                         </div>
                                                     </div>
@@ -571,7 +577,9 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                 footer={
                     <>
                         <Button variant="secondary" onClick={() => setDeleteId(null)}>Cancel</Button>
-                        <Button variant="danger" onClick={confirmDelete}>Delete</Button>
+                        <Button variant="danger" onClick={confirmDelete} disabled={isDeleting}>
+                            {isDeleting ? "Deleting..." : "Delete"}
+                        </Button>
                     </>
                 }
             >

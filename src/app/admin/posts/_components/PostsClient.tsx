@@ -3,7 +3,8 @@
 import { useEffect, useState, useMemo } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { ExternalLink, Eye, PenLine, Trash2, Video, Image as ImageIcon, Search, Facebook, Instagram } from "lucide-react";
+import { ExternalLink, Eye, PenLine, Trash2, Video, Image as ImageIcon, Search, Facebook, Instagram, Loader2 } from "lucide-react";
+import { useDebounce } from "use-debounce";
 
 type Post = {
   id: string;
@@ -11,8 +12,8 @@ type Post = {
   content_url: string;
   description: string;
   type: string;
-  show_text: boolean;
   created_at: string;
+  image_url?: string;
 };
 
 // Unified Input Style conforming to Agreements UI
@@ -35,6 +36,39 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
   const [importResults, setImportResults] = useState<any[]>([]);
   const [importLoading, setImportLoading] = useState(false);
   const [selectedImportIndices, setSelectedImportIndices] = useState<number[]>([]);
+
+  // Extraction State
+  const [extracting, setExtracting] = useState(false);
+  const [debouncedUrl] = useDebounce(editPost?.content_url, 1000);
+
+  // Auto-Extract Image when URL changes
+  useEffect(() => {
+    if (!debouncedUrl || !debouncedUrl.startsWith("http")) return;
+    // Don't re-extract if we already have an image and it matches (logic simplified, just always extract if changed)
+    // Actually, only extract if image_url is empty OR if user explicitly changed the URL
+    // For now, let's trigger if URL is valid and different from original
+
+    const doExtract = async () => {
+      setExtracting(true);
+      try {
+        const res = await fetch("/admin/posts/api", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "extract", payload: { url: debouncedUrl } })
+        });
+        const data = await res.json();
+        if (data.ok && data.image) {
+          setEditPost(prev => prev ? ({ ...prev, image_url: data.image }) : null);
+        }
+      } catch (e) {
+        console.error("Extraction failed", e);
+      } finally {
+        setExtracting(false);
+      }
+    }
+
+    doExtract();
+  }, [debouncedUrl]);
 
   // Platform-specific configuration
   const config = useMemo(() => {
@@ -170,14 +204,15 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
         <div className="flex gap-2">
           <Button
             variant="emeraldGreen"
+            className="p-6"
             onClick={() => setImportModalOpen(true)}
           >
             <config.icon className="w-4 h-4 mr-2" />
             Import from {platform === 'facebook' ? 'FB' : 'IG'}
           </Button>
           <Button
-          variant="indigoLight"
-            className=""
+            variant="indigoLight"
+            className="p-6"
             onClick={() => {
               setEditPost({});
               setModalOpen(true);
@@ -242,8 +277,14 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                         {p.type.replace('fb_', '').replace('ig_', '')}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="font-bold text-gray-900 mb-0.5">{p.title || "(No Title)"}</div>
+                    <td className="px-4 py-3 text-center">
+                      {p.image_url === 'EXTRACTING' ? (
+                        <div className="flex justify-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                        </div>
+                      ) : (
+                        <div className="font-bold text-gray-900 mb-0.5">{p.title || "(No Title)"}</div>
+                      )}
                       <div className="text-gray-500 text-xs line-clamp-1 max-w-md">{p.description}</div>
                       {p.content_url && (
                         <a href={p.content_url} target="_blank" className="flex items-center gap-1 text-[10px] text-blue-600 mt-1 hover:underline">
@@ -354,19 +395,6 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                     )}
                   </select>
                 </div>
-                <div className="flex items-center pt-6">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!editPost?.show_text}
-                      onChange={(e) =>
-                        setEditPost({ ...editPost, show_text: e.target.checked })
-                      }
-                      className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                    />
-                    <span className="text-sm font-medium">Show Full Text?</span>
-                  </label>
-                </div>
               </div>
               <div>
                 <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">
@@ -381,88 +409,155 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                   placeholder="Post content descriptions..."
                 />
               </div>
+
+              {/* Extracted Image Preview in Edit Modal */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block">
+                  Extracted Cover Image
+                </label>
+                <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden border flex items-center justify-center">
+                  {(extracting || editPost?.image_url === 'EXTRACTING') ? (
+                    <div className="flex flex-col items-center gap-2 text-gray-400">
+                      <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
+                      <span className="text-xs">Extracting metadata...</span>
+                    </div>
+                  ) : editPost?.image_url ? (
+                    <div className="relative w-full h-full group">
+                      <img src={editPost.image_url} alt="Cover" className="w-full h-full object-cover" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button size="sm" variant="secondary" onClick={() => setEditPost({ ...editPost, image_url: '' })}>
+                          <Trash2 className="w-3 h-3 mr-1" /> Clear
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center p-4">
+                      <ImageIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                      <p className="text-xs text-gray-400">
+                        {editPost?.content_url ? "No image extracted yet." : "Enter a URL to auto-extract."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {/* Hidden Input for image_url if manual override needed (optional) */}
+              </div>
+
             </div>
             <div className="flex gap-2 justify-end pt-4 border-t">
               <Button className="p-6" variant="secondary" onClick={() => setModalOpen(false)}>
                 Cancel
               </Button>
-              <Button className="p-6" onClick={save}>Save Changes</Button>
+              <Button className="p-6" onClick={save} disabled={loading || extracting}>
+                {extracting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                Save Changes
+              </Button>
             </div>
           </Card>
         </div>
       )}
 
-      {/* Preview Modal - FIXED for Video/Image */}
+      {/* Preview Modal - Replicating Frontend StaticNewsCard */}
       {previewOpen && editPost && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-white rounded-xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="p-3 border-b flex items-center justify-between shrink-0 bg-white">
-              <div className="flex items-center gap-3">
-                <div className={`w-8 h-8 rounded-full ${platform === 'instagram' ? 'bg-linear-to-tr from-yellow-400 via-red-500 to-purple-500' : 'bg-blue-600'} flex items-center justify-center text-white font-bold shrink-0 text-xs`}>
-                  JRV
-                </div>
-                <div>
-                  <div className="font-bold text-xs">JRV Global Services</div>
-                  <div className="text-[10px] text-gray-500">Just now • 🌎</div>
-                </div>
-              </div>
+          <div className="bg-white rounded-[20px] w-full max-w-sm shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 border border-black/5">
+            <div className="p-4 border-b flex items-center justify-between shrink-0 bg-white">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Frontend Preview</span>
               <button
                 onClick={() => setPreviewOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500"
+                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-500 transition-colors"
               >
                 ✕
               </button>
             </div>
 
-            <div className="overflow-y-auto custom-scrollbar">
-              <div className="p-3 text-sm whitespace-pre-wrap font-sans">
-                {editPost.description || "No description provided."}
-              </div>
+            <div className="overflow-y-auto custom-scrollbar grow bg-white p-8">
+              {/* Card Container mimicking .embedItemWrapper */}
+              <div className="group bg-white border border-black/5 rounded-[20px] shadow-[0_4px_20px_rgba(0,0,0,0.04)] transition-all duration-400 ease-[cubic-bezier(0.165,0.84,0.44,1)] hover:-translate-y-2 hover:shadow-[0_20px_40px_rgba(0,0,0,0.08)] hover:border-[#ff3057]/30 flex flex-col h-full overflow-hidden">
+                {/* Header / Title Section */}
+                <div className="p-6 pb-2">
+                  <h3 className="text-[1.15rem] font-bold text-gray-900 leading-tight m-0 transition-colors duration-300 group-hover:text-[#ff3057]">
+                    {editPost.title || "Latest News"}
+                  </h3>
+                  {editPost.created_at && (
+                    <span className="text-[0.85rem] color-[#999] mt-1 block text-gray-400">
+                      {new Date(editPost.created_at).toLocaleDateString("en-GB")}
+                    </span>
+                  )}
+                </div>
 
-              {/* Media Preview Area */}
-              <div className="bg-black aspect-square w-full flex flex-col items-center justify-center text-gray-500 relative group overflow-hidden">
-                {editPost.type?.includes('video') ? (
-                  // Video Placeholder or iframe if embeddable
-                  <div className="text-center p-6">
-                    <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-2 backdrop-blur-sm">
-                      <span className="text-3xl ml-1 text-white">▶</span>
+                {/* 16:9 Media Container */}
+                <div className="mx-6 my-4 aspect-video rounded-[16px] overflow-hidden bg-black relative group flex items-center justify-center">
+                  {editPost.image_url === 'EXTRACTING' ? (
+                    <div className="flex flex-col items-center gap-2 text-gray-400">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+                      <span className="text-xs font-bold uppercase tracking-widest">Extracting Image...</span>
                     </div>
-                    <p className="text-white/60 text-xs">Video Preview</p>
-                    {editPost.content_url && (
-                      <p className="text-[10px] text-white/40 mt-2 truncate w-48 mx-auto">{editPost.content_url}</p>
+                  ) : editPost.image_url ? (
+                    <img
+                      src={editPost.image_url}
+                      alt={editPost.title}
+                      className="w-full h-full object-cover transition-all duration-500 grayscale group-hover:grayscale-0"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-gray-300">
+                      <ImageIcon className="w-8 h-8" />
+                      <span className="text-[10px] font-bold uppercase tracking-wider">No Image</span>
+                    </div>
+                  )}
+
+                  {/* Video Play Button Overlay */}
+                  {editPost.type?.includes("video") && (
+                    <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+                      <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <div className="w-0 h-0 border-t-10 border-t-transparent border-l-18 border-l-white border-b-10 border-b-transparent ml-1" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Description & Hashtags Section */}
+                <div className="px-6 pb-6 grow">
+                  <div className="text-[0.95rem] text-gray-600/80 leading-[1.6] text-justify line-clamp-12 min-h-[4.8em]">
+                    {editPost.description ? (
+                      editPost.description.replace(/(#\w+)/g, "").replace(/\s\s+/g, " ").trim().split(/\s+/).length > 50
+                        ? editPost.description.replace(/(#\w+)/g, "").replace(/\s\s+/g, " ").trim().split(/\s+/).slice(0, 50).join(" ") + "..."
+                        : editPost.description.replace(/(#\w+)/g, "").replace(/\s\s+/g, " ").trim()
+                    ) : (
+                      "No description provided."
                     )}
                   </div>
-                ) : (
-                  // Image Placeholder
-                  <div className="text-center p-6">
-                    <ImageIcon className="w-16 h-16 text-white/20 mx-auto mb-2" />
-                    <p className="text-white/60 text-xs">Image Preview</p>
-                  </div>
-                )}
 
-                {/* Overlay Action */}
-                {editPost.content_url && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <a
-                      href={editPost.content_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-4 py-2 bg-white text-black text-xs font-bold rounded-full hover:scale-105 transition-transform flex items-center gap-2"
+                  {/* Hashtags Section */}
+                  {editPost.description && (editPost.description.match(/(#\w+)/g) || []).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {(editPost.description.match(/(#\w+)/g) || []).map((tag: string, idx: number) => (
+                        <span key={idx} className="text-[#F15828] font-semibold px-1 rounded hover:bg-[#ff3057]/10 hover:text-[#ff3057] transition-all cursor-pointer text-xs">
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Read More Pill Button */}
+                  <div className="mt-6">
+                    <div
+                      className="inline-block bg-[#ff3057] text-white text-[0.8rem] font-bold uppercase tracking-wider px-6 py-3 rounded-full shadow-[0_4px_10px_rgba(255,48,87,0.3)] opacity-0 transform translate-y-4 group-hover:opacity-100 group-hover:translate-y-0 hover:bg-[#e62a4d] hover:scale-[1.02] hover:shadow-[0_6px_15px_rgba(255,48,87,0.4)] transition-all duration-300 cursor-pointer"
                     >
-                      <ExternalLink className="w-3 h-3" />
-                      Open Original
-                    </a>
+                      Read More &rarr;
+                    </div>
                   </div>
-                )}
-              </div>
-
-              <div className="p-2 border-b bg-gray-50">
-                <div className="flex text-gray-500 text-xs font-medium">
-                  <div className="flex-1 text-center py-2">Like</div>
-                  <div className="flex-1 text-center py-2">Comment</div>
-                  <div className="flex-1 text-center py-2">Share</div>
                 </div>
               </div>
+            </div>
+
+            <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+              <Button variant="secondary" className="p-6" onClick={() => setPreviewOpen(false)}>Close Preview</Button>
+              {editPost.content_url && (
+                <Button className="p-6" onClick={() => window.open(editPost.content_url, "_blank")}>
+                  <ExternalLink className="w-3.5 h-3.5 mr-2" />
+                  View Original post
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -509,7 +604,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
             </div>
 
             <Button
-              className="w-full h-12"
+              className="w-full h-12 p-6"
               onClick={fetchToImport}
               disabled={importLoading}
             >
@@ -564,11 +659,11 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                 </div>
 
                 <div className="flex gap-2 pt-4 border-t">
-                  <Button variant="secondary" className="flex-1 h-12" onClick={() => setImportModalOpen(false)}>
+                  <Button variant="secondary" className="flex-1 h-12 p-6" onClick={() => setImportModalOpen(false)}>
                     Close
                   </Button>
                   <Button
-                    className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200"
+                    className="flex-1 h-12 bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200 p-6"
                     onClick={handleImport}
                     disabled={importLoading || selectedImportIndices.length === 0}
                   >

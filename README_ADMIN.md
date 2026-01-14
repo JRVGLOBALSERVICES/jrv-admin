@@ -1,12 +1,29 @@
 # JRV Admin Documentation
 
-**Latest Version:** `v1.6.0` (Updated Jan 13, 2026)
+**Latest Version:** `v1.7.5` (Updated Jan 14, 2026)
 
 This document provides a comprehensive technical breakdown of all recent changes made to the JRV Admin platform, organized by component and functional area.
 
 ---
 
 ## 🕒 Release History
+
+### `v1.7.5` (Scraper Orchestration & Loading Feedback)
+
+- **Targeted Extraction**: Optimized the social scraper to prioritize specific URLs. Creating or editing a post now triggers a focused GitHub Action run for near-instant updates.
+- **Scraper Loading Feedback**: Implemented a `"EXTRACTING"` status marker in the database. The admin UI now displays spinning loaders in both the post table and the preview modal during background work.
+- **Instant Preview Engine**: Added a lightweight `extract` action to the API that finds and displays cover images instantly using the Googlebot crawl strategy while editing.
+
+### `v1.7.0` (High-Fidelity Social Preview & UI Responsiveness)
+
+- **Social Preview Overhaul**: Rebuilt the Facebook/Instagram post preview modal as a high-fidelity replica of the frontend `StaticNewsCard`.
+- **Interactive Micro-animations**:
+  - **Hover Actions**: Implemented card lift (-8px), shadow depth growth, and grayscale-to-color transitions.
+  - **Slide-up Buttons**: The "Read More" button now animates into view with a smooth slide-up effect on hover.
+  - **Video Feedback**: Integrated play button overlays for video and reel content.
+- **Consistent Loading States**: Complete audit of admin client components (`Users`, `Cars`, `Agreements`, `Blacklist`, `Marketing`). Implemented unified loading indicators/spinners for all save, delete, and bulk action buttons.
+- **Premium UX Styling**: Standardized `p-6` padding for all primary action buttons (New, Import, Save, Preview) across the platform.
+- **Legacy Cleanup**: Removed the obsolete `show_text` property from data models and admin UI forms.
 
 ### `v1.6.0` (Identity Unification & Social Import)
 

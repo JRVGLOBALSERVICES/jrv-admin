@@ -251,11 +251,10 @@ export default function UsersClient() {
                     </td>
                     <td className="p-4">
                       <span
-                        className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${
-                          u.role === "superadmin"
+                        className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${u.role === "superadmin"
                             ? "bg-blue-50 text-blue-700 border-blue-100"
                             : "bg-gray-50 text-gray-600 border-gray-100"
-                        }`}
+                          }`}
                       >
                         {u.role}
                       </span>
@@ -271,6 +270,7 @@ export default function UsersClient() {
                               size="sm"
                               variant="secondary"
                               className="font-bold uppercase text-[10px] tracking-tight"
+                              loading={busy}
                               onClick={() =>
                                 postAction({
                                   action: "toggle",
@@ -285,6 +285,7 @@ export default function UsersClient() {
                               size="sm"
                               className="font-bold uppercase text-[10px] tracking-tight"
                               variant="primary"
+                              disabled={busy}
                               onClick={() => {
                                 setPwUserId(u.user_id);
                                 setPw("");
@@ -296,6 +297,7 @@ export default function UsersClient() {
                               size="sm"
                               variant="danger"
                               className="p-2"
+                              loading={busy}
                               onClick={() =>
                                 confirm(`Delete ${u.email}?`) &&
                                 postAction({

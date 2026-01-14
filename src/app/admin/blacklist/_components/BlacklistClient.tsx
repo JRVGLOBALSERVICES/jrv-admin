@@ -38,6 +38,7 @@ export default function BlacklistClient() {
 
     // Delete State
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     // --- FETCHING ---
     const fetchItems = async () => {
@@ -95,6 +96,7 @@ export default function BlacklistClient() {
 
     const confirmDelete = async () => {
         if (!deleteId) return;
+        setIsDeleting(true);
         try {
             const res = await fetch(`/admin/blacklist/api?id=${deleteId}`, { method: "DELETE" });
             if (res.ok) {
@@ -104,7 +106,9 @@ export default function BlacklistClient() {
                 alert("Failed to delete");
             }
         } catch (e) { alert("Error deleting"); }
+        finally { setIsDeleting(false); }
     };
+
 
     // --- FILTERING ---
     const filteredItems = useMemo(() => {
@@ -169,8 +173,8 @@ export default function BlacklistClient() {
                                     <tr key={item.id} className="hover:bg-red-50/30 transition group">
                                         <td className="px-4 py-3">
                                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${item.type === 'mobile'
-                                                    ? 'bg-blue-50 text-blue-700 border-blue-100'
-                                                    : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                                                ? 'bg-blue-50 text-blue-700 border-blue-100'
+                                                : 'bg-indigo-50 text-indigo-700 border-indigo-100'
                                                 }`}>
                                                 {item.type}
                                             </span>
@@ -241,8 +245,8 @@ export default function BlacklistClient() {
                             <button
                                 onClick={() => setFormData({ ...formData, type: 'mobile' })}
                                 className={`flex-1 p-3 rounded-lg border text-sm font-medium transition-all ${formData.type === 'mobile'
-                                        ? 'bg-blue-50 border-blue-200 text-blue-700 ring-1 ring-blue-500'
-                                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                    ? 'bg-blue-50 border-blue-200 text-blue-700 ring-1 ring-blue-500'
+                                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                                     }`}
                             >
                                 Mobile Number
@@ -250,8 +254,8 @@ export default function BlacklistClient() {
                             <button
                                 onClick={() => setFormData({ ...formData, type: 'ic' })}
                                 className={`flex-1 p-3 rounded-lg border text-sm font-medium transition-all ${formData.type === 'ic'
-                                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-1 ring-indigo-500'
-                                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-1 ring-indigo-500'
+                                    : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                                     }`}
                             >
                                 IC / Passport
@@ -299,7 +303,9 @@ export default function BlacklistClient() {
                 footer={
                     <>
                         <Button variant="secondary" onClick={() => setDeleteId(null)} className="p-6">Cancel</Button>
-                        <Button variant="danger" onClick={confirmDelete} className="p-6">Remove Entry</Button>
+                        <Button variant="danger" onClick={confirmDelete} className="p-6" disabled={isDeleting}>
+                            {isDeleting ? "Removing..." : "Remove Entry"}
+                        </Button>
                     </>
                 }
             >

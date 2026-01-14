@@ -276,6 +276,7 @@ export default function AgreementsClient() {
               variant="indigo"
               size="sm"
               onClick={clearFilters}
+              disabled={loading}
               className="col-span-2 md:col-span-1 md:w-auto h-10 bg-indigo-600 text-white font-bold px-4 rounded-lg shadow-md hover:bg-indigo-700 mb-px hover:text-white"
             >
               Clear
@@ -446,20 +447,24 @@ export default function AgreementsClient() {
             Total <strong>{data.total}</strong> records
           </div>
           <div className="flex gap-2">
-            <button
-              disabled={page <= 1}
+            <Button
+              disabled={loading || page <= 1}
+              variant="secondary"
+              size="sm"
               onClick={() => updateFilter("page", String(page - 1))}
-              className="px-3 py-1.5 border rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 font-medium"
+              className="px-3 py-1.5 h-auto font-medium"
             >
               Previous
-            </button>
-            <button
-              disabled={rows.length < 20}
+            </Button>
+            <Button
+              disabled={loading || rows.length < 20}
+              variant="secondary"
+              size="sm"
               onClick={() => updateFilter("page", String(page + 1))}
-              className="px-3 py-1.5 border rounded-lg bg-white hover:bg-gray-50 disabled:opacity-50 font-medium"
+              className="px-3 py-1.5 h-auto font-medium"
             >
               Next
-            </button>
+            </Button>
           </div>
         </div>
       </Card>
