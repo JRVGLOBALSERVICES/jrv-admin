@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Toggle } from "@/components/ui/Toggle";
 import { useRole } from "@/lib/auth/useRole";
 import { PdfViewer } from "./PdfViewer";
 import { uploadImage } from "@/lib/upload";
@@ -58,36 +59,7 @@ type InitialAgreement = {
   eligible_for_event?: boolean | null;
 };
 
-function Toggle({
-  label,
-  value,
-  onChange,
-}: {
-  label: React.ReactNode;
-  value: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 bg-white cursor-pointer hover:bg-gray-50 transition-colors">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
-      <button
-        type="button"
-        onClick={() => onChange(!value)}
-        className={[
-          "h-6 w-11 rounded-full border transition-colors relative",
-          value ? "bg-black border-black" : "bg-gray-200 border-gray-300",
-        ].join(" ")}
-      >
-        <span
-          className={[
-            "absolute top-1/2 -translate-y-1/2 h-4 w-4 rounded-full shadow transition-all",
-            value ? "left-6 bg-white" : "left-1 bg-white",
-          ].join(" ")}
-        />
-      </button>
-    </label>
-  );
-}
+
 
 // --- HELPERS ---
 function toMoney(v: any) {
@@ -402,6 +374,8 @@ export function AgreementForm({
   const [eligibleForEvent, setEligibleForEvent] = useState(
     initial?.eligible_for_event ?? true
   );
+  const [currentMileage, setCurrentMileage] = useState("");
+  const [minMileage, setMinMileage] = useState(0);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initial?.agreement_url ?? null
@@ -444,9 +418,27 @@ export function AgreementForm({
         const res = await fetch(url.toString());
         const json = await res.json();
         if (json.rows) setCars(json.rows);
+
+        // Fetch current mileage for selected car if carId matches and we don't have a value yet (or standard refresh)
+        if (initial?.car_id && json.rows) {
+          const c = json.rows.find((r: any) => r.id === initial.car_id);
+          if (c && c.current_mileage) {
+            setCurrentMileage(String(c.current_mileage));
+            setMinMileage(c.current_mileage);
+          }
+        }
       } catch { }
     })();
   }, [initial?.car_id]);
+
+  // Update mileage when user selects a different car manually
+  useEffect(() => {
+    if (selectedCar && selectedCar.current_mileage) {
+      const m = selectedCar.current_mileage;
+      setCurrentMileage(String(m));
+      setMinMileage(m);
+    }
+  }, [selectedCar]);
 
   const startIso = useMemo(
     () => klLocalToUtcIso(startDate, startTime),
@@ -603,6 +595,11 @@ export function AgreementForm({
     if (!mobile) return "Mobile Number is required";
     if (!carId) return "Please select a Car";
     if (toMoney(total) <= 0) return "Total Price is required";
+
+    if (currentMileage && Number(currentMileage) < minMileage) {
+      return `Mileage cannot be less than current (${minMileage} km)`;
+    }
+
     return null;
   };
 
@@ -694,14 +691,9 @@ export function AgreementForm({
         status: overrideStatus || status,
         agent_email: agentEmail,
         ic_url: url,
-        // If silent, skip PDF generation. Else, we typically regenerate if it's an edit to ensure data is fresh.
-        // Actually, user wants "Regenerate PDF" option gone.
-        // Let's assume:
-        // - Create: Generate PDF.
-        // - Edit (Save & WhatsApp): Generate PDF (to ensure link is fresh/correct).
-        // - Edit (Silent Save): SKIP PDF. (skip_pdf = true)
         skip_pdf: silent,
         eligible_for_event: eligibleForEvent,
+        current_mileage: currentMileage,
       };
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
@@ -1117,6 +1109,25 @@ export function AgreementForm({
                 ))}
               </select>
             </div>
+
+            {/* MILEAGE INPUT */}
+            <div>
+              <label className={labelClass}>
+                <History size={10} /> Current Mileage (km)
+              </label>
+              <input
+                type="number"
+                className={`${inputClass} ${Number(currentMileage) < minMileage ? "ring-2 ring-red-500 bg-red-50" : ""}`}
+                placeholder="e.g. 120000"
+                value={currentMileage}
+                onChange={(e) => setCurrentMileage(e.target.value)}
+              />
+              {Number(currentMileage) < minMileage && (
+                <div className="text-[10px] text-red-600 font-bold mt-1">
+                  Must be {minMileage}+
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1215,14 +1226,10 @@ export function AgreementForm({
                 {/* Regenerate PDF removed as requested */}
                 {/* Regenerate PDF removed as requested */}
                 <Toggle
-                  label={
-                    <span className="flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-yellow-500" />
-                      Eligible for Event?
-                    </span>
-                  }
-                  value={!!eligibleForEvent}
+                  label="Eligible for Event?"
+                  checked={eligibleForEvent}
                   onChange={setEligibleForEvent}
+                  className="w-full border rounded-lg px-3 py-2 bg-white hover:bg-gray-50"
                 />
               </div>
               <div className="flex gap-3">

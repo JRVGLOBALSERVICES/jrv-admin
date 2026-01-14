@@ -98,16 +98,33 @@ export function buildReminderText(
   );
 }
 
-export function buildRenewalMessage(expiringCars: any[]) {
-  // Group by type (Insurance vs Roadtax) or just list them
-  if (expiringCars.length === 0) return null;
+export function buildUnifiedAlert(
+  type: "MAINTENANCE" | "INSURANCE" | "AGREEMENT",
+  items: any[],
+  isTest: boolean = false
+) {
+  if (items.length === 0) return null;
+
+  let title = "";
+  let dashboardUrl = "";
+
+  if (type === "MAINTENANCE") {
+    title = "🛠️ Maintenance Alert";
+    dashboardUrl = "https://jrv-admin.vercel.app/admin/maintenance";
+  } else if (type === "INSURANCE") {
+    title = "📄 Insurance/Roadtax Alert";
+    dashboardUrl = "https://jrv-admin.vercel.app/admin/insurance";
+  } else {
+    title = "⏱️ Agreement Reminder";
+    dashboardUrl = "https://jrv-admin.vercel.app/admin/agreements";
+  }
 
   const blocks: any[] = [
     {
       type: "header",
       text: {
         type: "plain_text",
-        text: "🚨 Upcoming Car Renewals",
+        text: title,
         emoji: true,
       },
     },
@@ -115,35 +132,66 @@ export function buildRenewalMessage(expiringCars: any[]) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `Found *${expiringCars.length}* cars with insurance or roadtax expiring soon.`,
+        text: `*${items.length} items* require attention.`,
       },
     },
     { type: "divider" },
   ];
 
-  expiringCars.forEach((car: any) => {
-    let msg = `*${car.plate_number}* (${car.make} ${car.model})`;
-    if (car.insurance_days != null) {
-      const emoji =
-        car.insurance_days <= 7
-          ? "🔴"
-          : car.insurance_days <= 30
-          ? "🟠"
-          : car.insurance_days <= 60
-          ? "🟡"
-          : "🔵";
-      msg += `\n> ${emoji} Insurance: ${car.insurance_expiry} (${car.insurance_days} days)`;
-    }
-    if (car.roadtax_days != null) {
-      const emoji =
-        car.roadtax_days <= 7
-          ? "🔴"
-          : car.roadtax_days <= 30
-          ? "🟠"
-          : car.roadtax_days <= 60
-          ? "🟡"
-          : "🔵";
-      msg += `\n> ${emoji} Roadtax: ${car.roadtax_expiry} (${car.roadtax_days} days)`;
+  items.forEach((item) => {
+    const carId = type === "AGREEMENT" ? item.car_id : item.id;
+
+    const plateText = item.plate_number || "Unknown Car";
+    const carModel = item.model || item.car_type || "";
+
+    let msg = `*${plateText}* (${carModel})`;
+
+    if (type === "AGREEMENT") {
+      // Agreement Logic: Link to Agreement, WhatsApp
+      const agLink = `https://jrv-admin.vercel.app/admin/agreements/${item.id}`;
+      const phone = item.mobile || "";
+      const cleanPhone = phone.replace(/\D/g, "");
+      const waLink = cleanPhone ? `https://wa.me/${cleanPhone}` : null;
+
+      // Overwrite msg for Agreement to be more specific?
+      // "Plate (Model) - Customer"
+      msg = `*${plateText}* (${carModel})\n`;
+      msg += `> 📄 <${agLink}|View Agreement> • ${
+        waLink ? `<${waLink}|WhatsApp Customer>` : "No Phone"
+      }`;
+
+      if (item.end_time) {
+        const t = new Date(item.end_time).toLocaleTimeString("en-MY", {
+          timeZone: "Asia/Kuala_Lumpur",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        msg += `\n> 🕒 Return at ${t}`;
+      }
+    } else {
+      // Maintenance/Insurance Logic (Car Link)
+      const carLink = `https://jrv-admin.vercel.app/admin/cars/${item.id}`;
+      msg = `*<${carLink}|${plateText}>* (${carModel})`;
+
+      if (item.issues && item.issues.length > 0) {
+        msg += `\n> 🔧 ${item.issues.join(", ")}`;
+      }
+
+      if (item.insurance_days != null) {
+        const days = item.insurance_days;
+        const emoji = days <= 0 ? "🔴" : days <= 7 ? "🟠" : "🟡";
+        msg += `\n> ${emoji} Insurance: Exp ${
+          days <= 0 ? "EXPIRED" : "in " + days + " days"
+        }`;
+      }
+
+      if (item.roadtax_days != null) {
+        const days = item.roadtax_days;
+        const emoji = days <= 0 ? "🔴" : days <= 7 ? "🟠" : "🟡";
+        msg += `\n> ${emoji} Roadtax: Exp ${
+          days <= 0 ? "EXPIRED" : "in " + days + " days"
+        }`;
+      }
     }
 
     blocks.push({
@@ -156,15 +204,39 @@ export function buildRenewalMessage(expiringCars: any[]) {
   });
 
   blocks.push({ type: "divider" });
+
+  // Action Buttons
   blocks.push({
-    type: "context",
+    type: "actions",
     elements: [
       {
-        type: "mrkdwn",
-        text: "View Dashboard: <https://jrv-admin.vercel.app/admin/insurance|Insurance Dashboard>",
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: "View Dashboard",
+          emoji: true,
+        },
+        style: "primary",
+        url: dashboardUrl,
       },
     ],
   });
 
-  return { blocks };
+  // Color Logic
+  const colorMap = {
+    MAINTENANCE: "#E01E5A", // Red
+    INSURANCE: "#ECB22E", // Warning Yellow
+    AGREEMENT: "#2C97DE", // Blue
+  };
+  const color = isTest ? "#36a64f" : colorMap[type];
+
+  // Wrap in Attachment for Color
+  return {
+    attachments: [
+      {
+        color: color,
+        blocks: blocks,
+      },
+    ],
+  };
 }

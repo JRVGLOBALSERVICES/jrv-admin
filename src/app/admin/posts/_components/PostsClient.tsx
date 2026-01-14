@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Toggle } from "@/components/ui/Toggle";
 import { ExternalLink, Eye, PenLine, Trash2, Video, Image as ImageIcon, Search, Facebook, Instagram, Loader2 } from "lucide-react";
 import { useDebounce } from "use-debounce";
 
@@ -677,11 +678,10 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                         else setSelectedImportIndices(p => [...p, i]);
                       }}
                     >
-                      <input
-                        type="checkbox"
+                      <Toggle
                         checked={selectedImportIndices.includes(i)}
-                        readOnly
-                        className="mt-1"
+                        onChange={() => { }} // Controlled by parent div click
+                        className="mt-1 pointer-events-none"
                       />
                       <div className="flex-1 min-w-0">
                         <div className="font-bold text-xs truncate">{res.title}</div>

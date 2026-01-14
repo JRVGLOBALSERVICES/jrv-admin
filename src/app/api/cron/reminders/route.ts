@@ -103,14 +103,40 @@ export async function GET(req: Request) {
     );
   }
 
-  // ✅ TEST LOGIC RESTORED
+  // ✅ TEST LOGIC: REAL DATA
   const url = new URL(req.url);
   if (url.searchParams.get("test") === "true") {
-    await sendSlackMessage(
-      REMINDER_WEBHOOK,
-      "🔔 *Test Notification*: The notification system is online and connected."
-    );
-    return NextResponse.json({ ok: true, test: "sent" });
+    const { buildUnifiedAlert, sendSlackNotification } = require("@/lib/slack");
+
+    // Fetch REAL active agreements
+    const { data: activeAgs } = await supabase
+      .from("agreements")
+      .select("id, plate_number, car_type, mobile, date_end")
+      .not("status", "in", excludedStatusFilter())
+      .order("date_end");
+
+    if (!activeAgs || activeAgs.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        message: "No active agreements found.",
+      });
+    }
+
+    // Map to Unified Format items
+    const items = activeAgs.map((ag: any) => ({
+      id: ag.id,
+      plate_number: ag.plate_number,
+      model: ag.car_type,
+      car_type: ag.car_type,
+      mobile: ag.mobile,
+      end_time: ag.date_end,
+    }));
+
+    // Pass `true` for isTest (Green Color)
+    const payload = buildUnifiedAlert("AGREEMENT", items, true);
+    await sendSlackNotification(payload, REMINDER_WEBHOOK);
+
+    return NextResponse.json({ ok: true, count: items.length, test: true });
   }
 
   const now = new Date();

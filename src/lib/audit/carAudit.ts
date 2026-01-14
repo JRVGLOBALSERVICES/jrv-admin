@@ -1,7 +1,11 @@
 // src/lib/audit/carAudit.ts
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
-export type CarAuditAction = "CREATE_CAR" | "UPDATE_CAR" | "DELETE_CAR";
+export type CarAuditAction =
+  | "CREATE_CAR"
+  | "UPDATE_CAR"
+  | "DELETE_CAR"
+  | "UPDATE_MAINTENANCE";
 
 export async function carAuditLog(args: {
   actor_user_id: string;

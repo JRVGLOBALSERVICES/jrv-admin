@@ -40,6 +40,11 @@ type CarPayload = {
   insurance_expiry?: string | null;
   roadtax_expiry?: string | null;
   track_insurance?: boolean;
+  current_mileage?: number | null;
+  next_service_mileage?: number | null;
+  next_gear_oil_mileage?: number | null;
+  next_tyre_mileage?: number | null;
+  next_brake_pad_mileage?: number | null;
 };
 
 const toNumOrNull = (v: any) => {
@@ -69,6 +74,7 @@ export async function GET(req: Request) {
       plate_number,
       catalog_id,
       status,
+      current_mileage,
       deposit,
       daily_price,
       price_3_days,
@@ -99,6 +105,7 @@ export async function GET(req: Request) {
         plate_number: String(c.plate_number ?? "").trim(),
         catalog_id: c.catalog_id,
         car_label,
+        current_mileage: c.current_mileage,
         deposit: c.deposit,
         daily_price: c.daily_price,
         price_3_days: c.price_3_days,
@@ -190,6 +197,11 @@ export async function POST(req: Request) {
     insurance_expiry: payload.insurance_expiry || null,
     roadtax_expiry: payload.roadtax_expiry || null,
     track_insurance: !!payload.track_insurance,
+    current_mileage: toNumOrNull(payload.current_mileage),
+    next_service_mileage: toNumOrNull(payload.next_service_mileage),
+    next_gear_oil_mileage: toNumOrNull(payload.next_gear_oil_mileage),
+    next_tyre_mileage: toNumOrNull(payload.next_tyre_mileage),
+    next_brake_pad_mileage: toNumOrNull(payload.next_brake_pad_mileage),
   };
 
   if (!clean.plate_number) return jsonError("Plate number required");

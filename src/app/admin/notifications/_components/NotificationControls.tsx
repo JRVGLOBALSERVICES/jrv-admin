@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { BellRing, RefreshCw, CheckCircle, AlertCircle } from "lucide-react";
+import { BellRing, CheckCircle, AlertCircle, Wrench, ShieldCheck, RefreshCw } from "lucide-react";
 
 export default function NotificationControls() {
   const [loading, setLoading] = useState(false);
@@ -24,36 +24,29 @@ export default function NotificationControls() {
     setModalState((prev) => ({ ...prev, open: false }));
   };
 
-  const runJob = async () => {
+  const sendTest = async (type: "maintenance" | "insurance" | "reminders") => {
     setLoading(true);
     setStatus("idle");
-    try {
-      const res = await fetch("/api/cron/reminders?key=manual_override", {
-        method: "GET",
-      });
-      if (!res.ok) throw new Error("Failed");
-      setStatus("success");
-      setTimeout(() => window.location.reload(), 1500);
-    } catch {
-      setStatus("error");
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const sendTest = async () => {
-    setLoading(true);
+    let url = "";
+    if (type === "maintenance") url = "/api/cron/maintenance?test=true";
+    if (type === "insurance") url = "/api/cron/insurance"; // Runs actual check
+    if (type === "reminders") url = "/api/cron/reminders?test=true";
+
     try {
-      const res = await fetch("/api/cron/reminders?test=true");
+      const res = await fetch(url);
       const data = await res.json();
 
       if (res.ok) {
-        showModal("Test Sent", "🔔 Test message sent successfully!");
+        setStatus("success");
+        showModal(`Test ${type} Sent`, "✅ Triggered successfully! Check Slack.");
       } else {
+        setStatus("error");
         showModal("Test Failed", `❌ Error: ${data.error}`, true);
       }
     } catch (e) {
       console.error(e);
+      setStatus("error");
       showModal("Connection Error", "Could not reach server.", true);
     } finally {
       setLoading(false);
@@ -93,28 +86,36 @@ export default function NotificationControls() {
           )}
         </div>
 
-        {/* ✅ Wrapper to keep buttons in a row even on mobile */}
+        {/* Test Buttons Group */}
         <div className="flex w-full sm:w-auto gap-2">
+          {/* Maintenance Test */}
           <Button
-            onClick={runJob}
-            loading={loading}
+            onClick={() => sendTest("maintenance")}
             disabled={loading}
-            // @ts-ignore
-            sound="click"
-            // ✅ Removed 'p-6' and 'w-45'. Removed 'flex-1' from icon.
-            className="p-6 flex-1 sm:flex-none h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+            className="flex-1 sm:flex-none h-10 bg-amber-600 hover:bg-amber-700 text-white font-bold px-4 rounded-xl shadow-md shadow-amber-200 flex items-center justify-center gap-2"
+            title="Test Maintenance Alert"
           >
-            <BellRing className="w-4 h-4" />
-            <span className="translate-y-px">Force Run</span>
+            <Wrench className="w-4 h-4" />
           </Button>
 
+          {/* Insurance Test */}
           <Button
-            onClick={sendTest}
+            onClick={() => sendTest("insurance")}
             disabled={loading}
-            // ✅ Removed 'p-6'. Added 'flex-1' so they share width on mobile.
-            className="p-6 flex-1 sm:flex-none h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-5 rounded-xl shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+            className="flex-1 sm:flex-none h-10 bg-pink-600 hover:bg-pink-700 text-white font-bold px-4 rounded-xl shadow-md shadow-pink-200 flex items-center justify-center gap-2"
+            title="Test Insurance Alert"
           >
-            Send Test
+            <ShieldCheck className="w-4 h-4" />
+          </Button>
+
+          {/* Reminders Test */}
+          <Button
+            onClick={() => sendTest("reminders")}
+            disabled={loading}
+            className="flex-1 sm:flex-none h-10 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-4 rounded-xl shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+            title="Test Agreement Reminders"
+          >
+            <BellRing className="w-4 h-4" />
           </Button>
         </div>
       </div>

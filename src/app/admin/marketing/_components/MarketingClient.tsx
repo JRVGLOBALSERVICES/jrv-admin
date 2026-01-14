@@ -3,9 +3,9 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Toggle } from "@/components/ui/Toggle";
 import { Modal } from "@/components/ui/Modal";
-import { Sparkles, Image as ImageIcon, FileText, BarChart3, Globe, Facebook, Instagram, Copy, Check, Loader2, LayoutGrid, Plus, ExternalLink, Trash, RotateCcw } from "lucide-react";
-import PostsClient from "../../posts/_components/PostsClient"; // Reuse existing logic for now, or we can fully migrate later
+import { Sparkles, Image as ImageIcon, FileText, BarChart3, Globe, Copy, Check, Loader2, LayoutGrid, Plus, ExternalLink, Trash, RotateCcw } from "lucide-react";
 
 type Asset = {
     id: string;
@@ -16,7 +16,7 @@ type Asset = {
 };
 
 export default function MarketingClient({ initialAssets }: { initialAssets: Asset[] }) {
-    const [activeTab, setActiveTab] = useState<"studio" | "assets" | "fb_posts" | "ig_posts">("studio");
+    const [activeTab, setActiveTab] = useState<"studio" | "assets">("studio");
     const [assets, setAssets] = useState(initialAssets);
 
     // Generation State
@@ -233,17 +233,8 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
 
     return (
         <div className="space-y-6">
-            {/* Mobile Warning */}
-            <div className="md:hidden bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-800 text-sm flex items-start gap-3">
-                <div className="bg-amber-100 p-2 rounded-full"><Sparkles className="w-4 h-4 text-amber-600" /></div>
-                <div>
-                    <h4 className="font-bold">Desktop Recommended</h4>
-                    <p className="text-xs mt-1">For the best AI Studio experience (especially image generation), please use a larger screen.</p>
-                </div>
-            </div>
-
             {/* Navigation Tabs */}
-            <div className="flex gap-2 p-1 bg-gray-100/50 rounded-xl w-full md:w-fit overflow-x-auto no-scrollbar">
+            <div className="flex gap-2 p-1 bg-gray-100/50 rounded-xl w-full md:w-fit">
                 <TabButton
                     active={activeTab === "studio"}
                     onClick={() => setActiveTab("studio")}
@@ -256,18 +247,6 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                     icon={LayoutGrid}
                     label="Asset Library"
                 />
-                <TabButton
-                    active={activeTab === "fb_posts"}
-                    onClick={() => setActiveTab("fb_posts")}
-                    icon={Facebook}
-                    label="FB Posts"
-                />
-                <TabButton
-                    active={activeTab === "ig_posts"}
-                    onClick={() => setActiveTab("ig_posts")}
-                    icon={Instagram}
-                    label="Instagram"
-                />
             </div>
 
             {/* --- STUDIO TAB --- */}
@@ -277,14 +256,30 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                         {/* Step 1: Initial Input */}
                         {step === 'initial' && (
                             <Card className="p-6 space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <h2 className="text-lg font-bold flex items-center gap-2">
-                                        <Sparkles className="w-5 h-5 text-indigo-500" />
-                                        {genType === 'image_prompt' ? 'Step 1: Describe Concept' : 'Generate Content'}
-                                    </h2>
-                                    <div className="flex gap-2">
-                                        <TypeBadge active={genType === "copy"} onClick={() => { setGenType("copy"); setLastResult(null); }} icon={FileText} label="Ad Copy" />
-                                        <TypeBadge active={genType === "image_prompt"} onClick={() => { setGenType("image_prompt"); setLastResult(null); }} icon={ImageIcon} label="Image Gen" />
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <h2 className="text-lg font-bold flex items-center gap-2">
+                                            <Sparkles className="w-5 h-5 text-indigo-500" />
+                                            {genType === 'image_prompt' ? 'Step 1: Describe Concept' : 'Generate Content'}
+                                        </h2>
+                                    </div>
+
+                                    {/* Content Type Toggles - Stacked on Mobile (2 rows), grid on desktop */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        <TypeBadge
+                                            active={genType === "copy"}
+                                            onClick={() => { setGenType("copy"); setLastResult(null); }}
+                                            icon={FileText}
+                                            label="Ad Copy Generator"
+                                            description="Create catchy captions & text"
+                                        />
+                                        <TypeBadge
+                                            active={genType === "image_prompt"}
+                                            onClick={() => { setGenType("image_prompt"); setLastResult(null); }}
+                                            icon={ImageIcon}
+                                            label="AI Image Generator"
+                                            description="Generate stunning visuals"
+                                        />
                                     </div>
                                 </div>
 
@@ -299,17 +294,13 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                 />
 
                                 <div className="flex items-center justify-between">
-                                    <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                                        <input
-                                            type="checkbox"
-                                            checked={includeContext}
-                                            onChange={e => setIncludeContext(e.target.checked)}
-                                            className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                        />
-                                        <span>Use Live Site Data</span>
-                                    </label>
+                                    <Toggle
+                                        label="Use Live Site Data"
+                                        checked={includeContext}
+                                        onChange={setIncludeContext}
+                                    />
 
-                                    <Button variant="indigo" className="md:p-8 p-8" onClick={handleInitialGenerate} disabled={isGenerating || !prompt.trim()}>
+                                    <Button variant="indigo" className="w-full md:w-auto md:p-8 p-6" onClick={handleInitialGenerate} disabled={isGenerating || !prompt.trim()}>
                                         {isGenerating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Sparkles className="w-4 h-4 mr-2" />}
                                         {genType === 'image_prompt' ? 'Next: Refine Prompt' : 'Generate Magic'}
                                     </Button>
@@ -366,10 +357,10 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                     Your marketing assets have been generated. Review them on the right.
                                 </p>
                                 <div className="flex gap-2 mt-4">
-                                    <Button variant="indigoLight" onClick={handleTweak} className="md:p-8 p-8">
+                                    <Button variant="indigoLight" onClick={handleTweak} className="p-10">
                                         <RotateCcw className="w-4 h-4 mr-2" /> Tweak & Regenerate
                                     </Button>
-                                    <Button variant="indigo" onClick={() => { setStep('initial'); setLastResult(null); setRefinedPrompt(""); setLogoUrl(""); }} className="md:p-8 p-8 shadow-xl">
+                                    <Button variant="indigo" onClick={() => { setStep('initial'); setLastResult(null); setRefinedPrompt(""); setLogoUrl(""); }} className="p-10 shadow-xl">
                                         <Plus className="w-4 h-4 mr-2" /> Start New Campaign
                                     </Button>
                                 </div>
@@ -423,10 +414,10 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                         </div>
 
                                         <div className="grid grid-cols-2 gap-2">
-                                            <Button className="p-6" variant="indigoLight" onClick={handleRegenerateCopy} disabled={isGenerating}>
+                                            <Button className="p-8" variant="indigoLight" onClick={handleRegenerateCopy} disabled={isGenerating}>
                                                 <RotateCcw className="w-4 h-4 mr-2" /> Regenerate with Keywords
                                             </Button>
-                                            <Button className="p-6" onClick={() => navigator.clipboard.writeText(lastResult.body)}>
+                                            <Button className="p-8" onClick={() => navigator.clipboard.writeText(lastResult.body)}>
                                                 <Copy className="w-4 h-4 mr-2" /> Copy Text
                                             </Button>
                                         </div>
@@ -553,19 +544,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                 </div>
             )}
 
-            {/* --- FB POSTS TAB --- */}
-            {activeTab === "fb_posts" && (
-                <div className="bg-white rounded-xl border p-1">
-                    <PostsClient platform="facebook" />
-                </div>
-            )}
 
-            {/* --- IG POSTS TAB --- */}
-            {activeTab === "ig_posts" && (
-                <div className="bg-white rounded-xl border p-1">
-                    <PostsClient platform="instagram" />
-                </div>
-            )}
 
 
             {/* --- MODAL --- */}
@@ -595,7 +574,7 @@ function TabButton({ active, onClick, icon: Icon, label }: any) {
     return (
         <button
             onClick={onClick}
-            className={`p-6 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${active
+            className={`flex-1 md:flex-none p-4 md:p-6 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${active
                 ? "bg-white text-indigo-600 shadow-sm"
                 : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
                 }`}
@@ -606,17 +585,22 @@ function TabButton({ active, onClick, icon: Icon, label }: any) {
     );
 }
 
-function TypeBadge({ active, onClick, icon: Icon, label }: any) {
+function TypeBadge({ active, onClick, icon: Icon, label, description }: any) {
     return (
         <button
             onClick={onClick}
-            className={`p-6 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${active
-                ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                : "bg-white border-gray-200 text-gray-600 hover:border-gray-300"
+            className={`w-full text-left p-4 rounded-xl border-2 transition-all flex items-start gap-4 ${active
+                ? "bg-indigo-50 border-indigo-500 ring-1 ring-indigo-500/20"
+                : "bg-white border-gray-100 hover:border-indigo-200 hover:bg-gray-50"
                 }`}
         >
-            <Icon className="w-3 h-3" />
-            {label}
+            <div className={`p-3 rounded-lg ${active ? "bg-indigo-100 text-indigo-600" : "bg-gray-100 text-gray-500"}`}>
+                <Icon className="w-6 h-6" />
+            </div>
+            <div>
+                <div className={`font-bold ${active ? "text-indigo-900" : "text-gray-700"}`}>{label}</div>
+                <div className="text-xs text-gray-500 mt-1">{description}</div>
+            </div>
         </button>
     )
 }

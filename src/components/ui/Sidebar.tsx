@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Wrench, ChevronDown, ChevronRight, Facebook, Instagram, LayoutGrid, FileText, AlertTriangle, History } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { useRole } from "@/lib/auth/useRole";
 
@@ -28,23 +28,91 @@ function Icon({ d }: { d: string }) {
 
 // ✅ Added 'color' prop to Item type
 type Item = {
-  href: string;
+  href?: string;
   label: string;
   icon: React.ReactNode;
   color: string;
+  children?: Item[];
 };
 
 function NavItem({
   item,
   collapsed,
   onNavigate,
+  depth = 0,
 }: {
   item: Item;
   collapsed: boolean;
   onNavigate?: () => void;
+  depth?: number;
 }) {
   const pathname = usePathname();
-  const active = pathname === item.href;
+  const [expanded, setExpanded] = useState(false);
+
+  // Check if active (self or children)
+  const isActive = useMemo(() => {
+    if (item.href && pathname === item.href) return true;
+    if (item.children) {
+      return item.children.some((c) => c.href === pathname);
+    }
+    return false;
+  }, [pathname, item]);
+
+  // Auto-expand if child is active
+  useEffect(() => {
+    if (isActive && item.children) setExpanded(true);
+  }, [isActive, item.children]);
+
+  // If Folder (has children)
+  if (item.children) {
+    return (
+      <div className="space-y-0.5">
+        <button
+          onClick={() => !collapsed && setExpanded(!expanded)}
+          className={[
+            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium select-none",
+            isActive ? "bg-gray-50 text-gray-900" : "text-gray-600 hover:bg-gray-50",
+            collapsed ? "justify-center px-2" : "justify-between",
+          ].join(" ")}
+          title={collapsed ? item.label : undefined}
+        >
+          <div className="flex items-center gap-3 overflow-hidden">
+            <span className={`shrink-0 ${item.color}`}>
+              {item.icon}
+            </span>
+            {!collapsed && <span>{item.label}</span>}
+          </div>
+          {!collapsed && (
+            <span className="text-gray-400">
+              {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </span>
+          )}
+        </button>
+
+        {expanded && !collapsed && (
+          <div className="relative">
+            {/* Indentation Line */}
+            <div className="absolute left-6 top-0 bottom-0 w-px bg-gray-200" />
+            <div className="space-y-0.5">
+              {item.children.map((child) => (
+                <NavItem
+                  key={child.label}
+                  item={child}
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                  depth={depth + 1}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Leaf Item (Link)
+  // Ensure we have href for leaf
+  if (!item.href) return null;
 
   return (
     <Link
@@ -52,15 +120,15 @@ function NavItem({
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       className={[
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium",
-        active
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium relative",
+        depth > 0 ? "pl-9" : "", // Indent child items
+        isActive
           ? "bg-black text-white shadow-md"
-          : "text-gray-700 hover:bg-gray-100 active:bg-gray-200", // Softened inactive text
+          : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
         collapsed ? "justify-center px-2" : "",
       ].join(" ")}
     >
-      {/* ✅ Apply color only when NOT active (Active is always white) */}
-      <span className={`shrink-0 ${active ? "text-white" : item.color}`}>
+      <span className={`shrink-0 ${isActive ? "text-white" : item.color}`}>
         {item.icon}
       </span>
       {!collapsed && <span className="truncate">{item.label}</span>}
@@ -111,9 +179,9 @@ function Group({
 
       {open && (
         <div className="space-y-0.5">
-          {items.map((it) => (
+          {items.map((it, i) => (
             <NavItem
-              key={it.href}
+              key={(it.href ?? "nav") + i}
               item={it}
               collapsed={collapsed}
               onNavigate={onNavigate}
@@ -140,13 +208,12 @@ export function Sidebar() {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("urgent_dismissed");
     }
-    // Force a hard navigation to the logout route to ensure cookies are cleared cleanly
-    // and to avoid Next.js prefetching issues with Links
     window.location.href = "/admin/logout";
   };
 
   const mainItems: Item[] = useMemo(
     () => [
+      // 1. DASHBOARD OVERVIEW
       {
         href: "/admin",
         label: "Dashboard",
@@ -157,72 +224,121 @@ export function Sidebar() {
       },
       {
         href: "/admin/revenue",
-        label: "Revenue Analytics",
+        label: "Revenue",
         color: "text-emerald-600",
         icon: (
           <Icon d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         ),
       },
+
+      // 2. AGREEMENTS GROUP
       {
-        href: "/admin/agreements",
         label: "Agreements",
         color: "text-blue-600",
         icon: (
           <Icon d="M8 7h8m-8 4h8m-8 4h5M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" />
         ),
+        children: [
+          {
+            href: "/admin/agreements",
+            label: "All Agreements",
+            color: "text-blue-600",
+            icon: <FileText size={16} />
+          },
+          {
+            href: "/admin/blacklist",
+            label: "Blacklist",
+            color: "text-red-500",
+            icon: <AlertTriangle size={16} />
+          },
+        ]
       },
+
+      // 3. CARS & FLEET
       {
-        href: "/admin/cars",
-        label: "Cars",
+        label: "Fleet Management",
         color: "text-rose-600",
         icon: (
           <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
         ),
+        children: [
+          {
+            href: "/admin/cars",
+            label: "All Vehicles",
+            color: "text-rose-600",
+            icon: <Icon d="M7 17h10M6 16l1-5h10l1 5M7 11l1.2-3h7.6L17 11M7 16a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm10 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z" />
+          },
+          {
+            href: "/admin/maintenance",
+            label: "Maintenance",
+            color: "text-amber-600",
+            icon: <Wrench size={16} />,
+          },
+          {
+            href: "/admin/insurance",
+            label: "Insurance",
+            color: "text-amber-500",
+            icon: (
+              <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
+            ),
+          },
+          {
+            href: "/admin/catalog",
+            label: "Car Catalog",
+            color: "text-gray-600",
+            icon: <LayoutGrid size={16} />,
+          },
+        ]
       },
+
+      // 4. MARKETING
       {
-        href: "/admin/insurance",
-        label: "Insurance & Roadtax",
-        color: "text-amber-500",
-        icon: (
-          <Icon d="M9 12h6m-6 4h6M8 3h8a2 2 0 0 1 2 2v16l-3-2-3 2-3-2-3 2V5a2 2 0 0 1 2-2Z" />
-        ),
+        label: "Marketing Tools",
+        color: "text-purple-600",
+        icon: <Sparkles className="w-5 h-5" />,
+        children: [
+          {
+            href: "/admin/marketing",
+            label: "AI Studio",
+            color: "text-purple-600",
+            icon: <Sparkles size={16} />,
+          },
+          {
+            href: "/admin/marketing/facebook",
+            label: "Facebook Posts",
+            color: "text-blue-600",
+            icon: <Facebook size={16} />,
+          },
+          {
+            href: "/admin/marketing/instagram",
+            label: "Instagram Posts",
+            color: "text-pink-600",
+            icon: <Instagram size={16} />,
+          },
+          {
+            href: "/admin/landing-pages",
+            label: "Landing Pages",
+            color: "text-cyan-600",
+            icon: <LayoutGrid size={16} />,
+          },
+        ]
       },
+
+      // 5. TRAFFIC
       {
-        href: "/admin/site-events",
-        label: "Website & Traffic",
+        label: "Web Traffic",
         color: "text-violet-600",
         icon: (
           <Icon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
         ),
-      },
-      {
-        href: "/admin/marketing",
-        label: "AI & Marketing Tools",
-        color: "text-sky-600",
-        icon: <Sparkles className="w-5 h-5" />,
-      },
-      {
-        href: "/admin/catalog",
-        label: "Catalog",
-        color: "text-amber-600",
-        icon: <Icon d="M4 6h16M4 10h16M4 14h16M4 18h16" />,
-      },
-      {
-        href: "/admin/landing-pages",
-        label: "Landing Pages",
-        color: "text-purple-600",
-        icon: (
-          <Icon d="M3 4.5h18A1.5 1.5 0 0 1 22.5 6v12a1.5 1.5 0 0 1-1.5 1.5H3A1.5 1.5 0 0 1 1.5 18V6A1.5 1.5 0 0 1 3 4.5z M1.5 9h21 M7 9v10.5" />
-        ),
-      },
-      // ✅ NEW: Blacklist (Operational Tool)
-      {
-        href: "/admin/blacklist",
-        label: "Blacklist",
-        color: "text-red-600",
-        icon: (
-          <Icon d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-        ),
+        children: [
+          {
+            href: "/admin/site-events",
+            label: "Traffic Analytics",
+            color: "text-violet-600",
+            icon: <Icon d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          }
+        ]
       },
     ],
     []
@@ -280,7 +396,7 @@ export function Sidebar() {
       },
       {
         href: "/admin/notifications",
-        label: "Slack Notifications Log",
+        label: "Slack Logs",
         color: "text-pink-600",
         icon: (
           <Icon d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

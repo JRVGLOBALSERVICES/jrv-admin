@@ -1,6 +1,15 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import MarketingClient from "./_components/MarketingClient";
+import { pageMetadata } from "@/lib/seo";
+import { Metadata } from "next";
+
+export const metadata: Metadata = pageMetadata({
+    title: "AI Marketing Suite",
+    description: "Generate marketing content using AI.",
+    path: "/admin/marketing",
+    index: false,
+});
 
 export default async function MarketingPage() {
     const gate = await requireAdmin();

@@ -1,12 +1,41 @@
 # JRV Admin Documentation
 
-**Latest Version:** `v1.7.5` (Updated Jan 14, 2026)
+**Latest Version:** `v1.8.0` (Updated Jan 15, 2026)
 
 This document provides a comprehensive technical breakdown of all recent changes made to the JRV Admin platform, organized by component and functional area.
 
 ---
 
 ## 🕒 Release History
+
+### `v1.8.0` (Maintenance System & UI Overhaul)
+
+- **Maintenance Module**:
+
+  - **Dedicated Dashboard**: New page with advanced filters (Search, Status, Roadtax/Insurance expiry).
+  - **Smart Tracking**: Visual progress bars for service intervals (Engine Oil, Gearbox, Tires, Brakes).
+  - **Mileage Integration**: Agreements now capture `current_mileage`, allowing automatic service tracking.
+  - **Audit Logs**: Full history tracking for all maintenance updates with diff views.
+
+- **Sidebar Redesign**:
+
+  - **Nested Navigation**: Grouped "Marketing" (Facebook, Instagram, Tracker) and "Fleet" (Cars, Maintenance, Insurance) for cleaner UX.
+  - **Modern UI**: Collapsible sections with smooth animations and active state indicators.
+
+- **Notification Center**:
+
+  - **Unified Hub**: Centralized alerts for Maintenance, Insurance, and Agreements.
+  - **Real-Data Simulation**: The `?test=true` trigger now safely simulates alerts using _live active data_ (visually distinct with Green sidebars) without polluting logs.
+  - **Smart Queue**: Color-coded urgency labels (Red=Expired, Amber=Warning, Blue=Info).
+
+- **AI Studio & Mobile**:
+
+  - **Responsive Layout**: Optimized grid system for mobile devices.
+  - **Toggle Controls**: Replaced checkboxes with touch-friendly pink/orange toggles.
+
+- **System Reliability**:
+  - **Build Stability**: Fixed legacy import errors in the notification API.
+  - **Safe Testing**: Test notifications explicitly skip database writes.
 
 ### `v1.7.5` (Scraper Orchestration & Loading Feedback)
 
@@ -70,7 +99,7 @@ This document provides a comprehensive technical breakdown of all recent changes
 
 ---
 
-## �️ Technical Details by Component
+## 🛠️ Technical Details by Component
 
 ### `src/app/admin/insurance/_components/InsuranceClient.tsx`
 

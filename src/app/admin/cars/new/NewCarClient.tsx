@@ -287,6 +287,12 @@ export default function NewCarPage() {
             usb,
             android_auto: androidAuto,
             apple_carplay: appleCarplay,
+            // Defaults for Maintenance
+            current_mileage: 0,
+            next_service_mileage: 0,
+            next_gear_oil_mileage: 0,
+            next_tyre_mileage: 0,
+            next_brake_pad_mileage: 0,
           },
         }),
       });

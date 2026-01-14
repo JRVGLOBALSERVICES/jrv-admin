@@ -162,7 +162,9 @@ export async function GET(req: Request) {
 
   const { data: carsRows, error: carsErr } = await supabase
     .from("cars")
-    .select(`id, plate_number, car_catalog:catalog_id ( make, model )`)
+    .select(
+      `id, plate_number, current_mileage, car_catalog:catalog_id ( make, model )`
+    )
     .order("plate_number", { ascending: true })
     .limit(5000);
 
@@ -566,7 +568,18 @@ export async function POST(req: Request) {
 
       const nextCarId = asStr(dbData.car_id);
       if (prevCarId && prevCarId !== nextCarId) await syncCarStatus(prevCarId);
-      if (nextCarId) await syncCarStatus(nextCarId);
+      if (nextCarId) {
+        await syncCarStatus(nextCarId);
+
+        // ✅ SYNC MILEAGE IF PROVIDED
+        const mileage = Number(payload.current_mileage);
+        if (mileage > 0) {
+          await supabaseAdmin
+            .from("cars")
+            .update({ current_mileage: mileage })
+            .eq("id", nextCarId);
+        }
+      }
 
       return NextResponse.json({
         ok: true,

@@ -83,6 +83,7 @@ export default async function NotificationsPage() {
   const upcomingQueue: QueueItem[] = [];
   const checkpoints = [120, 60, 30, 10, 0];
 
+  // A. Rent-Ended Checkpoints
   for (const ag of activeAgreements || []) {
     const endMs = new Date(ag.date_end).getTime();
     const nowMs = now.getTime();
@@ -97,19 +98,84 @@ export default async function NotificationsPage() {
           type:
             cp === 0
               ? "EXPIRED"
-              : `${
-                  cp === 120
-                    ? "2 Hours"
-                    : cp === 60
-                    ? "1 Hour"
-                    : cp + " Minutes"
-                }`,
+              : `${cp === 120
+                ? "2 Hours"
+                : cp === 60
+                  ? "1 Hour"
+                  : cp + " Minutes"
+              }`,
           scheduledFor: new Date(triggerTimeMs).toISOString(),
           originalEnd: ag.date_end,
         });
       }
     });
   }
+
+  // B. Insurance & Roadtax & Maintenance Checkpoints
+  const { data: allCars } = await supabase
+    .from("cars")
+    .select("id, plate_number, current_mileage, next_service_mileage, insurance_expiry, roadtax_expiry, catalog:catalog_id(make, model)")
+    .neq("status", "Deleted");
+
+  const tomorrow8am = new Date();
+  tomorrow8am.setDate(tomorrow8am.getDate() + 1);
+  tomorrow8am.setHours(8, 0, 0, 0);
+
+  const nextCronTime = tomorrow8am.toISOString();
+
+  allCars?.forEach((car: any) => {
+    const model = `${car.catalog?.make} ${car.catalog?.model}`;
+
+    // 1. Maintenance (If due, it triggers at next 8am)
+    if (car.next_service_mileage && car.current_mileage) {
+      const dist = car.next_service_mileage - car.current_mileage;
+
+      if (dist <= 2000) {
+        let type = "MAINTENANCE (< 2000km)";
+        if (dist <= 0) type = "MAINTENANCE OVERDUE";
+        else if (dist <= 100) type = "MAINTENANCE (Urgent 100km)";
+        else if (dist <= 500) type = "MAINTENANCE (< 500km)";
+        else if (dist <= 1000) type = "MAINTENANCE (< 1000km)";
+
+        upcomingQueue.push({
+          plate: car.plate_number,
+          model: model,
+          type: type,
+          scheduledFor: nextCronTime,
+          originalEnd: null
+        });
+      }
+    }
+
+    // 2. Insurance / Roadtax (30 days, 7 days, 1 day before)
+    // 2. Insurance / Roadtax (Cron checks daily for anything <= 90 days)
+    // We expect these to be sent at the next Cron run (Tomorrow 8am)
+    const checkExpiry = (dateStr: string | null, label: string) => {
+      if (!dateStr) return;
+      const expiry = new Date(dateStr);
+      const diffMs = expiry.getTime() - now.getTime();
+      const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+      // If within 90 days window (including expired), Cron will pick it up
+      if (days <= 90) {
+        let info = "";
+        if (days < 0) info = "EXPIRED";
+        else if (days === 0) info = "Today";
+        else info = `${days} Days`;
+
+        upcomingQueue.push({
+          plate: car.plate_number,
+          model: model,
+          type: `${label} (${info})`,
+          scheduledFor: nextCronTime,
+          originalEnd: dateStr
+        });
+      }
+    };
+
+    checkExpiry(car.insurance_expiry, "INSURANCE");
+    checkExpiry(car.roadtax_expiry, "ROADTAX");
+  });
 
   upcomingQueue.sort(
     (a, b) =>
@@ -135,7 +201,7 @@ export default async function NotificationsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* LEFT: SENT LOGS */}
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden flex flex-col h-150">
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden flex flex-col md:h-210 h-150">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -166,11 +232,10 @@ export default async function NotificationsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
-                          log.reminder_type === "EXPIRED"
-                            ? "bg-red-50 border-red-100 text-red-600"
-                            : "bg-blue-50 border-blue-100 text-blue-600"
-                        }`}
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${log.reminder_type === "EXPIRED"
+                          ? "bg-red-50 border-red-100 text-red-600"
+                          : "bg-blue-50 border-blue-100 text-blue-600"
+                          }`}
                       >
                         {log.reminder_type}
                       </span>
@@ -191,7 +256,7 @@ export default async function NotificationsPage() {
         </div>
 
         {/* RIGHT: UPCOMING QUEUE */}
-        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden flex flex-col h-150">
+        <div className="bg-white border border-gray-100 rounded-2xl shadow-xl shadow-gray-200/50 overflow-hidden flex flex-col md:h-210 h-150">
           <div className="p-4 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
             <h3 className="font-bold text-gray-800 flex items-center gap-2 text-sm uppercase tracking-wide">
               <span className="text-lg">📅</span>
@@ -227,11 +292,14 @@ export default async function NotificationsPage() {
                     </td>
                     <td className="px-4 py-3 align-top">
                       <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${
-                          item.type === "EXPIRED"
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${item.type.includes("EXPIRED") || item.type.includes("OVERDUE")
                             ? "bg-red-50 border-red-100 text-red-600"
-                            : "bg-gray-50 border-gray-200 text-gray-600"
-                        }`}
+                            : item.type.includes("MAINTENANCE")
+                              ? "bg-rose-50 border-rose-100 text-rose-600"
+                              : item.type.includes("INSURANCE") || item.type.includes("ROADTAX")
+                                ? "bg-amber-50 border-amber-100 text-amber-600"
+                                : "bg-blue-50 border-blue-100 text-blue-600"
+                          }`}
                       >
                         {item.type}
                       </span>

@@ -87,19 +87,7 @@ export function InsuranceClient({ cars }: { cars: CarData[] }) {
   if (activeTab === "expired") displayCars = expired;
   if (activeTab === "missing") displayCars = missingDocs.sort((a, b) => a.plate.localeCompare(b.plate));
 
-  const triggerSlack = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/admin/insurance/api/notify", { method: "POST" });
-      const json = await res.json();
-      if (res.ok && json.ok) alert(`Notification sent! (${json.count} cars)`);
-      else alert("Failed: " + (json.error || "Unknown error"));
-    } catch (e: any) {
-      alert("Error: " + e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
+
 
   const StatBox = ({ label, value, color, onClick, active }: any) => (
     <button
@@ -161,13 +149,7 @@ export function InsuranceClient({ cars }: { cars: CarData[] }) {
               </label>
             </div>
 
-            <Button
-              onClick={triggerSlack}
-              loading={loading}
-              className="h-14 px-10 bg-gray-900 hover:bg-black text-white font-black rounded-4xl shadow-2xl shadow-gray-200 transition-all hover:scale-[1.02] active:scale-95 flex items-center gap-3 border-0 active:translate-y-0.5"
-            >
-              <Bell className="w-5 h-5" /> Sync to Slack
-            </Button>
+
           </div>
         </div>
 
