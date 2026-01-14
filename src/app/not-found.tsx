@@ -32,27 +32,21 @@ export default function NotFound() {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-          <Link href="/">
-            <Button
-              variant="secondary"
-              className="px-8 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200"
-            >
-              Back to Home
-            </Button>
-          </Link>
+
 
           <Link href="/admin">
-            <Button className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 shadow-lg shadow-indigo-200">
+            <Button className="p-6" variant="emeraldGreen">
               Back to Dashboard
             </Button>
           </Link>
 
-          <button
+          <Button
+            variant="indigoLight"
             onClick={() => window.history.back()}
-            className="text-gray-500 hover:text-gray-800 font-medium text-sm underline underline-offset-4"
+            className="p-6"
           >
             Go Back Previous Page
-          </button>
+          </Button>
         </div>
       </div>
 
