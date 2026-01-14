@@ -52,7 +52,7 @@ export default function LoginPage() {
     let json: any = null;
     try {
       json = JSON.parse(raw);
-    } catch {}
+    } catch { }
 
     if (!res.ok) {
       setLoading(false);
@@ -75,7 +75,7 @@ export default function LoginPage() {
         {/* LOGO CENTERED */}
         <div className="flex flex-col items-center text-center gap-3">
           <div className="bg-white rounded-xl p-3 shadow-md">
-            <Image src="/logo.png" alt="JRV Admin" width={90} height={90} />
+            <Image src="/logo.png" alt="JRV Admin" width={90} height={90} priority />
           </div>
           <h1 className="text-2xl font-semibold text-[#FF3057]">Admin Login</h1>
           <p className="text-sm text-black">Sign in to continue</p>

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import Lottie from "lottie-react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/Button"; // Assuming you have this from your other files
 import notFoundAnim from "../../public/assets/404.json";
+
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function NotFound() {
   return (
@@ -30,6 +32,15 @@ export default function NotFound() {
 
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+          <Link href="/">
+            <Button
+              variant="secondary"
+              className="px-8 py-3 text-gray-700 bg-gray-100 hover:bg-gray-200"
+            >
+              Back to Home
+            </Button>
+          </Link>
+
           <Link href="/admin">
             <Button className="bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-3 shadow-lg shadow-indigo-200">
               Back to Dashboard

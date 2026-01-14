@@ -43,7 +43,7 @@ async function alreadySentRecently(agreementId: string, reminderType: string) {
   return !!(data && data.length > 0);
 }
 
-// ✅ Recalculate car status based on agreements active now
+// Recalculate car status based on agreements active now
 async function syncCarsFromAgreementsNow(nowIso: string) {
   // 1) Get currently active agreements now (for cars)
   const { data: activeNow, error: activeErr } = await supabase
@@ -90,7 +90,7 @@ async function syncCarsFromAgreementsNow(nowIso: string) {
   if (setAvailErr) console.error("setAvailErr:", setAvailErr);
 }
 
-// ✅ UPDATED: Accept 'req' to read searchParams
+// UPDATED: Accept 'req' to read searchParams
 export async function GET(req: Request) {
   if (process.env.ENABLE_SLACK !== "true") {
     return NextResponse.json({ ok: true, message: "Disabled" });
@@ -103,7 +103,7 @@ export async function GET(req: Request) {
     );
   }
 
-  // ✅ TEST LOGIC: REAL DATA
+  // TEST LOGIC: REAL DATA
   const url = new URL(req.url);
   if (url.searchParams.get("test") === "true") {
     const { buildUnifiedAlert, sendSlackNotification } = require("@/lib/slack");
@@ -231,7 +231,7 @@ export async function GET(req: Request) {
 
   if (completeErr) console.error("completeErr:", completeErr);
 
-  // ✅ SYNC CARS STATUS (after completing)
+  // SYNC CARS STATUS (after completing)
   await syncCarsFromAgreementsNow(nowIso);
 
   return NextResponse.json({

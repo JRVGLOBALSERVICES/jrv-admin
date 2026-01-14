@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useDebouncedCallback } from "use-debounce";
 import { Card } from "@/components/ui/Card";
@@ -293,9 +294,11 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
                       <div className="flex items-center gap-3">
                         <div className="h-10 w-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 shrink-0">
                           {r.primary_image_url && (
-                            <img
+                            <Image
                               src={r.primary_image_url}
-                              className="h-full w-full object-cover"
+                              fill
+                              sizes="40px"
+                              className="object-cover"
                               alt="Car"
                             />
                           )}

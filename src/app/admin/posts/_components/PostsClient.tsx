@@ -1,5 +1,7 @@
 "use client";
 
+
+import NextImage from "next/image";
 import { useEffect, useState, useMemo } from "react";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -31,7 +33,6 @@ function ScraperLog({ postId, onFinished }: { postId: string, onFinished?: () =>
 
           // Trigger refresh if we hit a terminal state
           if (msg.includes("Success") || msg.includes("Failure") || msg.includes("Error")) {
-            console.log(`[SCRAPER] Terminal state detected: "${msg}". Triggering refresh...`);
             onFinished?.();
           }
         }
@@ -456,7 +457,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                     </div>
                   ) : editPost?.image_url ? (
                     <div className="relative w-full h-full group">
-                      <img src={editPost.image_url} alt="Cover" className="w-full h-full object-cover" />
+                      <NextImage src={editPost.image_url} alt="Cover" fill className="object-cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Button size="sm" variant="secondary" onClick={() => setEditPost({ ...editPost, image_url: '' })}>
                           <Trash2 className="w-3 h-3 mr-1" /> Clear
@@ -535,10 +536,11 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                       {editPost.id && <ScraperLog postId={editPost.id} onFinished={refresh} />}
                     </div>
                   ) : editPost.image_url ? (
-                    <img
+                    <NextImage
                       src={editPost.image_url}
-                      alt={editPost.title}
-                      className="w-full h-full object-cover transition-all duration-500 grayscale group-hover:grayscale-0"
+                      alt={editPost.title || "Post image"}
+                      fill
+                      className="object-cover transition-all duration-500 grayscale group-hover:grayscale-0"
                     />
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-gray-300">
@@ -691,8 +693,8 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                         </div>
                       </div>
                       {res.content_url && (
-                        <div className="w-12 h-12 rounded bg-gray-100 overflow-hidden shrink-0 border">
-                          <img src={res.content_url} className="w-full h-full object-cover" alt="" />
+                        <div className="relative w-12 h-12 rounded bg-gray-100 overflow-hidden shrink-0 border">
+                          <NextImage src={res.content_url} fill className="object-cover" alt="" />
                         </div>
                       )}
                     </div>

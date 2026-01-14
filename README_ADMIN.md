@@ -34,8 +34,15 @@ This document provides a comprehensive technical breakdown of all recent changes
   - **Toggle Controls**: Replaced checkboxes with touch-friendly pink/orange toggles.
 
 - **System Reliability**:
+
   - **Build Stability**: Fixed legacy import errors in the notification API.
   - **Safe Testing**: Test notifications explicitly skip database writes.
+
+- **Performance & UX**:
+  - **Splash Screen**: Reduced artificial delay to 2s and implemented lazy loading for animations.
+  - **Optimized Assets**: Migrated to `next/image` for Car and Post tables to improve loading speeds.
+  - **Core Web Vitals**: Added `priority` loading to the Login page logo for instant LCP.
+  - **404 Page**: Unified Admin/Frontend 404 experience with "Back to Home" navigation.
 
 ### `v1.7.5` (Scraper Orchestration & Loading Feedback)
 

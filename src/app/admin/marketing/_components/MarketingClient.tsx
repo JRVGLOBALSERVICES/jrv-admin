@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import NextImage from "next/image";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
@@ -436,10 +437,11 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                                 const displayUrl = logoUrl ? applyOverlay(url, logoUrl) : url;
                                                 return (
                                                     <div key={i} className="group relative bg-gray-900 rounded-xl overflow-hidden shadow-xl aspect-video">
-                                                        <img
+                                                        <NextImage
                                                             src={displayUrl}
                                                             alt={`Generated ${i + 1}`}
-                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                                            fill
+                                                            className="object-cover group-hover:scale-105 transition-transform duration-500"
                                                         />
                                                         <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                                                             <Button className="p-6" size="sm" variant="secondary" onClick={() => window.open(displayUrl, '_blank')}>
@@ -502,10 +504,11 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                     ) : (
                                         <div className="space-y-2">
                                             <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden border">
-                                                <img
+                                                <NextImage
                                                     src={content}
                                                     alt={asset.prompt}
-                                                    className="w-full h-full object-cover hover:scale-105 transition-transform duration-500"
+                                                    fill
+                                                    className="object-cover hover:scale-105 transition-transform duration-500"
                                                 />
                                             </div>
                                         </div>

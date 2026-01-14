@@ -26,8 +26,6 @@ export async function sendSlackMessage(webhookUrl: string, text: string) {
 
 export async function sendSlackNotification(message: any, webhookUrl?: string) {
   const url = webhookUrl || process.env.SLACK_WEBHOOK_URL;
-  console.log("SLACK: Sending notification...");
-  console.log("SLACK: Target URL:", url ? "Defined" : "MISSING");
 
   if (!url) {
     console.error("Missing SLACK_WEBHOOK_URL");
@@ -45,7 +43,6 @@ export async function sendSlackNotification(message: any, webhookUrl?: string) {
       console.error("Slack send failed", txt);
       return false;
     }
-    console.log("SLACK: Sent successfully");
     return true;
   } catch (e) {
     console.error("Slack error", e);

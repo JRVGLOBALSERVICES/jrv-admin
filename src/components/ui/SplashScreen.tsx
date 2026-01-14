@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Lottie from "lottie-react";
+import dynamic from "next/dynamic";
 // Make sure this file exists, or use a dummy URL for now
 import loadingAnim from "../../../public/assets/loading.json";
+
+const Lottie = dynamic(() => import("lottie-react"), { ssr: false });
 
 export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
   const [isExiting, setIsExiting] = useState(false);
 
   useEffect(() => {
-    // Show splash for 3.5 seconds total
+    // Show splash for 2 seconds total (reduced from 5s)
     const timer = setTimeout(() => {
       startExit();
-    }, 5000);
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
@@ -27,9 +29,8 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
 
   return (
     <div
-      className={`fixed inset-0 z-9999 flex flex-col items-center justify-center bg-black transition-all duration-500 ${
-        isExiting ? "opacity-0 pointer-events-none scale-105" : "opacity-100"
-      }`}
+      className={`fixed inset-0 z-9999 flex flex-col items-center justify-center bg-black transition-all duration-500 ${isExiting ? "opacity-0 pointer-events-none scale-105" : "opacity-100"
+        }`}
     >
       <div className="flex flex-col items-center gap-6 relative">
         {/* ✅ ANIMATION 1: LOGO (Scale + Opacity) */}

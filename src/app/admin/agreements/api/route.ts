@@ -454,9 +454,16 @@ export async function POST(req: Request) {
 
       if (isEdit) {
         // If it's an edit and not explicitly set to terminal status
-        if (
-          !["Cancelled", "Completed", "Deleted", "Extended"].includes(newStatus)
-        ) {
+        // ✅ FIX: Allow Superadmin to set "New" explicitly
+        const protectedStatuses = [
+          "Cancelled",
+          "Completed",
+          "Deleted",
+          "Extended",
+        ];
+        if (actorRole === "superadmin") protectedStatuses.push("New");
+
+        if (!protectedStatuses.includes(newStatus)) {
           // If the new end date is in the future, mark as Extended
           if (newEndMs > nowMs) {
             newStatus = "Extended";
