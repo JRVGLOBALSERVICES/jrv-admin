@@ -16,6 +16,46 @@ type Post = {
   image_url?: string;
 };
 
+function ScraperLog({ postId, onFinished }: { postId: string, onFinished?: () => void }) {
+  const [log, setLog] = useState<string>("");
+
+  useEffect(() => {
+    const fetchLog = async () => {
+      try {
+        const res = await fetch(`/admin/posts/api/logs?post_id=${postId}`);
+        const data = await res.json();
+        if (data.ok && data.log) {
+          const msg = data.log.details.message;
+          setLog(msg);
+
+          // Trigger refresh if we hit a terminal state
+          if (msg.includes("Success") || msg.includes("Failure") || msg.includes("Error")) {
+            console.log(`[SCRAPER] Terminal state detected: "${msg}". Triggering refresh...`);
+            onFinished?.();
+          }
+        }
+      } catch (e) {
+        // quiet
+      }
+    };
+
+    fetchLog();
+    const interval = setInterval(fetchLog, 3000);
+    return () => clearInterval(interval);
+  }, [postId]);
+
+  if (!log) return null;
+  return (
+    <div className="flex items-center gap-1.5 mt-1 animate-pulse">
+      <div className="w-1 h-1 rounded-full bg-indigo-400" />
+      <span className="text-[10px] text-indigo-400 font-medium italic truncate max-w-[200px]">
+        {log}
+      </span>
+    </div>
+  );
+}
+
+
 // Unified Input Style conforming to Agreements UI
 const inputClass =
   "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 h-10";
@@ -39,36 +79,8 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
 
   // Extraction State
   const [extracting, setExtracting] = useState(false);
-  const [debouncedUrl] = useDebounce(editPost?.content_url, 1000);
+  // Auto-Extract logic removed as per user request (skip local API extraction)
 
-  // Auto-Extract Image when URL changes
-  useEffect(() => {
-    if (!debouncedUrl || !debouncedUrl.startsWith("http")) return;
-    // Don't re-extract if we already have an image and it matches (logic simplified, just always extract if changed)
-    // Actually, only extract if image_url is empty OR if user explicitly changed the URL
-    // For now, let's trigger if URL is valid and different from original
-
-    const doExtract = async () => {
-      setExtracting(true);
-      try {
-        const res = await fetch("/admin/posts/api", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "extract", payload: { url: debouncedUrl } })
-        });
-        const data = await res.json();
-        if (data.ok && data.image) {
-          setEditPost(prev => prev ? ({ ...prev, image_url: data.image }) : null);
-        }
-      } catch (e) {
-        console.error("Extraction failed", e);
-      } finally {
-        setExtracting(false);
-      }
-    }
-
-    doExtract();
-  }, [debouncedUrl]);
 
   // Platform-specific configuration
   const config = useMemo(() => {
@@ -89,13 +101,15 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
     }
   }, [platform]);
 
+  const refresh = async () => {
+    const res = await fetch("/admin/posts/api");
+    const json = await res.json();
+    if (json.ok) setPosts(json.rows);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    fetch("/admin/posts/api")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.ok) setPosts(json.rows);
-        setLoading(false);
-      });
+    refresh();
   }, []);
 
   const filteredPosts = useMemo(() => {
@@ -126,13 +140,22 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
     const action = editPost?.id ? "update" : "create";
     let finalPayload = { ...editPost };
     if (!finalPayload.type) finalPayload.type = config.defaultType;
+    setExtracting(true);
     const res = await fetch("/admin/posts/api", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, payload: finalPayload }),
     });
-    if (res.ok) window.location.reload();
-    else alert("Failed to save");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.github_pat_missing) {
+        alert("⚠️ WARNING: Post saved, but GITHUB_PAT is missing in your environment variables. Image extraction will NOT start.");
+      }
+      setTimeout(() => window.location.reload(), 1500);
+    } else {
+      alert("Failed to save");
+      setExtracting(false);
+    }
   };
 
   const del = async (id: string) => {
@@ -154,6 +177,12 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ platform, page_id: importPageId, access_token: importToken }),
       });
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error("[IMPORT] Failed to fetch posts:", res.status, txt);
+      } else {
+        console.log(`[IMPORT] 🚀 Successfully fetched posts for page: ${importPageId}`);
+      }
       const json = await res.json();
       if (json.ok) {
         setImportResults(json.data);
@@ -161,6 +190,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
         alert(json.error || "Failed to fetch posts");
       }
     } catch (e) {
+      console.error("[IMPORT] Critical error during fetch:", e);
       alert("Error fetching posts");
     } finally {
       setImportLoading(false);
@@ -277,10 +307,11 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                         {p.type.replace('fb_', '').replace('ig_', '')}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3 text-start">
                       {p.image_url === 'EXTRACTING' ? (
-                        <div className="flex justify-center">
-                          <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
+                        <div className="flex flex-col items-center justify-center">
+                          <Loader2 className="w-5 h-5 animate-spin text-indigo-500 mb-1" />
+                          <ScraperLog postId={p.id} onFinished={refresh} />
                         </div>
                       ) : (
                         <div className="font-bold text-gray-900 mb-0.5">{p.title || "(No Title)"}</div>
@@ -420,6 +451,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <Loader2 className="w-6 h-6 animate-spin text-indigo-500" />
                       <span className="text-xs">Extracting metadata...</span>
+                      {editPost?.id && <ScraperLog postId={editPost.id} onFinished={refresh} />}
                     </div>
                   ) : editPost?.image_url ? (
                     <div className="relative w-full h-full group">
@@ -432,10 +464,18 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                     </div>
                   ) : (
                     <div className="text-center p-4">
-                      <ImageIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-                      <p className="text-xs text-gray-400">
-                        {editPost?.content_url ? "No image extracted yet." : "Enter a URL to auto-extract."}
-                      </p>
+                      {editPost?.content_url ? (
+                        <div className="flex flex-col items-center gap-2">
+                          <Loader2 className="w-8 h-8 text-indigo-300 animate-pulse" />
+                          <p className="text-xs text-indigo-500 font-bold uppercase tracking-widest">Ready to Extract</p>
+                          <p className="text-[10px] text-gray-400 italic">Hit "Save Changes" to start the background scraper.</p>
+                        </div>
+                      ) : (
+                        <>
+                          <ImageIcon className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                          <p className="text-xs text-gray-400">Enter a URL to auto-extract.</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -491,6 +531,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
                       <span className="text-xs font-bold uppercase tracking-widest">Extracting Image...</span>
+                      {editPost.id && <ScraperLog postId={editPost.id} onFinished={refresh} />}
                     </div>
                   ) : editPost.image_url ? (
                     <img
