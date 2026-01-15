@@ -71,7 +71,6 @@ export async function GET(req: Request) {
           car_model: `${car.car_catalog?.make || ""} ${
             car.car_catalog?.model || ""
           }`.trim(),
-          recipient: "Slack Channel",
         });
       }
     });

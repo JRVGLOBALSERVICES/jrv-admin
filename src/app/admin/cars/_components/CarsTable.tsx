@@ -292,7 +292,7 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 shrink-0">
+                        <div className="h-10 w-10 rounded-lg bg-gray-100 overflow-hidden border border-gray-200 shrink-0 relative">
                           {r.primary_image_url && (
                             <Image
                               src={r.primary_image_url}

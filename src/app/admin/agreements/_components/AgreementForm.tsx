@@ -28,6 +28,7 @@ import {
   Sparkles,
   FileText,
   ArrowLeft,
+  Wrench,
 } from "lucide-react";
 
 // --- STYLES ---
@@ -57,6 +58,7 @@ type InitialAgreement = {
   agreement_url?: string | null;
   ic_url?: string | null;
   eligible_for_event?: boolean | null;
+  start_mileage?: number | null;
 };
 
 
@@ -374,12 +376,14 @@ export function AgreementForm({
   const [eligibleForEvent, setEligibleForEvent] = useState(
     initial?.eligible_for_event ?? true
   );
-  const [currentMileage, setCurrentMileage] = useState("");
-  const [minMileage, setMinMileage] = useState(0);
-
   const [previewUrl, setPreviewUrl] = useState<string | null>(
     initial?.agreement_url ?? null
   );
+  const [currentMileage, setCurrentMileage] = useState(String(initial?.start_mileage ?? ""));
+  const [minMileage, setMinMileage] = useState(0);
+  const [serviceAlerts, setServiceAlerts] = useState<string[]>([]);
+  const [showAlertModal, setShowAlertModal] = useState(false);
+
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [totalTouched, setTotalTouched] = useState(false);
   // const [regeneratePdf, setRegeneratePdf] = useState(true); // DEPRECATED: Always true/auto handled
@@ -419,17 +423,18 @@ export function AgreementForm({
         const json = await res.json();
         if (json.rows) setCars(json.rows);
 
-        // Fetch current mileage for selected car if carId matches and we don't have a value yet (or standard refresh)
+        // Fetch current mileage for selected car if carId matches and we don't have a value yet
         if (initial?.car_id && json.rows) {
           const c = json.rows.find((r: any) => r.id === initial.car_id);
-          if (c && c.current_mileage) {
-            setCurrentMileage(String(c.current_mileage));
-            setMinMileage(c.current_mileage);
+          if (c) {
+            const m = c.current_mileage ?? 100000;
+            setMinMileage(m);
+            if (!initial?.start_mileage) setCurrentMileage(String(m));
           }
         }
       } catch { }
     })();
-  }, [initial?.car_id]);
+  }, [initial?.car_id, initial?.start_mileage]);
 
   // Update mileage when user selects a different car manually
   useEffect(() => {
@@ -594,14 +599,49 @@ export function AgreementForm({
     if (!idNumber) return "IC / Passport is required";
     if (!mobile) return "Mobile Number is required";
     if (!carId) return "Please select a Car";
+    if (!currentMileage) return "Car Current Mileage is required";
     if (toMoney(total) <= 0) return "Total Price is required";
 
-    if (currentMileage && Number(currentMileage) < minMileage) {
-      return `Mileage cannot be less than current (${minMileage} km)`;
-    }
+    // Simplified mileage check: Just show the modal alert, don't block saving.
 
     return null;
   };
+
+  // SERVICE ALERT LOGIC
+  useEffect(() => {
+    if (!selectedCar || !currentMileage) return;
+    const cur = Number(currentMileage);
+    if (isNaN(cur)) return;
+
+    const alerts: string[] = [];
+    const check = (label: string, target: number, isOil: boolean) => {
+      if (!target) return;
+      const diff = target - cur;
+      if (isOil) {
+        if (diff <= 100) alerts.push(`CRITICAL: ${label} Service Overdue or due in ${diff}km!`);
+        else if (diff <= 500) alerts.push(`${label} Service due in ${diff}km!`);
+        else if (diff <= 1000) alerts.push(`${label} Service due in ${diff}km.`);
+        else if (diff <= 2000) alerts.push(`Upcoming: ${label} Service in ${diff}km.`);
+      } else {
+        // Others (Tyres, Brakes, General)
+        if (diff <= 0) alerts.push(`OVERDUE: ${label} Service!`);
+        else if (diff <= 1500) alerts.push(`${label} Service due in ${diff}km.`);
+      }
+    };
+
+    check("Engine Oil / General", selectedCar.next_service_mileage, true);
+    check("Gearbox Oil", selectedCar.next_gear_oil_mileage, true);
+    check("Tyres", selectedCar.next_tyre_mileage, false);
+    check("Brake Pads", selectedCar.next_brake_pad_mileage, false);
+
+    if (alerts.length > 0) {
+      setServiceAlerts(alerts);
+      setShowAlertModal(true);
+    } else {
+      setServiceAlerts([]);
+    }
+  }, [currentMileage, carId]);
+
 
   const handleShare = async () => {
     const url = window.location.href;
@@ -1300,6 +1340,31 @@ export function AgreementForm({
           </div>
         </div>
       )}
+
+      {showAlertModal && serviceAlerts.length > 0 && (
+        <div className="fixed inset-0 z-70 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white p-6 rounded-2xl border-l-4 border-amber-500 shadow-2xl max-w-sm w-full animate-in zoom-in duration-200">
+            <div className="flex items-center gap-3 text-amber-700 font-black text-lg mb-4">
+              <Wrench className="w-6 h-6" /> Maintenance Alert
+            </div>
+            <div className="space-y-3 mb-6">
+              {serviceAlerts.map((msg, i) => (
+                <div key={i} className="flex gap-3 text-sm font-bold text-gray-700 bg-amber-50 p-3 rounded-lg border border-amber-100 italic">
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
+                  {msg}
+                </div>
+              ))}
+            </div>
+            <Button
+              onClick={() => setShowAlertModal(false)}
+              className="w-full bg-amber-600 hover:bg-amber-700 text-white font-black py-4"
+            >
+              Acknowledge
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
+
   );
 }

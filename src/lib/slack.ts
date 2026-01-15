@@ -66,7 +66,8 @@ export function buildReminderText(
   plate: string,
   endTime: Date,
   phone: string,
-  isExpired: boolean
+  isExpired: boolean,
+  agreementId: string
 ) {
   const cleanPhone = (phone || "").replace(/\D/g, "");
   const whatsappLink = cleanPhone
@@ -74,6 +75,7 @@ export function buildReminderText(
     : phone;
 
   const whenStr = fmtMYDateTime(endTime);
+  const agLink = `https://jrv-admin.vercel.app/admin/agreements/${agreementId}`;
 
   const modelHighlighted = `\`${carModel}\``;
   const plateHighlighted = `\`${plate}\``;
@@ -84,14 +86,16 @@ export function buildReminderText(
       `🚨 *OVERDUE ALERT* 🚨\n` +
       `Please check if car ${modelHighlighted} (${plateHighlighted}) is returned.\n` +
       `Scheduled Return: *${whenStr} MYT*\n` +
-      `Customer: ${numberHighlighted}`
+      `Customer: ${numberHighlighted}\n` +
+      `📄 <${agLink}|View Agreement>`
     );
   }
 
   return (
     `🚗 *Return Reminder*\n` +
     `${modelHighlighted} (${plateHighlighted}) is scheduled to return at *${whenStr} MYT*.\n` +
-    `Customer: ${numberHighlighted}`
+    `Customer: ${numberHighlighted}\n` +
+    `📄 <${agLink}|View Agreement>`
   );
 }
 

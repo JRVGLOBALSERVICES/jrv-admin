@@ -120,7 +120,6 @@ export async function GET(req: Request) {
       reminder_type: c.insurance_days != null ? "INSURANCE" : "ROADTAX",
       plate_number: c.plate_number,
       car_model: `${c.make} ${c.model}`.trim(),
-      recipient: "Slack Channel",
     }));
 
     const { error: logErr } = await supabase

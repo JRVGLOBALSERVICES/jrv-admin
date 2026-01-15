@@ -3,7 +3,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils/cn";
 
-type ButtonVariant = "emeraldGreen" | "primary" | "secondary" | "tertiary" | "ghost" | "danger" | "indigo" | "indigoLight";
+type ButtonVariant = "emeraldGreen" | "primary" | "secondary" | "tertiary" | "ghost" | "danger" | "indigo" | "indigoLight" | "empty";
 type ButtonSize = "sm" | "md" | "lg";
 
 // Updated: "auto" now effectively behaves like "on"
@@ -82,7 +82,7 @@ const base =
 
 const variants: Record<ButtonVariant, string> = {
   emeraldGreen:
-    "p-7 shadow-lg border-emerald-200 text-emerald-700 hover:bg-emerald-50 cursor-pointer",
+    "p-7 shadow-md border-emerald-200 text-emerald-700 hover:bg-emerald-50 cursor-pointer",
   primary:
     "bg-black text-white hover:bg-black/90 active:bg-black/80 shadow-sm cursor-pointer p-4",
   secondary:
@@ -96,7 +96,9 @@ const variants: Record<ButtonVariant, string> = {
   indigo:
     "bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm cursor-pointer p-4",
   indigoLight:
-    "shadow-lg shadow-indigo-200 bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 active:bg-indigo-100 cursor-pointer p-7",
+    "shadow-md shadow-indigo-200 bg-white text-indigo-700 border border-indigo-200 hover:bg-indigo-50 active:bg-indigo-100 cursor-pointer p-7",
+  empty:
+    "cursor-pointer",
 };
 
 const sizes: Record<ButtonSize, string> = {

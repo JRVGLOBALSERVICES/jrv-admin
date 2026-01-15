@@ -119,8 +119,8 @@ export async function GET(req: Request) {
       .select(
         `
         id, customer_name, id_number, mobile, date_start, date_end, booking_duration_days,
-        total_price, deposit_price, deposit_refunded, eligible_for_event, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id, ic_url,
-        cars:car_id ( id, plate_number, catalog_id, car_catalog:catalog_id ( make, model ) )
+        total_price, deposit_price, deposit_refunded, eligible_for_event, status, agreement_url, whatsapp_url, created_at, updated_at, creator_email, editor_email, car_id, ic_url, start_mileage,
+        cars:car_id ( id, plate_number, catalog_id, current_mileage, next_service_mileage, next_gear_oil_mileage, next_tyre_mileage, next_brake_pad_mileage, car_catalog:catalog_id ( make, model ) )
       `
       )
       .eq("id", id)
@@ -504,6 +504,7 @@ export async function POST(req: Request) {
         updated_at: new Date().toISOString(),
         ic_url: payload.ic_url || null,
         eligible_for_event: payload.eligible_for_event ?? true,
+        start_mileage: Number(payload.current_mileage) || null,
       };
 
       if (!isEdit) {

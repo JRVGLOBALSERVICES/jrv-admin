@@ -42,6 +42,21 @@ type QueueItem = {
   originalEnd: string | null;
 };
 
+function getBadgeColor(type: string) {
+  const t = type.toUpperCase();
+  if (t.includes("EXPIRED") || t.includes("OVERDUE")) {
+    return "bg-red-50 border-red-100 text-red-600";
+  }
+  if (t.includes("MAINTENANCE")) {
+    return "bg-rose-50 border-rose-100 text-rose-600";
+  }
+  if (t.includes("INSURANCE") || t.includes("ROADTAX")) {
+    return "bg-amber-50 border-amber-100 text-amber-600";
+  }
+  // Agreement Reminders (e.g. "2 Hours", "1 Hour", etc.)
+  return "bg-blue-50 border-blue-100 text-blue-600";
+}
+
 export default async function NotificationsPage() {
   const supabase = await createSupabaseServer();
 
@@ -232,10 +247,7 @@ export default async function NotificationsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${log.reminder_type === "EXPIRED"
-                          ? "bg-red-50 border-red-100 text-red-600"
-                          : "bg-blue-50 border-blue-100 text-blue-600"
-                          }`}
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${getBadgeColor(log.reminder_type)}`}
                       >
                         {log.reminder_type}
                       </span>
@@ -292,14 +304,7 @@ export default async function NotificationsPage() {
                     </td>
                     <td className="px-4 py-3 align-top">
                       <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${item.type.includes("EXPIRED") || item.type.includes("OVERDUE")
-                            ? "bg-red-50 border-red-100 text-red-600"
-                            : item.type.includes("MAINTENANCE")
-                              ? "bg-rose-50 border-rose-100 text-rose-600"
-                              : item.type.includes("INSURANCE") || item.type.includes("ROADTAX")
-                                ? "bg-amber-50 border-amber-100 text-amber-600"
-                                : "bg-blue-50 border-blue-100 text-blue-600"
-                          }`}
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${getBadgeColor(item.type)}`}
                       >
                         {item.type}
                       </span>

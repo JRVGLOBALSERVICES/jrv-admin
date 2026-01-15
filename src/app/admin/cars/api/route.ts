@@ -80,6 +80,10 @@ export async function GET(req: Request) {
       price_3_days,
       weekly_price,
       monthly_price,
+      next_service_mileage,
+      next_gear_oil_mileage,
+      next_tyre_mileage,
+      next_brake_pad_mileage,
       catalog:catalog_id ( make, model )
     `
     )
@@ -111,6 +115,10 @@ export async function GET(req: Request) {
         price_3_days: c.price_3_days,
         weekly_price: c.weekly_price,
         monthly_price: c.monthly_price,
+        next_service_mileage: c.next_service_mileage,
+        next_gear_oil_mileage: c.next_gear_oil_mileage,
+        next_tyre_mileage: c.next_tyre_mileage,
+        next_brake_pad_mileage: c.next_brake_pad_mileage,
       };
     }) ?? [];
 

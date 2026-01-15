@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { CarMaintenanceRow } from "./types";
+import { CarMaintenanceRow } from "./MaintenanceTable";
 import { X, Save, RefreshCw } from "lucide-react";
 
 export default function UpdateMileageModal({
@@ -81,7 +81,7 @@ export default function UpdateMileageModal({
                         </h4>
 
                         <ServiceRow
-                            label="General Service"
+                            label="Engine Oil / General"
                             value={nextService}
                             onChange={setNextService}
                             onAdd={() => addInterval(setNextService, nextService, 10000)} // +10k
@@ -90,27 +90,27 @@ export default function UpdateMileageModal({
                             label="Gear Oil"
                             value={nextGear}
                             onChange={setNextGear}
-                            onAdd={() => addInterval(setNextGear, nextGear, 40000)} // +40k
+                            onAdd={() => addInterval(setNextGear, nextGear, 20000)} // +20k
                         />
                         <ServiceRow
                             label="Tyres"
                             value={nextTyre}
                             onChange={setNextTyre}
-                            onAdd={() => addInterval(setNextTyre, nextTyre, 20000)} // +20k
+                            onAdd={() => addInterval(setNextTyre, nextTyre, 30000)} // +30k
                         />
                         <ServiceRow
                             label="Brake Pads"
                             value={nextBrake}
                             onChange={setNextBrake}
-                            onAdd={() => addInterval(setNextBrake, nextBrake, 20000)} // +20k
+                            onAdd={() => addInterval(setNextBrake, nextBrake, 15000)} // +15k
                         />
 
                     </div>
                 </div>
 
                 <div className="p-4 border-t bg-gray-50 flex justify-end gap-3">
-                    <Button className="p-6" variant="indigoLight" onClick={onClose}>Cancel</Button>
-                    <Button onClick={save} loading={busy} className="p-6" variant="emeraldGreen">
+                    <Button variant="emeraldGreen" onClick={onClose}>Cancel</Button>
+                    <Button variant="indigoLight" onClick={save} loading={busy} className="p-7 font-bold h-11 px-6">
                         <Save size={16} className="mr-2" /> Save Changes
                     </Button>
                 </div>
@@ -125,13 +125,13 @@ function ServiceRow({ label, value, onChange, onAdd }: any) {
             <label className="text-xs font-medium text-gray-600">{label}</label>
             <input
                 type="number"
-                className="w-full text-sm border rounded px-2 py-1.5 font-mono"
+                className="w-full text-sm border rounded px-2 py-1.5 font-mono bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
             />
             <button
                 onClick={onAdd}
-                className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded"
+                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
                 title="Add Interval (service done)"
             >
                 <RefreshCw size={14} />

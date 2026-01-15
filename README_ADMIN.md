@@ -1,6 +1,15 @@
 # JRV Admin Documentation
 
-**Latest Version:** `v1.8.0` (Updated Jan 15, 2026)
+**Latest Version:** `v1.8.1` (Updated Jan 15, 2026)
+
+## Recent Updates (v1.8.1)
+
+- **🛠️ Fleet Maintenance**: Real-time mileage tracking and service interval monitoring for the entire fleet.
+- **⏱️ Smart Reminders**: Agreement expiry Slack alerts now feature direct navigation links to the specific agreement.
+- **🎨 Notification UX**: Unified color-coding system (Rose for Maintenance, Amber for Expiry, Blue for Returns).
+- **🖼️ Stable Rendering**: Enforced layout constraints on car images to prevent client-side crashes.
+
+---
 
 This document provides a comprehensive technical breakdown of all recent changes made to the JRV Admin platform, organized by component and functional area.
 

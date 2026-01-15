@@ -5,99 +5,285 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import {
     Car,
-    CheckCircle,
-    AlertTriangle,
-    XCircle,
-    Wrench,
     Gauge,
     Edit,
-    Bell,
+    Droplets,
+    Settings2,
+    Disc,
+    LifeBuoy,
+    AlertCircle,
+    ArrowRight,
+    CheckCircle2,
 } from "lucide-react";
 import UpdateMileageModal from "./UpdateMileageModal";
 
 // --- TYPES ---
-import { CarMaintenanceRow } from "./types";
+export type CarMaintenanceRow = {
+    id: string;
+    plate_number: string;
+    car_type: string;
+    current_mileage: number;
+    next_service_mileage: number;
+    next_gear_oil_mileage: number;
+    next_tyre_mileage: number;
+    next_brake_pad_mileage: number;
+    status: string;
+};
 
 // --- HELPERS ---
-function getStatusColor(diff: number, type: "oil" | "part") {
-    // Oil thresholds: 2000 (warn), 1000 (danger), 500 (critical), 100 (immediate)
-    // For simplicity in UI table cell:
-    // > 2000: Green
-    // 1000 - 2000: Yellow
-    // < 1000: Red
-    if (type === "oil") {
-        if (diff > 2000) return "bg-emerald-100 text-emerald-800 border-emerald-200";
-        if (diff > 1000) return "bg-yellow-100 text-yellow-800 border-yellow-200";
-        return "bg-red-100 text-red-800 border-red-200 animate-pulse";
-    }
-    // Parts thresholds (15000 interval usually)
-    // Let's say warn at 2000, danger at 0
-    if (diff > 2000) return "bg-gray-50 text-gray-600 border-gray-100";
-    if (diff > 0) return "bg-yellow-50 text-yellow-700 border-yellow-100";
-    return "bg-red-50 text-red-700 border-red-100";
+function getStatusTheme(diff: number) {
+    if (diff <= 100) return {
+        bg: "bg-linear-to-br from-red-500 to-rose-600 text-white border-red-200 animate-pulse shadow-lg shadow-red-200/50",
+        label: "CRITICAL",
+        iconCls: "text-white"
+    };
+    if (diff <= 1000) return {
+        bg: "bg-linear-to-br from-orange-400 to-amber-500 text-white border-orange-200 shadow-md shadow-orange-100",
+        label: "URGENT",
+        iconCls: "text-white"
+    };
+    if (diff <= 3000) return {
+        bg: "bg-linear-to-br from-amber-50 to-orange-50 text-amber-900 border-amber-100",
+        label: "UPCOMING",
+        iconCls: "text-amber-600"
+    };
+    if (diff <= 6000) return {
+        bg: "bg-linear-to-br from-blue-50 to-indigo-50 text-indigo-900 border-indigo-100",
+        label: "MONITOR",
+        iconCls: "text-indigo-600"
+    };
+    return {
+        bg: "bg-linear-to-br from-emerald-50 to-teal-50 text-emerald-900 border-emerald-100",
+        label: "HEALTHY",
+        iconCls: "text-emerald-600"
+    };
 }
 
-const getProgressColor = (percent: number) => {
-    if (percent < 0) return "bg-red-500";
-    if (percent < 10) return "bg-red-500";
-    if (percent < 20) return "bg-orange-500";
-    if (percent < 50) return "bg-yellow-500";
-    return "bg-emerald-500";
-}
+function PriorityAlertList({ rows, onUpdate }: { rows: CarMaintenanceRow[], onUpdate: any }) {
+    // Find cars with ANY maintenance item < 3000km
+    const urgentItems = rows.flatMap(car => {
+        const items = [
+            { label: "Engine Oil", distance: car.next_service_mileage - car.current_mileage, target: car.next_service_mileage },
+            { label: "Gear Oil", distance: car.next_gear_oil_mileage - car.current_mileage, target: car.next_gear_oil_mileage },
+            { label: "Tyres", distance: car.next_tyre_mileage - car.current_mileage, target: car.next_tyre_mileage },
+            { label: "Brake Pads", distance: car.next_brake_pad_mileage - car.current_mileage, target: car.next_brake_pad_mileage },
+        ];
+        return items
+            .filter(item => item.distance < 4000)
+            .map(item => ({ ...item, car }));
+    }).sort((a, b) => a.distance - b.distance);
 
-function StatusBadge({
-    label,
-    current,
-    target,
-    type,
-    interval
-}: {
-    label: string;
-    current: number;
-    target: number;
-    type: "oil" | "part";
-    interval: number; // e.g. 10000 for oil, 20000 for tyres
-}) {
-    const diff = target - current;
-    const percent = Math.max(0, Math.min(100, (diff / interval) * 100));
-
-    // Status Logic
-    let statusText = `${diff.toLocaleString()} km left`;
-    let statusColor = "text-gray-500";
-    let bgColor = "bg-gray-50";
-
-    if (diff <= 0) {
-        statusText = "OVERDUE";
-        statusColor = "text-red-600 font-bold";
-        bgColor = "bg-red-50 border-red-100";
-    } else if (diff < 2000) {
-        statusText = "Due Soon";
-        statusColor = "text-orange-600 font-bold";
-        bgColor = "bg-orange-50 border-orange-100";
-    }
+    if (urgentItems.length === 0) return null;
 
     return (
-        <div className={`flex flex-col p-3 rounded-xl border ${bgColor} transition-all hover:shadow-sm`}>
-            <div className="flex justify-between items-center mb-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">
-                    {label}
-                </span>
-                <span className={`text-[10px] ${statusColor}`}>
-                    {statusText}
-                </span>
+        <div className="space-y-4">
+            <div className="flex items-center gap-3 px-1">
+                <div className="p-2.5 bg-red-600 rounded-xl text-white shadow-lg shadow-red-200">
+                    <AlertCircle size={20} />
+                </div>
+                <div>
+                    <h3 className="text-lg font-black text-gray-900 uppercase tracking-tighter leading-none">High Priority Alerts</h3>
+                    <p className="text-[10px] text-red-500 font-bold mt-1 uppercase tracking-widest">Action Required Soon</p>
+                </div>
             </div>
 
-            {/* Progress Bar */}
-            <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden">
+            <div className="bg-white rounded-3xl border border-red-100 overflow-hidden shadow-xl shadow-red-50/50">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="bg-red-50/50 border-b border-red-100">
+                            <tr>
+                                <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest">Vehicle</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest">Service Required</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest text-right">Distance Remaining</th>
+                                <th className="px-6 py-4 w-10"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-red-50">
+                            {urgentItems.map((item, idx) => {
+                                const isCritical = item.distance < 500;
+                                return (
+                                    <tr key={`${item.car.id}-${idx}`} className="hover:bg-red-50/30 transition-colors group">
+                                        <td className="px-6 py-4">
+                                            <div className="font-black text-gray-900 group-hover:text-red-600 transition-colors">{item.car.plate_number}</div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tight">{item.car.car_type}</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="inline-flex items-center px-2 py-1 rounded-lg bg-gray-100 text-[10px] font-black text-gray-600 uppercase tracking-widest">
+                                                {item.label}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className={`text-lg font-mono font-black ${isCritical ? 'text-red-600 animate-pulse' : 'text-gray-900'}`}>
+                                                {item.distance <= 0 ? 0 : item.distance.toLocaleString()} <span className="text-[10px]">km</span>
+                                            </div>
+                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Target: {item.target.toLocaleString()} km</div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <button
+                                                onClick={() => onUpdate(item.car)}
+                                                className="p-2 rounded-xl bg-white border border-gray-100 shadow-sm hover:bg-red-600 hover:text-white hover:border-red-600 transition-all cursor-pointer"
+                                            >
+                                                <ArrowRight size={14} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function MiniProgress({ label, current, target, interval, barColor }: any) {
+    const diff = target - current;
+    const percentage = Math.max(0, Math.min(100, (diff / interval) * 100));
+    return (
+        <div className="space-y-1.5">
+            <div className="flex justify-between items-end text-[9px] font-black uppercase tracking-widest leading-none">
+                <span className="text-gray-500/80">{label}</span>
+                <span className={percentage < 20 ? 'text-red-600' : 'text-indigo-600'}>{Math.round(percentage)}%</span>
+            </div>
+            <div className="h-3 w-full bg-gray-200/30 rounded-full overflow-hidden p-0.5 border border-gray-200/50 shadow-inner">
                 <div
-                    className={`h-full transition-all duration-500 ${getProgressColor(percent)}`}
-                    style={{ width: `${percent}%` }}
+                    className={`h-full rounded-full transition-all duration-1000 ${percentage < 10 ? 'bg-red-500 animate-pulse' :
+                        percentage < 30 ? 'bg-orange-400' :
+                            barColor
+                        }`}
+                    style={{ width: `${percentage}%` }}
                 />
             </div>
+        </div>
+    );
+}
 
-            <div className="mt-1 flex justify-between text-[9px] text-gray-400 font-mono">
-                <span>{current.toLocaleString()}</span>
-                <span>{target.toLocaleString()}</span>
+function CategorySection({ title, icon: Icon, cars, type, onUpdate, isHealthy }: any) {
+    if (cars.length === 0) return null;
+
+    const iconColor = isHealthy ? "text-emerald-500" : "text-red-600";
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center gap-4 px-1">
+                <div className="p-2.5 bg-linear-to-br from-gray-900 to-gray-700 rounded-xl text-white shadow-lg shadow-gray-200">
+                    <Icon size={20} />
+                </div>
+                <div>
+                    <h3 className="text-base font-black text-gray-900 uppercase tracking-tighter leading-none">{title}</h3>
+                    <div className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                        {cars.length} Vehicles Requiring Attention
+                    </div>
+                </div>
+                <div className="h-px flex-1 bg-linear-to-r from-gray-200 to-transparent ml-4" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {cars.map((car: CarMaintenanceRow) => {
+                    const target = car[type as keyof CarMaintenanceRow] as number;
+                    const diff = target - car.current_mileage;
+                    const theme = getStatusTheme(diff);
+
+                    const getInterval = () => {
+                        if (type === "next_service_mileage") return 10000;
+                        if (type === "next_gear_oil_mileage") return 20000;
+                        if (type === "next_tyre_mileage") return 30000;
+                        if (type === "next_brake_pad_mileage") return 15000;
+                        return 10000;
+                    };
+                    const interval = getInterval();
+                    const percentage = Math.max(0, Math.min(100, (diff / interval) * 100));
+
+                    return (
+                        <Card key={car.id} className="p-0 overflow-hidden border-0 shadow-2xl shadow-gray-200/40 hover:shadow-indigo-100/50 hover:-translate-y-1 transition-all duration-300 group rounded-3xl">
+                            <div className="p-6 flex flex-col h-full bg-white relative">
+                                <div className={`absolute top-4 right-4 opacity-10 group-hover:opacity-20 transition-all duration-500 pointer-events-none ${iconColor}`}>
+                                    <Icon size={100} />
+                                </div>
+
+                                <div className="flex justify-between items-start mb-5 relative z-10">
+                                    <div className="flex-1 mr-2">
+                                        <div className="text-2xl font-black text-gray-900 group-hover:text-indigo-600 transition-colors tracking-tighter leading-none">
+                                            {car.plate_number}
+                                        </div>
+                                        <div className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-[9px] font-black text-gray-500 uppercase tracking-widest mt-1.5">
+                                            {car.car_type}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 mb-6 relative z-10">
+                                    <div className="bg-gray-50/80 rounded-2xl p-3 border border-gray-100/50">
+                                        <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-1 leading-none">Status</div>
+                                        <div className="font-mono text-xs font-bold text-gray-800">{car.status?.toUpperCase() || "READY"}</div>
+                                    </div>
+                                    <div className="bg-gray-50/80 rounded-2xl p-3 border border-gray-100/50">
+                                        <div className="text-[9px] text-gray-400 uppercase font-black tracking-widest mb-1 leading-none">Target</div>
+                                        <div className="font-mono text-xs font-bold text-gray-800">{target.toLocaleString()} <span className="text-[8px]">km</span></div>
+                                    </div>
+                                </div>
+
+                                {/* MULTI-PROGRESS LIST */}
+                                <div className="grid grid-cols-1 gap-y-4 mb-6 relative z-10 bg-gray-50/30 p-4 rounded-3xl border border-gray-100/50">
+                                    <MiniProgress
+                                        label="Engine Oil"
+                                        current={car.current_mileage}
+                                        target={car.next_service_mileage}
+                                        interval={10000}
+                                        barColor="bg-indigo-600"
+                                    />
+                                    <MiniProgress
+                                        label="Gear Oil"
+                                        current={car.current_mileage}
+                                        target={car.next_gear_oil_mileage}
+                                        interval={20000}
+                                        barColor="bg-blue-600"
+                                    />
+                                    <MiniProgress
+                                        label="Tyres"
+                                        current={car.current_mileage}
+                                        target={car.next_tyre_mileage}
+                                        interval={30000}
+                                        barColor="bg-emerald-600"
+                                    />
+                                    <MiniProgress
+                                        label="Brake Pads"
+                                        current={car.current_mileage}
+                                        target={car.next_brake_pad_mileage}
+                                        interval={15000}
+                                        barColor="bg-amber-600"
+                                    />
+                                </div>
+
+                                <div className="relative z-10 flex gap-3 items-stretch">
+                                    <div className={`flex-1 p-4 rounded-2xl border ${theme.bg} transition-colors duration-500`}>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <div className="text-[9px] uppercase font-black tracking-widest opacity-80">
+                                                Remaining {title.split(' ')[0]} Distance
+                                            </div>
+                                            <Gauge size={12} className="opacity-60" />
+                                        </div>
+                                        <div className="text-3xl font-black font-mono tracking-tighter leading-none">
+                                            {diff <= 0 ? 0 : diff.toLocaleString()} <span className="text-sm font-bold opacity-70">km</span>
+                                        </div>
+                                        {diff <= 0 && <div className="text-[10px] font-black uppercase mt-2 tracking-widest bg-white/20 rounded py-1 border border-white/30 text-center">SERVICE OVERDUE</div>}
+                                    </div>
+
+                                    <Button
+                                        variant="indigoLight"
+                                        size="sm"
+                                        onClick={() => onUpdate(car)}
+                                        className="p-6 w-14 rounded-2xl border-0 shadow-lg shadow-gray-200 transition-all flex items-center justify-center group/btn"
+                                    >
+                                        <Edit size={20} className="group-hover/btn:scale-110 transition-transform" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </Card>
+                    );
+                })}
             </div>
         </div>
     );
@@ -105,184 +291,85 @@ function StatusBadge({
 
 export default function MaintenanceTable({ rows }: { rows: CarMaintenanceRow[] }) {
     const [selectedCar, setSelectedCar] = useState<CarMaintenanceRow | null>(null);
-    const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due_soon">("all");
-    const [showUntracked, setShowUntracked] = useState(false);
-    const [selectedPlate, setSelectedPlate] = useState("");
 
-    // Get unique sorted plates
-    const allPlates = Array.from(new Set(rows.map(r => r.plate_number))).sort();
+    // Split into categories
+    // We list car in a category if it's "Upcoming" (< 5000km) or user specified we split into 4 categories.
+    // Actually, to make it simple and clean, let's group by the "Most Urgent" category for each car, 
+    // or just show 4 distinct sections as requested.
 
-    // Filter Logic
-    const filtered = rows.filter((car) => {
-        // 1. Tracked Check
-        if (!showUntracked && car.track_insurance === false) return false;
+    // Expanded logic: Show cars if they are within a reasonable service window (Upcoming/Monitor)
+    // Engine Oil: Show if due within 8000km (extended from 5000)
+    // Gear Oil: Show if due within 15000km (extended from 10000)
+    // Tyres: Show if due within 10000km (extended from 5000)
+    // Brakes: Show if due within 5000km (extended from 3000)
 
-        // 2. Search
-        const s = search.toLowerCase();
-        const matchesSearch =
-            car.plate_number.toLowerCase().includes(s) ||
-            car.car_type.toLowerCase().includes(s);
-        if (!matchesSearch) return false;
+    const engineOilCars = rows.filter(r => (r.next_service_mileage - r.current_mileage) < 8000);
+    const gearOilCars = rows.filter(r => (r.next_gear_oil_mileage - r.current_mileage) < 15000);
+    const tyreCars = rows.filter(r => (r.next_tyre_mileage - r.current_mileage) < 10000);
+    const brakeCars = rows.filter(r => (r.next_brake_pad_mileage - r.current_mileage) < 5000);
 
-        // 3. Plate Filter
-        if (selectedPlate && car.plate_number !== selectedPlate) return false;
-
-        // 4. Status Filter
-        if (statusFilter === "all") return true;
-
-        const intervals = [
-            { target: car.next_service_mileage, type: "oil" },
-            { target: car.next_gear_oil_mileage, type: "oil" },
-            { target: car.next_tyre_mileage, type: "part" },
-            { target: car.next_brake_pad_mileage, type: "part" },
-        ];
-
-        const worstDiff = Math.min(...intervals.map(i => i.target - car.current_mileage));
-
-        if (statusFilter === "overdue") return worstDiff <= 0;
-        if (statusFilter === "due_soon") return worstDiff > 0 && worstDiff <= 2000;
-
-        return true;
-    });
-
-
+    // For the "Healthy" view (only those truly far away)
+    const allOtherCars = rows.filter(r =>
+        !engineOilCars.includes(r) &&
+        !gearOilCars.includes(r) &&
+        !tyreCars.includes(r) &&
+        !brakeCars.includes(r)
+    );
 
     return (
-        <div className="space-y-6">
-            {/* CONTROLS */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className="relative w-full md:w-64">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" /></svg>
-                        </div>
-                        <input
-                            type="text"
-                            placeholder="Search plate or model..."
-                            className="w-full pl-9 pr-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
-                            value={search}
-                            onChange={e => setSearch(e.target.value)}
-                        />
-                    </div>
+        <div className="space-y-16">
+            <PriorityAlertList rows={rows} onUpdate={setSelectedCar} />
 
-                    <select
-                        className="px-3 py-2 border rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                        value={statusFilter}
-                        onChange={(e: any) => setStatusFilter(e.target.value)}
-                    >
-                        <option value="all">All Status</option>
-                        <option value="overdue">Overdue Only</option>
-                        <option value="due_soon">Due Soon (≤ 2000km)</option>
-                    </select>
-                    <select
-                        className="px-3 py-2 border rounded-lg text-sm bg-gray-50 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 cursor-pointer"
-                        value={selectedPlate}
-                        onChange={(e: any) => setSelectedPlate(e.target.value)}
-                    >
-                        <option value="">All Plates</option>
-                        {allPlates.map(p => (
-                            <option key={p} value={p}>{p}</option>
-                        ))}
-                    </select>
-                </div>
+            <CategorySection
+                title="Engine Oil Service"
+                icon={Droplets}
+                cars={engineOilCars}
+                type="next_service_mileage"
+                onUpdate={setSelectedCar}
+            />
 
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => setShowUntracked(!showUntracked)}
-                        className={`text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${showUntracked ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 'bg-gray-50 text-gray-500 border-gray-200'}`}
-                    >
-                        {showUntracked ? "Showing All Cars" : "Tracked Only"}
-                    </button>
-                    <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-                        {filtered.length} Vehicles
-                    </div>
-                </div>
-            </div>
+            <CategorySection
+                title="Gearbox Oil Service"
+                icon={Settings2}
+                cars={gearOilCars}
+                type="next_gear_oil_mileage"
+                onUpdate={setSelectedCar}
+            />
 
-            <div className="grid grid-cols-1 gap-4">
-                {filtered.map((car) => (
-                    <Card
-                        key={car.id}
-                        className="p-5 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 cursor-pointer group"
-                        onClick={() => setSelectedCar(car)}
-                    >
-                        <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center">
-                            {/* CAR INFO */}
-                            <div className="shrink-0 w-full lg:w-48">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <div className={`p-2 rounded-full ${car.track_insurance === false ? 'bg-gray-100 text-gray-400' : 'bg-indigo-100 text-indigo-600'}`}>
-                                        <Car size={16} />
-                                    </div>
-                                    <span className="font-bold text-gray-900 text-lg">
-                                        {car.plate_number}
-                                    </span>
-                                </div>
-                                <div className="text-sm text-gray-500 font-medium pl-10 mb-2">
-                                    {car.car_type}
-                                </div>
-                                <div className="pl-10 flex items-center gap-2 text-xs font-mono text-gray-400 bg-gray-50 py-1 px-2 rounded w-fit">
-                                    <Gauge size={12} />
-                                    Current: <strong className="text-gray-900">{car.current_mileage.toLocaleString()} km</strong>
-                                </div>
-                            </div>
+            <CategorySection
+                title="Brake Pad Replacement"
+                icon={Disc}
+                cars={brakeCars}
+                type="next_brake_pad_mileage"
+                onUpdate={setSelectedCar}
+            />
 
-                            {/* STATUS GRID */}
-                            <div className="flex-1 grid grid-cols-2 lg:grid-cols-4 gap-3 w-full">
-                                <StatusBadge
-                                    label="Service"
-                                    current={car.current_mileage}
-                                    target={car.next_service_mileage}
-                                    type="oil"
-                                    interval={10000}
-                                />
-                                <StatusBadge
-                                    label="Gear Oil"
-                                    current={car.current_mileage}
-                                    target={car.next_gear_oil_mileage}
-                                    type="oil"
-                                    interval={40000}
-                                />
-                                <StatusBadge
-                                    label="Tyres"
-                                    current={car.current_mileage}
-                                    target={car.next_tyre_mileage}
-                                    type="part"
-                                    interval={20000}
-                                />
-                                <StatusBadge
-                                    label="Brakes"
-                                    current={car.current_mileage}
-                                    target={car.next_brake_pad_mileage}
-                                    type="part"
-                                    interval={20000}
-                                />
-                            </div>
+            <CategorySection
+                title="Tyre Change / Rotation"
+                icon={LifeBuoy}
+                cars={tyreCars}
+                type="next_tyre_mileage"
+                onUpdate={setSelectedCar}
+            />
 
-                            {/* ACTION */}
-                            <div className="shrink-0 lg:ml-auto">
-                                <Button
-                                    variant="emeraldGreen"
-                                    className="p-6"
-                                >
-                                    <Edit size={14} /> <span className="hidden lg:inline">Update</span>
-                                </Button>
-                            </div>
-                        </div>
-                    </Card>
-                ))}
-                {rows.length === 0 && (
-                    <div className="text-center py-20 text-gray-400">
-                        No active cars found.
-                    </div>
-                )}
-            </div>
+            {/* FOOTER / OTHER CARS */}
+            {allOtherCars.length > 0 && (
+                <CategorySection
+                    title="Healthy Fleet"
+                    icon={CheckCircle2}
+                    cars={allOtherCars}
+                    type="next_service_mileage"
+                    onUpdate={setSelectedCar}
+                    isHealthy
+                />
+            )}
 
             {selectedCar && (
                 <UpdateMileageModal
                     car={selectedCar}
                     onClose={() => {
                         setSelectedCar(null);
+                        // Use window.location.reload() or a more sophisticated state refresh
                         window.location.reload();
                     }}
                 />

@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/requireAdmin";
-import { createSupabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carAuditLog } from "@/lib/audit/carAudit";
-import { sendSlackNotification } from "@/lib/slack";
 
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
@@ -34,7 +32,6 @@ export async function POST(req: Request) {
 
     if (isNaN(current_mileage)) return jsonError("Invalid current mileage");
 
-    // Fetch car before update for audit and validation (if enabled)
     const { data: before, error: beforeErr } = await supabaseAdmin
       .from("cars")
       .select("*")
@@ -43,11 +40,6 @@ export async function POST(req: Request) {
 
     if (beforeErr) return jsonError(beforeErr.message, 400);
     if (!before) return jsonError("Car not found", 404);
-
-    // USER REQUEST: Skip validation for mileage being lesser than current.
-    // if (current_mileage < (before.current_mileage ?? 0)) {
-    //    return jsonError(`New mileage (${current_mileage}) cannot be less than current (${before.current_mileage})`);
-    // }
 
     const now = new Date().toISOString();
     const updates = {
@@ -80,8 +72,6 @@ export async function POST(req: Request) {
       car_id: id,
       meta: { old: before, new: updates },
     });
-
-    // Notification logic removed as per request (only showing Audit Logs now)
 
     return NextResponse.json({ ok: true });
   }

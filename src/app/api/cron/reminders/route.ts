@@ -192,7 +192,8 @@ export async function GET(req: Request) {
         ag.plate_number || "Unknown",
         new Date(ag.date_end),
         ag.mobile || "",
-        check.minutes === 0
+        check.minutes === 0,
+        ag.id
       );
 
       await sendSlackMessage(REMINDER_WEBHOOK, text);
