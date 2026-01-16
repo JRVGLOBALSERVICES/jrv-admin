@@ -60,7 +60,7 @@ function getStatusTheme(diff: number) {
 }
 
 function PriorityAlertList({ rows, onUpdate }: { rows: CarMaintenanceRow[], onUpdate: any }) {
-    // Find cars with ANY maintenance item < 3000km
+    // Find cars with ANY maintenance item < 2000km
     const urgentItems = rows.flatMap(car => {
         const items = [
             { label: "Engine Oil", distance: car.next_service_mileage - car.current_mileage, target: car.next_service_mileage },
@@ -69,7 +69,7 @@ function PriorityAlertList({ rows, onUpdate }: { rows: CarMaintenanceRow[], onUp
             { label: "Brake Pads", distance: car.next_brake_pad_mileage - car.current_mileage, target: car.next_brake_pad_mileage },
         ];
         return items
-            .filter(item => item.distance < 4000)
+            .filter(item => item.distance < 2000)
             .map(item => ({ ...item, car }));
     }).sort((a, b) => a.distance - b.distance);
 
@@ -94,6 +94,8 @@ function PriorityAlertList({ rows, onUpdate }: { rows: CarMaintenanceRow[], onUp
                             <tr>
                                 <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest">Vehicle</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest">Service Required</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest text-right">Current Mileage</th>
+                                <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest text-right">Target Mileage</th>
                                 <th className="px-6 py-4 text-[10px] font-black text-red-600 uppercase tracking-widest text-right">Distance Remaining</th>
                                 <th className="px-6 py-4 w-10"></th>
                             </tr>
@@ -113,10 +115,19 @@ function PriorityAlertList({ rows, onUpdate }: { rows: CarMaintenanceRow[], onUp
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
+                                            <div className="text-sm font-mono font-bold text-gray-700">
+                                                {item.car.current_mileage.toLocaleString()} <span className="text-[10px]">km</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <div className="text-sm font-mono font-bold text-gray-700">
+                                                {item.target.toLocaleString()} <span className="text-[10px]">km</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
                                             <div className={`text-lg font-mono font-black ${isCritical ? 'text-red-600 animate-pulse' : 'text-gray-900'}`}>
                                                 {item.distance <= 0 ? 0 : item.distance.toLocaleString()} <span className="text-[10px]">km</span>
                                             </div>
-                                            <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter">Target: {item.target.toLocaleString()} km</div>
                                         </td>
                                         <td className="px-6 py-4">
                                             <button
@@ -143,7 +154,7 @@ function MiniProgress({ label, current, target, interval, barColor }: any) {
     return (
         <div className="space-y-1.5">
             <div className="flex justify-between items-end text-[9px] font-black uppercase tracking-widest leading-none">
-                <span className="text-gray-500/80">{label}</span>
+                <span className="text-gray-500/80">{label} <span className="text-[7px] bg-gray-100 px-1 py-0.5 rounded text-gray-400 ml-1">LIMIT: {(interval / 1000)}k</span></span>
                 <span className={percentage < 20 ? 'text-red-600' : 'text-indigo-600'}>{Math.round(percentage)}%</span>
             </div>
             <div className="h-3 w-full bg-gray-200/30 rounded-full overflow-hidden p-0.5 border border-gray-200/50 shadow-inner">
@@ -188,9 +199,9 @@ function CategorySection({ title, icon: Icon, cars, type, onUpdate, isHealthy }:
 
                     const getInterval = () => {
                         if (type === "next_service_mileage") return 10000;
-                        if (type === "next_gear_oil_mileage") return 20000;
-                        if (type === "next_tyre_mileage") return 30000;
-                        if (type === "next_brake_pad_mileage") return 15000;
+                        if (type === "next_gear_oil_mileage") return 40000;
+                        if (type === "next_tyre_mileage") return 10000;
+                        if (type === "next_brake_pad_mileage") return 30000;
                         return 10000;
                     };
                     const interval = getInterval();
@@ -238,21 +249,21 @@ function CategorySection({ title, icon: Icon, cars, type, onUpdate, isHealthy }:
                                         label="Gear Oil"
                                         current={car.current_mileage}
                                         target={car.next_gear_oil_mileage}
-                                        interval={20000}
+                                        interval={40000}
                                         barColor="bg-blue-600"
                                     />
                                     <MiniProgress
                                         label="Tyres"
                                         current={car.current_mileage}
                                         target={car.next_tyre_mileage}
-                                        interval={30000}
+                                        interval={10000}
                                         barColor="bg-emerald-600"
                                     />
                                     <MiniProgress
                                         label="Brake Pads"
                                         current={car.current_mileage}
                                         target={car.next_brake_pad_mileage}
-                                        interval={15000}
+                                        interval={30000}
                                         barColor="bg-amber-600"
                                     />
                                 </div>
@@ -298,15 +309,12 @@ export default function MaintenanceTable({ rows }: { rows: CarMaintenanceRow[] }
     // or just show 4 distinct sections as requested.
 
     // Expanded logic: Show cars if they are within a reasonable service window (Upcoming/Monitor)
-    // Engine Oil: Show if due within 8000km (extended from 5000)
-    // Gear Oil: Show if due within 15000km (extended from 10000)
-    // Tyres: Show if due within 10000km (extended from 5000)
-    // Brakes: Show if due within 5000km (extended from 3000)
+    // All service types: Show if due within 2000km (per user request)
 
-    const engineOilCars = rows.filter(r => (r.next_service_mileage - r.current_mileage) < 8000);
-    const gearOilCars = rows.filter(r => (r.next_gear_oil_mileage - r.current_mileage) < 15000);
-    const tyreCars = rows.filter(r => (r.next_tyre_mileage - r.current_mileage) < 10000);
-    const brakeCars = rows.filter(r => (r.next_brake_pad_mileage - r.current_mileage) < 5000);
+    const engineOilCars = rows.filter(r => (r.next_service_mileage - r.current_mileage) < 2000);
+    const gearOilCars = rows.filter(r => (r.next_gear_oil_mileage - r.current_mileage) < 2000);
+    const tyreCars = rows.filter(r => (r.next_tyre_mileage - r.current_mileage) < 2000);
+    const brakeCars = rows.filter(r => (r.next_brake_pad_mileage - r.current_mileage) < 2000);
 
     // For the "Healthy" view (only those truly far away)
     const allOtherCars = rows.filter(r =>

@@ -1,13 +1,13 @@
 # JRV Admin Documentation
 
-**Latest Version:** `v1.8.1` (Updated Jan 15, 2026)
+**Latest Version:** `v1.8.2` (Updated Jan 16, 2026)
 
-## Recent Updates (v1.8.1)
+## Recent Updates (v1.8.2)
 
-- **🛠️ Fleet Maintenance**: Real-time mileage tracking and service interval monitoring for the entire fleet.
-- **⏱️ Smart Reminders**: Agreement expiry Slack alerts now feature direct navigation links to the specific agreement.
-- **🎨 Notification UX**: Unified color-coding system (Rose for Maintenance, Amber for Expiry, Blue for Returns).
-- **🖼️ Stable Rendering**: Enforced layout constraints on car images to prevent client-side crashes.
+- **📘 Interactive Manual**: Integrated full Next.js documentation portal at `/manual`.
+- **🛡️ Admin Permissions**: Strict status controls for Agreements (Admin vs Superadmin).
+- **🔧 Maintenance Tuning**: Re-calibrated service intervals and alert thresholds (< 2000km).
+- **📊 Revenue Defaults**: Analytics now default to "Daily" (6 AM - 6 AM) view.
 
 ---
 
@@ -16,6 +16,19 @@ This document provides a comprehensive technical breakdown of all recent changes
 ---
 
 ## 🕒 Release History
+
+### `v1.8.2` (Admin Controls & Maintenance Tuning)
+
+- **Agreement Logic**:
+  - **Role-Based Statuses**: Admins are now restricted to valid flows (Create -> New/Completed, Edit -> Editted/Extended/Completed). Superadmins retain full override access.
+- **Maintenance Overhaul**:
+  - **Threshold Adjustment**: "High Priority" and category filters now trigger strictly at **< 2000 km**.
+  - **Interval Calibration**: Updated service targets to: Engine Oil (10k), Gearbox (40k), Tyres (10k), Brakes (30k).
+  - **Visuals**: Added "Current Mileage" column to high priority alerts table.
+- **Revenue Analytics**:
+  - **Daily Default**: Page enables "Daily" view by default to show immediate 6am-6am performance.
+- **Documentation**:
+  - **Next.js Manual**: Converted static HTML manual to a fully interactive app route (`/manual`) with search, lightbox, and mobile support.
 
 ### `v1.8.0` (Maintenance System & UI Overhaul)
 

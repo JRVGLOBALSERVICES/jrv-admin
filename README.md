@@ -73,6 +73,7 @@ CLOUDINARY_API_SECRET=your-cloudinary-api-secret
 ```
 
 Notes:
+
 - `NEXT_PUBLIC_...` variables are available to the browser.
 - `SUPABASE_SERVICE_ROLE_KEY` must remain secret and only be set on the server (Vercel dashboard, environment secrets, etc.). The codebase uses this to initialize `supabaseAdmin` (see `src/lib/supabase/admin.ts`).
 - `CLOUDINARY_*` values are required by `src/lib/cloudinary.ts` and by the server upload route.
@@ -100,6 +101,7 @@ Key folders and files you will use frequently:
   - `auth/requireAdmin.ts` – server-side guard that verifies the current user is an admin.
   - `auth/roles.ts` – role types and permissions.
   - `upload.ts` – client helper to call `/admin/upload`.
+- `manual/` – interactive documentation portal content (`page.tsx`, `ManualClient.tsx`, data).
 
 ---
 
@@ -110,6 +112,7 @@ Auth is provided by Supabase (email/password). The app enforces admin-only acces
 Key points:
 
 - Server guard: `requireAdmin()` (in `src/lib/auth/requireAdmin.ts`) reads the current Supabase session via `createSupabaseServer()` and checks the `admin_users` table for a role (either `admin` or `superadmin`).
+
   - Returns `{ ok: true, id, role }` if allowed.
   - Returns `{ ok: false, status, message }` if not allowed.
 
@@ -118,6 +121,7 @@ Key points:
   - `admin` – regular admin.
 
 Seed an initial admin user in Supabase:
+
 1. Create a user in Supabase Auth (via the dashboard or using Supabase client).
 2. Run SQL (in Supabase SQL Editor) to insert the admin record:
 
@@ -129,6 +133,7 @@ VALUES ('<SUPABASE_USER_ID>', 'superadmin'); -- or 'admin'
 Replace `<SUPABASE_USER_ID>` with the user's `id` from Supabase Auth.
 
 Security notes:
+
 - The server uses cookie-based auth reading cookies from Next's `cookies()` store. Ensure cookies are not stripped by proxies.
 - Keep `SUPABASE_SERVICE_ROLE_KEY` secret — used only by server-side code.
 
@@ -161,19 +166,24 @@ Make sure Cloudinary env vars are set on the server where the upload route runs.
 ## Development notes & commands
 
 - Start dev server:
+
   - `npm run dev`
 
 - Build production artifacts:
+
   - `npm run build`
   - `npm start` (starts built server)
 
 - Lint:
+
   - `npm run lint`
 
 - TypeScript:
+
   - tsconfig is configured with the `@/*` path alias pointing to `./src/*`.
 
 - Tailwind:
+
   - `tailwind.config.js` includes `./src/app/**/*` and `./src/components/**/*` for purging content.
 
 - Supabase client usage:
@@ -188,12 +198,14 @@ Make sure Cloudinary env vars are set on the server where the upload route runs.
 Recommended: Vercel (supports Next.js App Router).
 
 Things to configure on Vercel (or any host):
+
 - Set the environment variables from the "Environment variables" section.
 - Ensure `SUPABASE_SERVICE_ROLE_KEY`, `CLOUDINARY_API_SECRET` are set as server-only secrets (do not expose to client).
 - Build command: `npm run build`
 - Start command: `npm start` (Vercel will handle builds automatically)
 
 Security reminder:
+
 - Never commit `.env.local` or service-role keys.
 - Audit logs and database admins should be protected in production.
 

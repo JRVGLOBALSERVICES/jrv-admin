@@ -618,7 +618,8 @@ export function AgreementForm({
       if (!target) return;
       const diff = target - cur;
       if (isOil) {
-        if (diff <= 100) alerts.push(`CRITICAL: ${label} Service Overdue or due in ${diff}km!`);
+        if (diff <= 0) alerts.push(`CRITICAL: ${label} Service Overdue!`);
+        else if (diff <= 100) alerts.push(`CRITICAL: ${label} Service due in ${diff}km!`);
         else if (diff <= 500) alerts.push(`${label} Service due in ${diff}km!`);
         else if (diff <= 1000) alerts.push(`${label} Service due in ${diff}km.`);
         else if (diff <= 2000) alerts.push(`Upcoming: ${label} Service in ${diff}km.`);
@@ -774,7 +775,9 @@ export function AgreementForm({
     await executeSave({ overrideStatus: "Editted" });
   const statusOptions = isSuperadmin
     ? ["New", "Editted", "Extended", "Cancelled", "Deleted", "Completed"]
-    : ["Editted", "Extended", "Cancelled"];
+    : mode === "create"
+      ? ["New", "Completed"]
+      : ["Editted", "Extended", "Completed"];
 
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">

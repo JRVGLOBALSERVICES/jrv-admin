@@ -46,9 +46,9 @@ export default async function MaintenancePage({
     let rows: CarMaintenanceRow[] = (cars || []).map((c) => {
         const cur = c.current_mileage ?? 0;
         const nServ = c.next_service_mileage ?? (cur + 10000);
-        const nGear = c.next_gear_oil_mileage ?? (cur + 20000);
-        const nTyre = c.next_tyre_mileage ?? (cur + 30000);
-        const nBrake = c.next_brake_pad_mileage ?? (cur + 15000);
+        const nGear = c.next_gear_oil_mileage ?? (cur + 40000);
+        const nTyre = c.next_tyre_mileage ?? (cur + 10000);
+        const nBrake = c.next_brake_pad_mileage ?? (cur + 30000);
 
         const cat = (c as any).car_catalog;
         const label = [cat?.make, cat?.model].filter(Boolean).join(" ") || "Unknown";

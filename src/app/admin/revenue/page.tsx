@@ -195,7 +195,7 @@ export default async function RevenuePage({
   if (!gate.ok)
     return <div className="p-10 text-center text-red-600">Access Denied</div>;
 
-  const period = (sp.period as Period) || "monthly";
+  const period = (sp.period as Period) || "daily";
   const filterModel = sp.model || "";
   const filterPlate = sp.plate || "";
   const { start, end } = getRange(

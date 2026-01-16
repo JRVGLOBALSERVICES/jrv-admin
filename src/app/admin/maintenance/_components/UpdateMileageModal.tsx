@@ -82,27 +82,31 @@ export default function UpdateMileageModal({
 
                         <ServiceRow
                             label="Engine Oil / General"
+                            subLabel="10k"
                             value={nextService}
                             onChange={setNextService}
                             onAdd={() => addInterval(setNextService, nextService, 10000)} // +10k
                         />
                         <ServiceRow
                             label="Gear Oil"
+                            subLabel="40k"
                             value={nextGear}
                             onChange={setNextGear}
-                            onAdd={() => addInterval(setNextGear, nextGear, 20000)} // +20k
+                            onAdd={() => addInterval(setNextGear, nextGear, 40000)} // +40k
                         />
                         <ServiceRow
                             label="Tyres"
+                            subLabel="10k"
                             value={nextTyre}
                             onChange={setNextTyre}
-                            onAdd={() => addInterval(setNextTyre, nextTyre, 30000)} // +30k
+                            onAdd={() => addInterval(setNextTyre, nextTyre, 10000)} // +10k
                         />
                         <ServiceRow
                             label="Brake Pads"
+                            subLabel="30k"
                             value={nextBrake}
                             onChange={setNextBrake}
-                            onAdd={() => addInterval(setNextBrake, nextBrake, 15000)} // +15k
+                            onAdd={() => addInterval(setNextBrake, nextBrake, 30000)} // +30k
                         />
 
                     </div>
@@ -119,10 +123,13 @@ export default function UpdateMileageModal({
     );
 }
 
-function ServiceRow({ label, value, onChange, onAdd }: any) {
+function ServiceRow({ label, subLabel, value, onChange, onAdd }: any) {
     return (
-        <div className="grid grid-cols-[120px_1fr_auto] gap-2 items-center">
-            <label className="text-xs font-medium text-gray-600">{label}</label>
+        <div className="grid grid-cols-[140px_1fr_auto] gap-2 items-center">
+            <div className="flex flex-col">
+                <label className="text-xs font-medium text-gray-600">{label}</label>
+                {subLabel && <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded w-fit mt-0.5">LIMIT: {subLabel}</span>}
+            </div>
             <input
                 type="number"
                 className="w-full text-sm border rounded px-2 py-1.5 font-mono bg-gray-50/30 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none transition-all"
