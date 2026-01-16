@@ -128,6 +128,7 @@ export default function ManualClient() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Make lightbox function available globally for image clicks
   useEffect(() => {
@@ -178,18 +179,52 @@ export default function ManualClient() {
     const element = document.getElementById(id);
     if (element) {
       element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setIsMobileMenuOpen(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Mobile Menu Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Mobile Header Bar */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 bg-white shadow-sm z-30 px-4 py-3 flex items-center justify-between border-b border-gray-100">
+        <div className="font-bold text-gray-900">JRV Manual</div>
+        <button
+          onClick={() => setIsMobileMenuOpen(true)}
+          className="p-2 text-gray-600 hover:text-[#FF3057] active:scale-95 transition-transform"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+      </div>
+
       {/* Sidebar */}
-      <aside className="fixed left-0 top-0 h-screen w-80 bg-linear-to-b from-[#FF3057] to-[#F15828] text-white overflow-y-auto shadow-2xl z-50">
-        <div className="p-6 border-b border-white/20">
-          <div className="text-5xl font-black mb-2">JRV</div>
-          <div className="text-xs tracking-widest opacity-90 mb-3">GLOBAL SERVICES</div>
-          <div className="text-[11px] leading-relaxed opacity-85 bg-white/15 p-3 rounded-lg backdrop-blur-sm">
-            This system directly controls the live customer website: <strong>jrvservices.co</strong>
+      <aside className={`fixed top-0 bottom-0 left-0 w-80 bg-linear-to-b from-[#FF3057] to-[#F15828] text-white overflow-y-auto shadow-2xl z-50 transition-transform duration-300 lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
+        <div className="relative">
+          <button
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white lg:hidden"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          <div className="p-6 border-b border-white/20">
+            <div className="text-5xl font-black mb-2">JRV</div>
+            <div className="text-xs tracking-widest opacity-90 mb-3">GLOBAL SERVICES</div>
+            <div className="text-[11px] leading-relaxed opacity-85 bg-white/15 p-3 rounded-lg backdrop-blur-sm">
+              This system directly controls the live customer website: <strong>jrvservices.co</strong>
+            </div>
           </div>
         </div>
 
@@ -256,11 +291,11 @@ export default function ManualClient() {
       </aside>
 
       {/* Main Content */}
-      <main className="ml-80 p-12 max-w-7xl">
+      <main className="lg:ml-80 p-4 lg:p-12 max-w-7xl mt-24 lg:mt-0">
         {/* Hero */}
-        <div className="bg-linear-to-r from-[#FF3057] to-[#F15828] text-white p-16 rounded-3xl mb-12 shadow-2xl">
-          <h1 className="text-6xl font-black mb-4">Admin & Website Integration Manual</h1>
-          <p className="text-xl opacity-95 max-w-3xl leading-relaxed">
+        <div className="bg-linear-to-r from-[#FF3057] to-[#F15828] text-white p-8 lg:p-16 rounded-2xl lg:rounded-3xl mb-8 lg:mb-12 shadow-2xl">
+          <h1 className="text-3xl lg:text-6xl font-black mb-4">Admin & Website Integration Manual</h1>
+          <p className="text-lg lg:text-xl opacity-95 max-w-3xl leading-relaxed">
             Complete interactive guide to the JRV Global Services Admin Dashboard and its direct integration with your live customer website at jrvservices.co
           </p>
         </div>
@@ -281,9 +316,9 @@ export default function ManualClient() {
             <section
               key={section.id}
               id={section.id}
-              className="bg-white p-12 rounded-2xl shadow-lg mb-8 hover:shadow-xl transition-shadow"
+              className="bg-white p-6 lg:p-12 rounded-xl lg:rounded-2xl shadow-lg mb-6 lg:mb-8 hover:shadow-xl transition-shadow"
             >
-              <h2 className="text-5xl font-black text-[#FF3057] mb-8 pb-6 border-b-4 border-[#FF3057] flex items-center gap-4">
+              <h2 className="text-3xl lg:text-5xl font-black text-[#FF3057] mb-6 lg:mb-8 pb-4 lg:pb-6 border-b-4 border-[#FF3057] flex items-center gap-4">
                 {sectionData?.number !== undefined && sectionData.number > 0 && (
                   <span className="text-[#F15828]">{sectionData.number}.</span>
                 )}
@@ -293,7 +328,7 @@ export default function ManualClient() {
               {/* Render parsed markdown content */}
               {sectionData && (
                 <div
-                  className="prose prose-lg max-w-none"
+                  className="prose prose-base lg:prose-lg max-w-none prose-img:rounded-xl prose-headings:text-gray-900 prose-p:text-gray-700"
                   dangerouslySetInnerHTML={{ __html: parseMarkdown(sectionData.content, setLightboxImage) }}
                 />
               )}
@@ -303,7 +338,7 @@ export default function ManualClient() {
 
         {/* No Results */}
         {filteredSections.length === 0 && (
-          <div className="bg-white p-16 rounded-2xl shadow-lg text-center">
+          <div className="bg-white p-8 lg:p-16 rounded-2xl shadow-lg text-center">
             <div className="text-6xl mb-4">🔍</div>
             <h3 className="text-2xl font-bold text-gray-900 mb-2">No results found</h3>
             <p className="text-gray-600 mb-6">Try adjusting your search or filter</p>
@@ -323,7 +358,8 @@ export default function ManualClient() {
       {/* Scroll to Top */}
       <button
         onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-        className="fixed bottom-8 right-8 w-14 h-14 bg-linear-to-br from-[#FF3057] to-[#F15828] text-white rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center z-40"
+        className="fixed bottom-20 right-6 lg:bottom-20 lg:right-6 w-12 h-12 lg:w-12 lg:h-12 bg-linear-to-br from-[#FF3057] to-[#F15828] text-white rounded-full shadow-2xl hover:scale-110 active:scale-95 transition-all flex items-center justify-center z-40"
+        aria-label="Scroll to top"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 10l7-7m0 0l7 7m-7-7v18" />
@@ -333,11 +369,11 @@ export default function ManualClient() {
       {/* Lightbox */}
       {lightboxImage && (
         <div
-          className="fixed inset-0 bg-black/95 z-9999 flex items-center justify-center cursor-pointer"
+          className="fixed inset-0 bg-black/95 z-9999 flex items-center justify-center cursor-pointer p-4"
           onClick={() => setLightboxImage(null)}
         >
           <button
-            className="absolute top-8 right-8 w-12 h-12 bg-white text-gray-900 rounded-full flex items-center justify-center hover:bg-[#FF3057] hover:text-white transition-all hover:rotate-90"
+            className="absolute top-4 right-4 lg:top-8 lg:right-8 w-10 h-10 lg:w-12 lg:h-12 bg-white text-gray-900 rounded-full flex items-center justify-center hover:bg-[#FF3057] hover:text-white transition-all hover:rotate-90 z-50"
             onClick={() => setLightboxImage(null)}
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -347,7 +383,7 @@ export default function ManualClient() {
           <img
             src={lightboxImage}
             alt="Enlarged view"
-            className="max-w-[95%] max-h-[95%] rounded-xl shadow-2xl"
+            className="max-w-full max-h-full rounded-xl shadow-2xl object-contain"
             onClick={(e) => e.stopPropagation()}
           />
         </div>
