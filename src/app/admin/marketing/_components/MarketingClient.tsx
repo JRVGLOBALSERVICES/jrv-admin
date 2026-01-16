@@ -503,7 +503,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                         <p className="line-clamp-6 font-mono text-xs whitespace-pre-wrap">{asset.content}</p>
                                     ) : (
                                         <div className="space-y-2">
-                                            <div className="aspect-video bg-gray-100 rounded-lg overflow-hidden border">
+                                            <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden border">
                                                 <NextImage
                                                     src={content}
                                                     alt={asset.prompt}
