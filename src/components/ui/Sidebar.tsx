@@ -39,11 +39,13 @@ function NavItem({
   item,
   collapsed,
   onNavigate,
+  onExpand,
   depth = 0,
 }: {
   item: Item;
   collapsed: boolean;
   onNavigate?: () => void;
+  onExpand?: () => void;
   depth?: number;
 }) {
   const pathname = usePathname();
@@ -66,15 +68,21 @@ function NavItem({
   // If Folder (has children)
   if (item.children) {
     return (
-      <div className="space-y-0.5">
+      <div className={`space-y-0.5 ${collapsed ? "relative group" : ""}`}>
         <button
-          onClick={() => !collapsed && setExpanded(!expanded)}
+          onClick={() => {
+            if (collapsed) {
+              onExpand?.(); // Open sidebar
+              setExpanded(true); // Expand folder
+              return;
+            }
+            setExpanded(!expanded);
+          }}
           className={[
             "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium select-none",
             isActive ? "bg-gray-50 text-gray-900" : "text-gray-600 hover:bg-gray-50",
             collapsed ? "justify-center px-2" : "justify-between",
           ].join(" ")}
-          title={collapsed ? item.label : undefined}
         >
           <div className="flex items-center gap-3 overflow-hidden">
             <span className={`shrink-0 ${item.color}`}>
@@ -89,9 +97,9 @@ function NavItem({
           )}
         </button>
 
+        {/* Standard Expansion (Expanded Mode) */}
         {expanded && !collapsed && (
           <div className="relative">
-            {/* Indentation Line */}
             <div className="absolute left-6 top-0 bottom-0 w-px bg-gray-200" />
             <div className="space-y-0.5">
               {item.children.map((child) => (
@@ -100,7 +108,29 @@ function NavItem({
                   item={child}
                   collapsed={collapsed}
                   onNavigate={onNavigate}
+                  onExpand={onExpand}
                   depth={depth + 1}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Floating Submenu (Collapsed Mode) */}
+        {collapsed && (
+          <div className="absolute left-full top-0 ml-2 w-48 bg-white border border-gray-200 shadow-xl rounded-xl p-2 z-50 hidden group-hover:block animate-in fade-in slide-in-from-left-2">
+            <div className="px-2 py-1.5 text-xs font-black uppercase text-gray-400 border-b border-gray-100 mb-1">
+              {item.label}
+            </div>
+            <div className="space-y-0.5">
+              {item.children.map((child) => (
+                <NavItem
+                  key={child.label}
+                  item={child}
+                  collapsed={false} // Force expand in popup
+                  onNavigate={onNavigate}
+                  // No onExpand needed in popup
+                  depth={0} // Reset depth
                 />
               ))}
             </div>
@@ -142,12 +172,14 @@ function Group({
   collapsed,
   defaultOpen = true,
   onNavigate,
+  onExpand,
 }: {
   title: string;
   items: Item[];
   collapsed: boolean;
   defaultOpen?: boolean;
   onNavigate?: () => void;
+  onExpand?: () => void;
 }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -185,6 +217,7 @@ function Group({
               item={it}
               collapsed={collapsed}
               onNavigate={onNavigate}
+              onExpand={onExpand}
             />
           ))}
         </div>
@@ -193,14 +226,20 @@ function Group({
   );
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed: boolean;
+  setCollapsed: (v: boolean | ((prev: boolean) => boolean)) => void;
+  mobileOpen: boolean;
+  setMobileOpen: (v: boolean) => void;
+  onNavigate: () => void;
+}
+
+export function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen, onNavigate }: SidebarProps) {
   const { role, loading, email } = useRole();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
 
   useEffect(() => {
-    setMobileOpen(false);
+    // Rely on parent's onNavigate for closing logic now
   }, [pathname]);
 
   const handleLogout = () => {
@@ -210,6 +249,8 @@ export function Sidebar() {
     }
     window.location.href = "/admin/logout";
   };
+
+  const handleExpand = () => setCollapsed(false);
 
   const mainItems: Item[] = useMemo(
     () => [
@@ -496,7 +537,8 @@ export function Sidebar() {
               items={mainItems}
               collapsed={collapsed}
               defaultOpen
-              onNavigate={() => setMobileOpen(false)}
+              onNavigate={onNavigate}
+              onExpand={handleExpand}
             />
             {role === "superadmin" && (
               <Group
@@ -504,7 +546,8 @@ export function Sidebar() {
                 items={superItems}
                 collapsed={collapsed}
                 defaultOpen
-                onNavigate={() => setMobileOpen(false)}
+                onNavigate={onNavigate}
+                onExpand={handleExpand}
               />
             )}
           </nav>
