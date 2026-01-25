@@ -50,7 +50,7 @@ function ScraperLog({ postId, onFinished }: { postId: string, onFinished?: () =>
   return (
     <div className="flex items-center gap-1.5 mt-1 animate-pulse">
       <div className="w-1 h-1 rounded-full bg-indigo-400" />
-      <span className="text-[10px] text-indigo-400 font-medium italic truncate max-w-[200px]">
+      <span className="text-[10px] text-indigo-400 font-medium italic truncate max-w-50">
         {log}
       </span>
     </div>
@@ -434,7 +434,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                   Description
                 </label>
                 <textarea
-                  className="w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 min-h-[120px]"
+                  className="w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 min-h-30"
                   value={editPost?.description || ""}
                   onChange={(e) =>
                     setEditPost({ ...editPost, description: e.target.value })
@@ -528,7 +528,7 @@ export default function PostsClient({ platform = 'facebook' }: { platform?: 'fac
                 </div>
 
                 {/* 16:9 Media Container */}
-                <div className="mx-6 my-4 aspect-video rounded-[16px] overflow-hidden bg-black relative group flex items-center justify-center">
+                <div className="mx-6 my-4 aspect-video rounded-2xl overflow-hidden bg-black relative group flex items-center justify-center">
                   {editPost.image_url === 'EXTRACTING' ? (
                     <div className="flex flex-col items-center gap-2 text-gray-400">
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />

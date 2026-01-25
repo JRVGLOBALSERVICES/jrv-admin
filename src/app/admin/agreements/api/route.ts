@@ -455,12 +455,8 @@ export async function POST(req: Request) {
       if (isEdit) {
         // If it's an edit and not explicitly set to terminal status
         // ✅ FIX: Allow Superadmin to set "New" explicitly
-        const protectedStatuses = [
-          "Cancelled",
-          "Completed",
-          "Deleted",
-          "Extended",
-        ];
+        // Allow Completed to be upgraded to Extended when end date moves to future
+        const protectedStatuses = ["Cancelled", "Deleted", "Extended"];
         if (actorRole === "superadmin") protectedStatuses.push("New");
 
         if (!protectedStatuses.includes(newStatus)) {
@@ -470,6 +466,9 @@ export async function POST(req: Request) {
           } else {
             newStatus = "Editted";
           }
+        } else if (newStatus === "Completed" && newEndMs > nowMs) {
+          // If explicitly set to Completed but expiry is in future, treat as Extended
+          newStatus = "Extended";
         } else if (newStatus === "Extended" && newEndMs <= nowMs) {
           // If it was marked as Extended but the date is in the past, fall back to Editted
           newStatus = "Editted";

@@ -386,6 +386,13 @@ export function AgreementForm({
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [totalTouched, setTotalTouched] = useState(false);
+
+  // Preserve manually set total on edit: initialize touch state if existing total present
+  useEffect(() => {
+    if (isEdit && initial?.total_price != null) {
+      setTotalTouched(true);
+    }
+  }, [isEdit, initial?.total_price]);
   // const [regeneratePdf, setRegeneratePdf] = useState(true); // DEPRECATED: Always true/auto handled
 
   const selectedCar = useMemo(

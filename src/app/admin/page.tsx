@@ -105,6 +105,27 @@ function startOfDayInKLToUTC(baseUtc: Date) {
 
 // Redundant helpers removed - using klTimeWindow.ts instead
 
+// Custom 9 AM KL business window (requested): returns the most recent 09:00 KL start
+function windowStart9amKlUtc(nowUtc: Date = new Date()) {
+  const klMs = nowUtc.getTime() + KL_OFFSET_MS;
+  const kl = new Date(klMs);
+  const y = kl.getUTCFullYear();
+  const m = kl.getUTCMonth();
+  const d = kl.getUTCDate();
+
+  let startKlMs = Date.UTC(y, m, d, 9, 0, 0, 0);
+  if (klMs < startKlMs) {
+    startKlMs -= DAY_MS;
+  }
+  return new Date(startKlMs - KL_OFFSET_MS);
+}
+
+function currentBusinessDay9am(nowUtc: Date) {
+  const start = windowStart9amKlUtc(nowUtc);
+  const end = new Date(start.getTime() + DAY_MS);
+  return { start, end };
+}
+
 function parseKLMidnightToUTC(dateYYYYMMDD: string) {
   const [y, m, d] = dateYYYYMMDD.split("-").map((x) => Number(x));
   if (!y || !m || !d) return null;
@@ -590,13 +611,14 @@ export default async function AdminDashboard({
   const avgLength = bookingCount > 0 ? totalDaysRented / bookingCount : 0;
   const maxModelRev = breakdownModel[0]?.revenue || 1;
 
-  // Cards data
-  const { start: todayStartUTC, end: todayEndUTC } = currentBusinessDay(now);
+  // Cards data: use KL calendar day boundaries (00:00 → next day 00:00)
+  const todayStartUTC = startOfDayInKLToUTC(now);
+  const todayEndUTC = new Date(todayStartUTC.getTime() + DAY_MS);
 
   const { data: expiringToday } = await supabase
     .from("agreements")
     .select("*")
-    .not("status", "in", `("Deleted","Cancelled","Completed")`)
+    .not("status", "in", `("Deleted","Cancelled")`)
     .gte("date_end", todayStartUTC.toISOString())
     .lte("date_end", todayEndUTC.toISOString())
     .order("date_end", { ascending: true })
@@ -654,15 +676,12 @@ export default async function AdminDashboard({
       };
     }) ?? [];
 
-  const tomorrowStartUTC = new Date(todayStartUTC.getTime() + DAY_MS);
-  const tomorrowEndUTC = new Date(tomorrowStartUTC.getTime() + DAY_MS - 1);
+  // Available Tomorrow: agreements ending in the next KL calendar day (00:00 → 24:00)
+  const tomorrowStartUTC = new Date(todayEndUTC.getTime());
+  const tomorrowEndUTC = new Date(tomorrowStartUTC.getTime() + DAY_MS);
   const availableTomorrowRows = (currentlyRentedRows ?? []).filter((r: any) => {
     const endT = r?.date_end ? new Date(r.date_end).getTime() : NaN;
-    return (
-      Number.isFinite(endT) &&
-      endT >= tomorrowStartUTC.getTime() &&
-      endT <= tomorrowEndUTC.getTime()
-    );
+    return Number.isFinite(endT) && endT >= tomorrowStartUTC.getTime() && endT < tomorrowEndUTC.getTime();
   });
   const availableCount = availableNowRows.length;
   const rentedCount = currentlyRentedRows.length;
@@ -817,7 +836,7 @@ export default async function AdminDashboard({
             {breakdownBrand.map((b: any) => (
               <div
                 key={b.key}
-                className="bg-white border border-gray-100 shadow-lg rounded-xl px-4 py-2 flex items-center gap-3 hover:translate-y-[-2px] transition-transform"
+                className="bg-white border border-gray-100 shadow-lg rounded-xl px-4 py-2 flex items-center gap-3 hover:-translate-y-0.5 transition-transform"
               >
                 <span className="font-bold text-gray-700 text-sm">{b.key}</span>
                 <div className="h-4 w-px bg-gray-100"></div>
