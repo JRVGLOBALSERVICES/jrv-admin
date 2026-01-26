@@ -220,7 +220,7 @@ export function AgreementPdf({ data }: { data: AgreementPdfData }) {
   const right = TERMS.slice(mid);
   const depositText =
     Number(data.deposit_price || "0") > 0
-      ? `The deposit of RM ${data.deposit_price} will be refundable within 24–72 hours from return date.`
+      ? `The deposit of RM ${data.deposit_price} will be refundable within 7 working days from return date.`
       : `The deposit is RM ${data.deposit_price}.`;
 
   return (
