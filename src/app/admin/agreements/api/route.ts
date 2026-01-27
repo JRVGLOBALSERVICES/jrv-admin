@@ -72,6 +72,7 @@ async function syncCarStatus(carId: string) {
     .select("id")
     .eq("car_id", carId)
     .not("status", "in", `("Deleted","Cancelled","Completed")`)
+    .lte("date_start", nowIso) // Only count if started
     .gt("date_end", nowIso)
     .limit(1);
 

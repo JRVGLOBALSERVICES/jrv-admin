@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
+export const dynamic = 'force-dynamic';
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
@@ -199,32 +201,40 @@ export async function GET() {
       .reduce((acc, r) => acc + (Number(r.total_price) || 0), 0);
 
   // --- LOG BASED EARNINGS (EXTENSIONS) ---
-  const { data: logs } = await supabase
+  // Use supabaseAdmin to ensure we can read logs regardless of intricate RLS
+  const { data: logs } = await supabaseAdmin
     .from("agreement_logs")
-    .select("created_at, action, before, after")
-    .gte("created_at", weekStart.toISOString()) // Fetch logs from start of week
+    .select("agreement_id, created_at, action, before, after")
+    .gte("created_at", weekStart.toISOString())
     .in("action", ["updated", "extended", "deposit_refunded_toggled"]);
-  // We only care about price increases really, usually 'updated' or new status 'Extended'
-  // 'deposit_refunded_toggled' doesn't change price.
+
+  // Helper map to quickly check when an agreement started
+  const agreementStartMap = new Map<string, number>();
+  rows.forEach(r => {
+    const t = parseDate(r.date_start)?.getTime();
+    if (t) agreementStartMap.set(r.id, t);
+  });
 
   const logEarnings = (since: Date) => {
     if (!logs) return 0;
+    const sinceTime = since.getTime();
+
     return logs.reduce((acc: number, log: any) => {
-      const d = new Date(log.created_at);
-      if (d < since) return acc;
+      const logTime = new Date(log.created_at).getTime();
+      if (logTime < sinceTime) return acc;
+
+      // prevent double counting: if the agreement ITSELF started in this period,
+      // then sumSince() already captures its full *current* total price.
+      // We only want to add "diffs" for agreements that started BEFORE this period.
+      const agStart = agreementStartMap.get(log.agreement_id);
+      if (agStart && agStart >= sinceTime) {
+        return acc;
+      }
 
       // Calculate diff
       const before = Number(log.before?.total_price || 0);
       const after = Number(log.after?.total_price || 0);
       const diff = after - before;
-
-      // Only count positive increases (earnings)
-      // If diff is negative (price reduced), should we deduct? 
-      // User asked for "daily earning", usually implies "Cash In". 
-      // If I reduce price, I refund? Or just lost potential? 
-      // Safest: Count net flow. If negative, it reduces daily earning.
-      // But preventing negative daily total might be good? 
-      // Let's stick to true net: Add diff.
 
       return acc + diff;
     }, 0);

@@ -4,6 +4,8 @@ import { createSupabaseServer } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { carAuditLog } from "@/lib/audit/carAudit";
 
+export const dynamic = 'force-dynamic';
+
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
