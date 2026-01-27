@@ -572,9 +572,8 @@ export async function POST(req: Request) {
         };
 
         const firstName = dbData.customer_name.split(" ")[0];
-        // Prepend og_image URL to trigger WhatsApp Link Preview (card)
-        // Ensure image is < 300KB and square/landscape
-        let waText = `https://jrv-admin.vercel.app/og_image.png\n\nHi ${firstName} , here is your rental agreement and media remarks.\n\n*Agreement Link:*\n${up.secure_url}`;
+        // Prepend Valid URL with OG Tags to trigger WhatsApp Link Preview (card)
+        let waText = `https://jrvservices.co\n\nHi ${firstName} , here is your rental agreement and media remarks.\n\n*Agreement Link:*\n${up.secure_url}`;
 
         if (dbData.remarks) {
           const { images, videos, others } = extractMedia(dbData.remarks);
