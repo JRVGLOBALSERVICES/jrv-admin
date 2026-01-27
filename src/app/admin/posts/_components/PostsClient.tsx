@@ -50,7 +50,7 @@ function ScraperLog({ postId, onFinished }: { postId: string, onFinished?: () =>
   return (
     <div className="flex items-center gap-1.5 mt-1 animate-pulse">
       <div className="w-1 h-1 rounded-full bg-indigo-400" />
-      <span className="text-[10px] text-indigo-400 font-medium italic truncate max-w-50">
+      <span className="text-[10px] text-indigo-400 font-bold italic truncate max-w-50">
         {log}
       </span>
     </div>

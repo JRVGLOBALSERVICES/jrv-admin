@@ -95,12 +95,27 @@ export async function GET(req: Request) {
     ? query.or(`status.eq.available,id.eq.${includeId}`)
     : query.eq("status", "available");
 
-  const { data, error } = await query;
+  const { data: carsData, error: carsError } = await query;
+  if (carsError) return jsonError(carsError.message, 500);
 
-  if (error) return jsonError(error.message, 500);
+  // Fetch future/active agreements for conflict checking
+  const nowIso = new Date().toISOString();
+  const { data: agData } = await supabase
+    .from("agreements")
+    .select("id, car_id, date_start, date_end, status")
+    .neq("status", "Completed")
+    .neq("status", "Cancelled")
+    .gte("date_end", nowIso); // Only checking ones that end in future
+
+  // Map agreements to cars
+  const carAgreements = (agData || []).reduce((acc: any, a: any) => {
+    if (!acc[a.car_id]) acc[a.car_id] = [];
+    acc[a.car_id].push(a);
+    return acc;
+  }, {});
 
   const rows =
-    (data ?? []).map((c: any) => {
+    (carsData ?? []).map((c: any) => {
       const make = String(c?.catalog?.make ?? "").trim();
       const model = String(c?.catalog?.model ?? "").trim();
       const car_label = [make, model].filter(Boolean).join(" ").trim();
@@ -119,6 +134,7 @@ export async function GET(req: Request) {
         next_gear_oil_mileage: c.next_gear_oil_mileage,
         next_tyre_mileage: c.next_tyre_mileage,
         next_brake_pad_mileage: c.next_brake_pad_mileage,
+        future_bookings: carAgreements[c.id] || [],
       };
     }) ?? [];
 

@@ -103,7 +103,7 @@ export default async function MaintenancePage({
                             {rows.length} VEHICLES
                         </span>
                     </div>
-                    <div className="text-sm text-gray-500 font-medium pl-14">
+                    <div className="text-sm text-gray-500 font-bold pl-14">
                         Fleet Health & Service Intervals
                     </div>
                 </div>

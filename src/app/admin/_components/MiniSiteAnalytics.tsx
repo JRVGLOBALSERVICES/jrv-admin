@@ -101,7 +101,7 @@ function MixRow({
       <div className="flex items-center justify-between text-xs text-gray-700 mb-1.5">
         <div className="flex items-center gap-2">
           {Icon ? (
-            <Icon className={`w-3.5 h-3.5 text-gray-400`} />
+            <Icon className={`w-3.5 h-3.5 text-gray-600`} />
           ) : (
             <div
               className={`w-1.5 h-1.5 rounded-full bg-linear-to-br ${chosenGradient} shadow-xs ring-2 ring-white`}
@@ -111,7 +111,7 @@ function MixRow({
             {label}
           </span>
         </div>
-        <span className="font-mono text-[10px] text-gray-500">
+        <span className="font-mono text-[10px] text-gray-700">
           <span className="font-bold text-gray-900">{value}</span> ({pct}%)
         </span>
       </div>
@@ -410,7 +410,7 @@ export default function MiniSiteAnalytics({
         <GlossyKpi title="Calls" value={phoneClicks} color="pink" icon={Phone} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
         <Card title="Traffic Breakdown">
           <div className="space-y-4">
             <MixRow
@@ -489,7 +489,7 @@ export default function MiniSiteAnalytics({
                 </div>
               ))
             ) : (
-              <div className="text-xs text-gray-400 italic py-4 text-center">
+              <div className="text-xs text-gray-600 italic py-4 text-center">
                 No model data
               </div>
             )}
@@ -523,7 +523,7 @@ export default function MiniSiteAnalytics({
                 );
               })
             ) : (
-              <div className="text-xs text-gray-400 italic py-4 text-center">
+              <div className="text-xs text-gray-600 italic py-4 text-center">
                 No referrers
               </div>
             )}
@@ -564,7 +564,7 @@ export default function MiniSiteAnalytics({
                 </div>
               ))
             ) : (
-              <div className="text-xs text-gray-400 italic py-4 text-center">
+              <div className="text-xs text-gray-600 italic py-4 text-center">
                 No page data
               </div>
             )}
@@ -585,7 +585,7 @@ export default function MiniSiteAnalytics({
                 />
               ))
             ) : (
-              <div className="text-xs text-gray-400 italic py-4 text-center">
+              <div className="text-xs text-gray-600 italic py-4 text-center">
                 No region data
               </div>
             )}
@@ -605,7 +605,7 @@ export default function MiniSiteAnalytics({
                 />
               ))
             ) : (
-              <div className="text-xs text-gray-400 italic py-4 text-center">
+              <div className="text-xs text-gray-600 italic py-4 text-center">
                 No city data
               </div>
             )}

@@ -237,7 +237,7 @@ export function LandingPageLogTable({ logs }: { logs: LogEntry[] }) {
                                                     {FIELD_LABELS[diff.key] || diff.key.replace(/_/g, " ")}
                                                 </div>
                                                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 text-[13px]">
-                                                    <div className="flex-1 bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100 break-all font-medium min-h-[40px] flex items-center">
+                                                    <div className="flex-1 bg-red-50 text-red-700 px-3 py-2 rounded-lg border border-red-100 break-all font-bold min-h-[40px] flex items-center">
                                                         {String(diff.old ?? "—")}
                                                     </div>
                                                     <div className="flex justify-center shrink-0">
@@ -252,7 +252,7 @@ export function LandingPageLogTable({ logs }: { logs: LogEntry[] }) {
                                     </div>
                                 </div>
                             ) : (
-                                <div className="p-8 bg-blue-50/50 text-blue-700 text-sm rounded-2xl border border-blue-100 text-center font-medium italic">
+                                <div className="p-8 bg-blue-50/50 text-blue-700 text-sm rounded-2xl border border-blue-100 text-center font-bold italic">
                                     {selectedLog.action.includes("CREATE")
                                         ? "Full snapshot recorded on creation."
                                         : "No data field changes were detected in this action."}

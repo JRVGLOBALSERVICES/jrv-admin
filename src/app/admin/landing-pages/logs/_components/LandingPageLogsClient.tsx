@@ -59,7 +59,7 @@ export default function LandingPageLogsClient({ initial, meta, options }: any) {
     };
 
     const labelClass = "text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5 block";
-    const selectClass = "w-full border-0 bg-gray-50 rounded-lg px-3 py-2 text-xs ring-1 ring-gray-200 focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all font-medium h-9";
+    const selectClass = "w-full border-0 bg-gray-50 rounded-lg px-3 py-2 text-xs ring-1 ring-gray-200 focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all font-bold h-9";
 
     return (
         <Card className="p-0 border-gray-200 shadow-sm bg-white overflow-hidden rounded-xl">

@@ -163,7 +163,7 @@ function StatCard({
         {(sub || trend) && (
           <div className="flex items-center gap-2 mt-2">
             {sub && (
-              <span className="text-xs font-medium text-gray-500">{sub}</span>
+              <span className="text-xs font-bold text-gray-500">{sub}</span>
             )}
             {trend && (
               <span
@@ -389,7 +389,7 @@ export default async function RevenuePage({
           <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-xl flex flex-col">
             <div className="flex items-center justify-between mb-6">
               <h3 className="font-bold text-gray-800">Revenue Trend</h3>
-              <div className="text-xs font-medium bg-gray-100 px-2 py-1 rounded text-gray-500 uppercase">
+              <div className="text-xs font-bold bg-gray-100 px-2 py-1 rounded text-gray-500 uppercase">
                 {isLongPeriod ? "Monthly" : "Daily"}
               </div>
             </div>

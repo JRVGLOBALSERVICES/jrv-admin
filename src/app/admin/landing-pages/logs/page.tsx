@@ -81,7 +81,7 @@ export default async function LandingPageLogsPage({ searchParams }: { searchPara
                         <ShieldAlert className="text-purple-600" size={32} />
                         Landing Page Logs
                     </div>
-                    <p className="text-sm text-gray-500 font-medium mt-1">
+                    <p className="text-sm text-gray-500 font-bold mt-1">
                         Audit trail for all landing page modifications and removals.
                     </p>
                 </div>

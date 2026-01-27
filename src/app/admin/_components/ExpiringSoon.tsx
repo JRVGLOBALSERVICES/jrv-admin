@@ -92,7 +92,7 @@ export default function ExpiringSoon({
             <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse shadow-red-300 shadow-sm" />
           </div>
           {subtitle && (
-            <div className="text-[10px] text-red-700 font-medium mt-0.5">
+            <div className="text-[10px] text-red-700 font-bold mt-0.5">
               {subtitle}
             </div>
           )}
@@ -137,13 +137,13 @@ export default function ExpiringSoon({
                     <div className="font-bold text-gray-900">
                       {r.plate_number || "—"}
                     </div>
-                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-medium border border-gray-200">
+                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-bold border border-gray-200">
                       {r.car_type || "—"}
                     </span>
                   </div>
-                  <div className="text-[11px] text-gray-400 font-medium">
+                  <div className="text-[11px] text-gray-600 font-bold">
                     Client:{" "}
-                    <span className="text-gray-700">
+                    <span className="text-gray-800">
                       {r.customer_name || "—"}
                     </span>
                   </div>

@@ -84,7 +84,7 @@ export function CarLogTable({ initialLogs }: { initialLogs: LogEntry[] }) {
                                 <td className="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">
                                     {fmtDate(log.created_at)}
                                 </td>
-                                <td className="px-4 py-3 font-medium text-gray-900">
+                                <td className="px-4 py-3 font-bold text-gray-900">
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold">
                                             {(log.actor_email || "SY").slice(0, 2).toUpperCase()}
@@ -191,7 +191,7 @@ export function CarLogTable({ initialLogs }: { initialLogs: LogEntry[] }) {
                                                         {String(diff.old ?? "—")}
                                                     </div>
                                                     <ArrowRight className="w-4 h-4 text-gray-300 shrink-0" />
-                                                    <div className="flex-1 bg-green-50/50 text-green-700 px-2 py-1 rounded border border-green-100/50 break-all font-medium">
+                                                    <div className="flex-1 bg-green-50/50 text-green-700 px-2 py-1 rounded border border-green-100/50 break-all font-bold">
                                                         {String(diff.new ?? "—")}
                                                     </div>
                                                 </div>

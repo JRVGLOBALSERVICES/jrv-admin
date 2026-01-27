@@ -179,7 +179,7 @@ export default function BlacklistClient() {
                                                 {item.type}
                                             </span>
                                         </td>
-                                        <td className="px-4 py-3 font-mono font-medium text-gray-900">
+                                        <td className="px-4 py-3 font-mono font-bold text-gray-900">
                                             {item.value}
                                         </td>
                                         <td className="px-4 py-3 text-gray-600">
@@ -244,7 +244,7 @@ export default function BlacklistClient() {
                         <div className="flex gap-2">
                             <button
                                 onClick={() => setFormData({ ...formData, type: 'mobile' })}
-                                className={`flex-1 p-3 rounded-lg border text-sm font-medium transition-all ${formData.type === 'mobile'
+                                className={`flex-1 p-3 rounded-lg border text-sm font-bold transition-all ${formData.type === 'mobile'
                                     ? 'bg-blue-50 border-blue-200 text-blue-700 ring-1 ring-blue-500'
                                     : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                                     }`}
@@ -253,7 +253,7 @@ export default function BlacklistClient() {
                             </button>
                             <button
                                 onClick={() => setFormData({ ...formData, type: 'ic' })}
-                                className={`flex-1 p-3 rounded-lg border text-sm font-medium transition-all ${formData.type === 'ic'
+                                className={`flex-1 p-3 rounded-lg border text-sm font-bold transition-all ${formData.type === 'ic'
                                     ? 'bg-indigo-50 border-indigo-200 text-indigo-700 ring-1 ring-indigo-500'
                                     : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
                                     }`}

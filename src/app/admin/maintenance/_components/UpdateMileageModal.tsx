@@ -127,7 +127,7 @@ function ServiceRow({ label, subLabel, value, onChange, onAdd }: any) {
     return (
         <div className="grid grid-cols-[140px_1fr_auto] gap-2 items-center">
             <div className="flex flex-col">
-                <label className="text-xs font-medium text-gray-600">{label}</label>
+                <label className="text-xs font-bold text-gray-600">{label}</label>
                 {subLabel && <span className="text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded w-fit mt-0.5">LIMIT: {subLabel}</span>}
             </div>
             <input

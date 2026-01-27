@@ -122,11 +122,10 @@ export default function FleetHealth({
               onClick={() => setSortBy(mode)}
               variant={sortBy === mode ? "tertiary" : "tertiary"}
               size="sm"
-              className={`px-3 text-[10px] font-bold uppercase tracking-wider transition-all ${
-                sortBy === mode
+              className={`px-3 text-[10px] font-bold uppercase tracking-wider transition-all ${sortBy === mode
                   ? "bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-100"
                   : "text-gray-400 hover:text-gray-700 hover:bg-white/50"
-              }`}
+                }`}
             >
               {mode}
             </Button>
@@ -154,11 +153,10 @@ export default function FleetHealth({
               >
                 <div className="flex items-center gap-3">
                   <div
-                    className={`w-6 h-6 shrink-0 flex items-center justify-center text-[10px] font-bold rounded-full ${
-                      i < 3
+                    className={`w-6 h-6 shrink-0 flex items-center justify-center text-[10px] font-bold rounded-full ${i < 3
                         ? "bg-emerald-500 text-white shadow-emerald-200 shadow-md"
                         : "bg-gray-100 text-gray-500"
-                    }`}
+                      }`}
                   >
                     {i + 1}
                   </div>
@@ -166,7 +164,7 @@ export default function FleetHealth({
                     <div className="text-sm font-bold text-gray-800 group-hover:text-emerald-700 transition-colors">
                       {c.plate}
                     </div>
-                    <div className="text-[10px] text-gray-400 font-medium">
+                    <div className="text-[10px] text-gray-400 font-bold">
                       {c.model}
                     </div>
                   </div>
@@ -211,7 +209,7 @@ export default function FleetHealth({
           </div>
           <div className="flex-1 overflow-y-auto max-h-125 p-2 space-y-2 custom-scrollbar">
             {stats.inactiveList.length === 0 && (
-              <div className="h-40 flex items-center justify-center text-xs text-emerald-600 font-medium">
+              <div className="h-40 flex items-center justify-center text-xs text-emerald-600 font-bold">
                 🎉 100% Fleet Utilization!
               </div>
             )}

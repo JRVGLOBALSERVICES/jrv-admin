@@ -79,7 +79,7 @@ function NavItem({
             setExpanded(!expanded);
           }}
           className={[
-            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium select-none",
+            "w-full flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-bold select-none",
             isActive ? "bg-gray-50 text-gray-900" : "text-gray-600 hover:bg-gray-50",
             collapsed ? "justify-center px-2" : "justify-between",
           ].join(" ")}
@@ -150,7 +150,7 @@ function NavItem({
       onClick={onNavigate}
       title={collapsed ? item.label : undefined}
       className={[
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-medium relative",
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition font-bold relative",
         depth > 0 ? "pl-9" : "", // Indent child items
         isActive
           ? "bg-black text-white shadow-md"

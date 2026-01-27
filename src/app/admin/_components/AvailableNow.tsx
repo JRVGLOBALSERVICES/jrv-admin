@@ -32,7 +32,7 @@ function Pill({
       className={`inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full shadow-md bg-linear-to-r ${gradients[tone] || gradients.dark
         }`}
     >
-      <span className="opacity-90 font-medium">{label}</span>
+      <span className="opacity-90 font-bold">{label}</span>
       <span className="bg-white/20 px-1.5 rounded-md tabular-nums">
         {value}
       </span>
@@ -74,7 +74,7 @@ export default function AvailableNow({
             {title}
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-emerald-300 shadow-sm" />
           </div>
-          <div className="text-[10px] text-emerald-600 font-medium mt-0.5 flex items-center gap-1">
+          <div className="text-[10px] text-emerald-600 font-bold mt-0.5 flex items-center gap-1">
             <span>Ready for rental</span>
             {asOf && <span className="opacity-70">• As of {asOf}</span>}
           </div>
@@ -122,12 +122,12 @@ export default function AvailableNow({
                   <div className="font-bold text-gray-800 group-hover:text-emerald-700 transition-colors flex items-center gap-2">
                     {r.plate_number || "—"}
                     {r.location && (
-                      <span className="text-[9px] font-normal text-gray-400 border px-1.5 rounded-md bg-gray-50">
+                      <span className="text-[9px] font-normal text-gray-600 border px-1.5 rounded-md bg-gray-50">
                         {r.location}
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-500 truncate font-medium">
+                  <div className="text-xs text-gray-500 truncate font-bold">
                     {r.car_label || "—"}
                   </div>
                 </div>

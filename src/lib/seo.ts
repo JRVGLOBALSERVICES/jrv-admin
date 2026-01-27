@@ -54,8 +54,8 @@ export function baseMetadata(): Metadata {
       images: [absoluteUrl("/og.png")],
     },
     icons: {
-      icon: "/favicon.ico",
-      apple: "/favicon.ico",
+      icon: "/favicon-32x32.png",
+      apple: "/favicon-32x32.png",
     },
   };
 }

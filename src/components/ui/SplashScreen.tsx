@@ -51,7 +51,7 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
           <h1 className="text-3xl md:text-4xl font-black tracking-widest text-[#FF3057]">
             JRV ADMIN
           </h1>
-          <p className="text-xs md:text-sm font-medium text-gray-400 tracking-wider uppercase">
+          <p className="text-xs md:text-sm font-bold text-gray-400 tracking-wider uppercase">
             Management Panel
           </p>
         </div> */}

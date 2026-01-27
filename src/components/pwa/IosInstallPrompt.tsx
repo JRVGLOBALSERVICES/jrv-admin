@@ -50,7 +50,7 @@ export default function IosInstallPrompt() {
             <p className="text-xs text-gray-500 mt-1">
               Install this app on your iPhone for a better experience.
             </p>
-            <div className="flex items-center gap-2 mt-3 text-xs font-medium text-indigo-600">
+            <div className="flex items-center gap-2 mt-3 text-xs font-bold text-indigo-600">
               <span>1. Tap Share</span> <Share className="w-4 h-4" />
               <span>2. Add to Home Screen</span>{" "}
               <PlusSquare className="w-4 h-4" />

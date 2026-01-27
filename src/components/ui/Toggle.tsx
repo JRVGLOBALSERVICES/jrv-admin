@@ -12,7 +12,7 @@ interface ToggleProps {
 export function Toggle({ label, checked, onChange, className = "", disabled = false }: ToggleProps) {
     return (
         <label className={`flex items-center justify-between gap-3 cursor-pointer group ${disabled ? 'opacity-50 cursor-not-allowed' : ''} ${className}`}>
-            {label && <span className="text-sm font-medium text-gray-700 select-none">{label}</span>}
+            {label && <span className="text-sm font-bold text-gray-700 select-none">{label}</span>}
             <button
                 type="button"
                 role="switch"

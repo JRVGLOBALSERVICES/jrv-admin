@@ -242,7 +242,7 @@ export default function SiteEventsFilters({
             <div className="font-bold text-gray-900 text-sm">
               Filters & Range
             </div>
-            <div className="text-[10px] text-gray-500 font-medium">
+            <div className="text-[10px] text-gray-500 font-bold">
               Refine your analytics view
             </div>
           </div>
@@ -374,7 +374,7 @@ export default function SiteEventsFilters({
                         onClick={() => toggleEvent(evKey)}
                         className={`
                                         flex items-center gap-2 px-3 py-2 text-sm cursor-pointer rounded-md transition-colors
-                                        ${isSelected ? 'bg-indigo-50 text-indigo-700 font-medium' : 'hover:bg-gray-50 text-gray-700'}
+                                        ${isSelected ? 'bg-indigo-50 text-indigo-700 font-bold' : 'hover:bg-gray-50 text-gray-700'}
                                     `}
                       >
                         <div className={`

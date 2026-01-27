@@ -76,7 +76,7 @@ export default function GlossyKpi({
 
       <div className="relative z-10">
         <div className="flex justify-between items-start mb-2">
-          <h3 className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest">
+          <h3 className="text-[10px] md:text-xs font-bold text-gray-600 uppercase tracking-widest">
             {title}
           </h3>
           {Icon && <Icon className={`w-5 h-5 ${s.text} opacity-80`} />}

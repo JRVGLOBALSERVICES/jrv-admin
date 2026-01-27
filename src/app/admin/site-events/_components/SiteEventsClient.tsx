@@ -1087,7 +1087,7 @@ export default function SiteEventsClient({
                     </div>
                   </td>
                   <td
-                    className="px-6 py-4 text-gray-500 font-medium truncate max-w-xs"
+                    className="px-6 py-4 text-gray-500 font-bold truncate max-w-xs"
                     title={g.exact_address}
                   >
                     <div className="flex items-center gap-2">
@@ -1140,7 +1140,7 @@ export default function SiteEventsClient({
       {
         selectedSessionId && (
           <div className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="relative w-full max-w-5xl bg-white rounded-4xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
+            <div className="relative w-full max-w-7xl bg-white rounded-4xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
               {/* Modal Header */}
               <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                 <div className="flex flex-col">

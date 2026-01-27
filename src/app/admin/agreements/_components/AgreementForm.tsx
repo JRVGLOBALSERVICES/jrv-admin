@@ -23,19 +23,22 @@ import {
   Car,
   History,
   AlertTriangle,
+
   Share2,
   Wand2,
   Sparkles,
   FileText,
   ArrowLeft,
   Wrench,
+  History as HistoryIcon,
+  MessageSquare,
 } from "lucide-react";
 
 // --- STYLES ---
 const inputClass =
-  "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 uppercase h-10";
+  "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-600 text-gray-800 uppercase h-10";
 const labelClass =
-  "text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5";
+  "text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1.5 flex items-center gap-1.5";
 
 type InitialAgreement = {
   creator_email?: string | null;
@@ -57,8 +60,10 @@ type InitialAgreement = {
   deposit_price?: string | number;
   agreement_url?: string | null;
   ic_url?: string | null;
-  eligible_for_event?: boolean | null;
   start_mileage?: number | null;
+  eligible_for_event?: boolean | null;
+  booking_payment?: string | number;
+  remarks?: string | null;
 };
 
 
@@ -322,6 +327,8 @@ export function AgreementForm({
   const [busy, setBusy] = useState(false);
   const [deleteStage, setDeleteStage] = useState<"idle" | "confirm">("idle");
   const [cars, setCars] = useState<any[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [previousAgreements, setPreviousAgreements] = useState<any[]>([]);
 
   const [carId, setCarId] = useState(initial?.car_id ?? "");
   const [customerName, setCustomerName] = useState(
@@ -346,6 +353,9 @@ export function AgreementForm({
     null
   );
   const [pendingIcFile, setPendingIcFile] = useState<File | null>(null);
+
+  const [extendModalOpen, setExtendModalOpen] = useState(false);
+  const [pendingSaveOpts, setPendingSaveOpts] = useState<any>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -380,12 +390,20 @@ export function AgreementForm({
     initial?.agreement_url ?? null
   );
   const [currentMileage, setCurrentMileage] = useState(String(initial?.start_mileage ?? ""));
+  const [bookingPayment, setBookingPayment] = useState(String(initial?.booking_payment ?? "0"));
+  const [remarks, setRemarks] = useState(initial?.remarks ?? "");
+
   const [minMileage, setMinMileage] = useState(0);
   const [serviceAlerts, setServiceAlerts] = useState<string[]>([]);
   const [showAlertModal, setShowAlertModal] = useState(false);
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [totalTouched, setTotalTouched] = useState(false);
+  const [showIcOptions, setShowIcOptions] = useState(false);
+
+  // Feature 7: Upcoming Status & Conflicts
+  const [showUpcomingPrompt, setShowUpcomingPrompt] = useState(false);
+  const [conflictData, setConflictData] = useState<any>(null); // { agreement, daysUntil }
 
   // Preserve manually set total on edit: initialize touch state if existing total present
   useEffect(() => {
@@ -436,12 +454,33 @@ export function AgreementForm({
           if (c) {
             const m = c.current_mileage ?? 100000;
             setMinMileage(m);
-            if (!initial?.start_mileage) setCurrentMileage(String(m));
           }
         }
       } catch { }
     })();
   }, [initial?.car_id, initial?.start_mileage]);
+
+  // Fetch History on Mount if ID/Mobile exists
+  useEffect(() => {
+    if (initial?.mobile || initial?.id_number) {
+      fetchCustomerHistory(initial.id_number || "", initial.mobile || "");
+    }
+  }, [initial]);
+
+  const fetchCustomerHistory = async (ic: string, mob: string) => {
+    try {
+      setLoadingHistory(true);
+      const res = await fetch("/admin/agreements/api/previous", {
+        method: "POST",
+        body: JSON.stringify({ ic, mobile: mob }),
+      });
+      const j = await res.json();
+      if (j.ok && j.rows) setPreviousAgreements(j.rows);
+    } catch {
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   // Update mileage when user selects a different car manually
   useEffect(() => {
@@ -470,6 +509,56 @@ export function AgreementForm({
       setTotal(suggestPrice(selectedCar, durationDays).toFixed(2));
   }, [selectedCar, durationDays, totalTouched]);
 
+  // Feature 7: Detect "Upcoming" Status
+  useEffect(() => {
+    if (mode !== "create" || !startDate) return;
+    const now = new Date();
+    // Midnight comparison
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const start = new Date(startDate).getTime();
+
+    // If start date is strictly in the future
+    if (start > today && status === "New") {
+      setShowUpcomingPrompt(true);
+    }
+  }, [startDate, mode]); // Only re-check if date changes
+
+  // Feature 7: Conflict / Upcoming Warning Check
+  useEffect(() => {
+    if (!selectedCar || !startDate || !(selectedCar as any).future_bookings) return;
+
+    // Check for "Upcoming" bookings on this car
+    const bookings = (selectedCar as any).future_bookings as any[];
+    if (bookings.length === 0) return;
+
+    const myStart = new Date(startDate).getTime();
+
+    // Find closest upcoming booking
+    const upcoming = bookings
+      .filter(b => b.id !== initial?.id) // Exclude self
+      .filter(b => b.status === "Upcoming" || new Date(b.date_start).getTime() > myStart)
+      .sort((a, b) => new Date(a.date_start).getTime() - new Date(b.date_start).getTime())[0];
+
+    if (upcoming) {
+      const upStart = new Date(upcoming.date_start).getTime();
+      // Warn if upcoming booking is within 3 days of my start
+      const diffMs = upStart - myStart;
+      const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+      if (diffDays >= 0 && diffDays <= 3) {
+        setConflictData({
+          date: upcoming.date_start.slice(0, 10),
+          id: upcoming.id,
+          status: upcoming.status
+        });
+      } else {
+        setConflictData(null);
+      }
+    } else {
+      setConflictData(null);
+    }
+  }, [selectedCar, startDate]);
+
   const handleMobileBlur = async () => {
     if (mobile.length < 5) return;
     setCheckingMobile(true);
@@ -479,6 +568,7 @@ export function AgreementForm({
       const h = await checkHistory("", mobile);
       if (h) setHistoryMatch(h);
     }
+    fetchCustomerHistory("", mobile);
     setCheckingMobile(false);
     if (bl) {
       setMobileStatus("danger");
@@ -497,6 +587,7 @@ export function AgreementForm({
       const h = await checkHistory(idNumber, "");
       if (h) setHistoryMatch(h);
     }
+    fetchCustomerHistory(idNumber, "");
     setCheckingId(false);
     if (bl) {
       setIdStatus("danger");
@@ -607,6 +698,7 @@ export function AgreementForm({
     if (!mobile) return "Mobile Number is required";
     if (!carId) return "Please select a Car";
     if (!currentMileage) return "Car Current Mileage is required";
+    if (!icPreview && !icFile) return "IC / Passport Image is REQUIRED.";
     if (toMoney(total) <= 0) return "Total Price is required";
 
     // Simplified mileage check: Just show the modal alert, don't block saving.
@@ -692,6 +784,8 @@ export function AgreementForm({
             date_end_iso: endIso,
             total_price: total,
             deposit_price: deposit,
+            booking_payment: bookingPayment,
+            remarks,
             ic_url: url,
             agent_email: agentEmail,
           },
@@ -742,7 +836,46 @@ export function AgreementForm({
         skip_pdf: silent,
         eligible_for_event: eligibleForEvent,
         current_mileage: currentMileage,
+        booking_payment: bookingPayment,
+        remarks,
       };
+
+      // --- SMART EXTENSION CHECK ---
+      console.log("Checking extension...", {
+        silent,
+        overrideStatus,
+        initialEnd: initial?.date_end,
+        newEnd: endIso,
+        currentStatus: status
+      });
+
+      // Allow silent saves to trigger extension check too, so we can prompt modal
+      if (!overrideStatus && initial?.date_end && endIso) {
+        // Compare dates at midnight to avoid time diff issues if only date changed
+        const oldD = new Date(initial.date_end);
+        const newD = new Date(endIso);
+
+        const oldTime = oldD.getTime();
+        const newTime = newD.getTime();
+
+        // Check for start date change (Reschedule vs Extension)
+        const oldStart = initial.date_start ? new Date(initial.date_start).getTime() : 0;
+        const newStart = new Date(startIso).getTime();
+        // If start date changed by > 12 hours, treat as reschedule, not extension
+        const isReschedule = Math.abs(newStart - oldStart) > 1000 * 60 * 60 * 12;
+
+        // Check if new date is at least 24h after old date (or just > old date if strictly different)
+        // Skip if status is Upcoming (that's just an edit constraint) or if it's a reschedule
+        if (newTime > oldTime && status !== "Extended" && status !== "Upcoming" && !isReschedule) {
+          console.log("Extension detected!");
+          setPendingSaveOpts({ payload, action: mode === "edit" ? "confirm_update" : "confirm_create", silent });
+          setExtendModalOpen(true);
+          setBusy(false); // Stop spinner so modal is interactive
+          return;
+        }
+      }
+      // -----------------------------
+
       const res = await fetch("/admin/agreements/api", {
         method: "POST",
         body: JSON.stringify({
@@ -781,20 +914,20 @@ export function AgreementForm({
   const handleRestoreClick = async () =>
     await executeSave({ overrideStatus: "Editted" });
   const statusOptions = isSuperadmin
-    ? ["New", "Editted", "Extended", "Cancelled", "Deleted", "Completed"]
+    ? ["New", "Upcoming", "Editted", "Extended", "Cancelled", "Deleted", "Completed"]
     : mode === "create"
-      ? ["New", "Completed"]
-      : ["Editted", "Extended", "Completed"];
+      ? ["New", "Upcoming", "Completed"]
+      : ["Upcoming", "Editted", "Extended", "Completed"];
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
+    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-20">
       {err && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white p-6 rounded-2xl border-l-4 border-red-500 shadow-2xl max-w-sm w-full">
             <div className="flex items-center gap-3 text-red-700 font-bold mb-2">
               <AlertTriangle /> Action Required
             </div>
-            <p className="text-gray-700 text-sm mb-4">{err}</p>
+            <p className="text-gray-600 text-sm mb-4">{err}</p>
             <Button
               onClick={() => setErr(null)}
               className="w-full bg-red-600 hover:bg-red-700 text-white"
@@ -835,7 +968,7 @@ export function AgreementForm({
             <div className="flex items-center gap-3 text-blue-700 font-bold mb-3">
               <History /> Found Existing Customer
             </div>
-            <div className="bg-blue-50 p-4 rounded-xl space-y-1 text-sm text-blue-900 mb-4">
+            <div className="bg-blue-50 p-4 rounded-xl space-y-1 text-sm text-blue-700 mb-4">
               <div>
                 <strong>Name:</strong> {historyMatch.customer_name}
               </div>
@@ -867,7 +1000,7 @@ export function AgreementForm({
           <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl">
             <div className="p-4 bg-indigo-50 border-b border-indigo-100 flex items-center gap-3">
               <Wand2 className="w-5 h-5 text-indigo-600" />
-              <h3 className="font-bold text-indigo-900">
+              <h3 className="font-bold text-indigo-700">
                 AI Enhancement Suggestion
               </h3>
             </div>
@@ -922,7 +1055,7 @@ export function AgreementForm({
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
+          <h1 className="text-2xl font-black text-gray-700 tracking-tight flex items-center gap-2">
             {mode === "edit" ? "Edit Agreement" : "New Agreement"}
             {isDeleted && (
               <span className="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded border border-red-200">
@@ -999,19 +1132,81 @@ export function AgreementForm({
         </div>
       </div>
 
+      {previousAgreements.length > 0 && (
+        <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm animate-in fade-in slide-in-from-bottom-2">
+          <h3 className="text-xs font-bold text-gray-700 font-bold uppercase tracking-widest mb-3 flex items-center gap-2">
+            <HistoryIcon className="w-4 h-4" /> Previous Agreements
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {previousAgreements.slice(0, 3).map((a) => (
+              <Link key={a.id} href={`/admin/agreements/${a.id}`} className="block group">
+                <div className="p-3 bg-gray-50 rounded-lg border border-gray-100 group-hover:bg-blue-50 group-hover:border-blue-200 transition-colors">
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-xs font-bold text-gray-700 font-bold group-hover:text-blue-700">
+                      {fmtDate(a.date_start).split(",")[0]}
+                    </span>
+                    <span className={`text-[10px] px-1.5 rounded-full border font-bold ${a.status === 'Completed' ? 'bg-green-100 text-green-700 border-green-200' :
+                      a.status === 'Cancelled' ? 'bg-red-100 text-red-700 border-red-200' :
+                        a.status === 'Upcoming' ? 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-200' :
+                          a.status === 'Extended' ? 'bg-purple-100 text-purple-700 border-purple-200' :
+                            a.status === 'On Going' ? 'bg-indigo-100 text-indigo-700 border-indigo-200' :
+                              a.status === 'New' ? 'bg-blue-100 text-blue-700 border-blue-200' :
+                                'bg-gray-100 text-gray-700 border-gray-200'
+                      }`}>
+                      {a.status}
+                    </span>
+                  </div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {a.cars?.plate_number}
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
+
       <Card className="p-0 overflow-hidden shadow-xl shadow-gray-200/50 border border-gray-100">
         <div className="p-6 space-y-6">
           <div className="bg-linear-to-br from-blue-50/50 to-indigo-50/30 p-5 rounded-2xl border border-blue-100/50 flex flex-col md:flex-row gap-6">
             <div className="w-full md:w-48 flex flex-col gap-3">
               <div
-                onClick={() => fileInputRef.current?.click()}
-                className="relative w-full h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-400 hover:scale-[1.02] transition-all shadow-sm group overflow-hidden"
+                onClick={() => {
+                  if (icPreview) {
+                    setShowIcOptions(true);
+                  } else {
+                    fileInputRef.current?.click();
+                  }
+                }}
+                className="relative w-full h-36 bg-white rounded-xl border-2 border-dashed border-blue-200 flex flex-col items-center justify-center cursor-pointer hover:border-indigo-600 hover:scale-[1.02] transition-all shadow-sm group overflow-hidden"
               >
                 {icPreview ? (
-                  <img src={icPreview} className="w-full h-full object-cover" />
+                  <>
+                    <img src={icPreview} className="w-full h-full object-cover" />
+                    {showIcOptions && (
+                      <div className="absolute inset-0 bg-black/60 z-10 flex flex-col items-center justify-center gap-1.5 p-3 animate-in fade-in zoom-in-95"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="absolute top-2 right-2 text-white/70 hover:text-white bg-black/20 hover:bg-black/40 rounded-full p-1 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); setShowIcOptions(false); }}
+                        >
+                          <XCircle className="w-5 h-5" />
+                        </button>
+
+                        <Button size="sm" variant="secondary" className="w-full bg-white text-gray-700 border-0 hover:bg-gray-100 h-8 text-xs" onClick={() => window.open(icPreview, '_blank')}>
+                          <ScanLine className="w-3 h-3 mr-1.5" /> View / Download
+                        </Button>
+                        <Button size="sm" variant="danger" className="w-full h-8 text-xs" onClick={() => fileInputRef.current?.click()}>
+                          <Upload className="w-3 h-3 mr-1.5" /> Replace Image
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <div className="text-center space-y-1">
-                    <div className="p-2 bg-blue-50 rounded-full inline-flex text-blue-400 group-hover:text-indigo-500 transition-colors">
+                    <div className="p-2 bg-blue-50 rounded-full inline-flex text-blue-600 group-hover:text-indigo-500 transition-colors">
                       <Upload className="w-5 h-5" />
                     </div>
                     <div className="text-[10px] font-bold text-blue-300 uppercase tracking-widest">
@@ -1024,7 +1219,10 @@ export function AgreementForm({
                   accept="image/*"
                   ref={fileInputRef}
                   hidden
-                  onChange={handleIcSelect}
+                  onChange={(e) => {
+                    handleIcSelect(e);
+                    setShowIcOptions(false);
+                  }}
                 />
               </div>
 
@@ -1049,7 +1247,7 @@ export function AgreementForm({
 
             <div className="flex-1 space-y-4">
               <div className="flex justify-between items-center">
-                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                <h3 className="text-sm font-bold text-indigo-700 flex items-center gap-2">
                   <ScanLine className="w-4 h-4" /> Customer Details
                 </h3>
 
@@ -1102,7 +1300,7 @@ export function AgreementForm({
                     />
                     <div className="absolute right-3 top-3">
                       {checkingId ? (
-                        <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                        <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
                       ) : idStatus === "safe" ? (
                         <CheckCircle className="w-4 h-4 text-green-500" />
                       ) : idStatus === "danger" ? (
@@ -1133,7 +1331,7 @@ export function AgreementForm({
                 />
                 <div className="absolute right-3 top-3">
                   {checkingMobile ? (
-                    <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                    <Loader2 className="w-4 h-4 text-indigo-600 animate-spin" />
                   ) : mobileStatus === "safe" ? (
                     <CheckCircle className="w-4 h-4 text-green-500" />
                   ) : mobileStatus === "danger" ? (
@@ -1219,7 +1417,7 @@ export function AgreementForm({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 pt-2">
             <div className="bg-green-50/50 p-4 rounded-xl border border-green-100">
               <label className="text-[10px] font-bold text-green-700 uppercase tracking-wide mb-1 block">
                 Total Amount (RM)
@@ -1234,16 +1432,30 @@ export function AgreementForm({
                 }}
               />
             </div>
-            <div className="p-4 rounded-xl border border-gray-100">
-              <label className={labelClass}>Deposit (RM)</label>
+            <div className="bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
+              <label className="text-[10px] font-bold text-indigo-700 uppercase tracking-wide mb-1 block">
+                Paid / Check-Out (RM)
+              </label>
               <input
                 type="number"
-                className="w-full bg-transparent text-xl font-bold text-gray-700 outline-none border-0 p-0 focus:ring-0"
+                className="w-full bg-transparent text-2xl font-black text-indigo-700 placeholder-indigo-300 outline-none border-0 p-0 focus:ring-0"
+                value={bookingPayment}
+                onChange={(e) => setBookingPayment(e.target.value)}
+              />
+              <div className="mt-1 text-xs font-bold text-gray-700 font-bold">
+                Balance: <span className="text-gray-700 font-bold">RM {toMoney(total) - toMoney(bookingPayment)}</span>
+              </div>
+            </div>
+            <div className="p-4 rounded-xl border border-gray-100">
+              <label className={labelClass}>Security Deposit (RM)</label>
+              <input
+                type="number"
+                className="w-full bg-transparent text-xl font-bold text-gray-700 font-bold outline-none border-0 p-0 focus:ring-0"
                 value={deposit}
                 onChange={(e) => setDeposit(e.target.value)}
               />
               {isEdit && toMoney(deposit) > 0 ? (
-                <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-700 font-bold">
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
@@ -1254,6 +1466,79 @@ export function AgreementForm({
                 </label>
               ) : null}
             </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
+            <div className="flex justify-between items-center mb-1">
+              <label className={labelClass}><MessageSquare className="w-3 h-3" /> Remarks (Visible on PDF/WhatsApp)</label>
+              <div className="relative overflow-hidden inline-block">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,video/*"
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-10"
+                  onChange={async (e) => {
+                    console.log("File selected", e.target.files);
+                    if (!e.target.files?.length) return;
+                    setBusy(true);
+                    try {
+                      const files = Array.from(e.target.files);
+                      for (const f of files) {
+                        const url = await uploadImage(f);
+                        setRemarks(prev => (prev ? prev + "\n" : "") + url);
+                      }
+                      play("ok");
+                    } catch (err: any) {
+                      console.error("Upload error", err);
+                      setErr(err.message || "Upload failed");
+                      play("fail");
+                    } finally {
+                      setBusy(false);
+                      // Reset input
+                      e.target.value = "";
+                    }
+                  }}
+                />
+                <Button size="sm" variant="secondary" className="py-6 text-[10px] h-10 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 pointer-events-none relative z-0">
+                  <Upload className="w-3 h-3 mr-1 md:block hidden" /> Upload Photo/Video
+                </Button>
+              </div>
+            </div>
+            <textarea
+              className="w-full bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none min-h-[80px]"
+              placeholder="Enter comments, links (Google Drive, etc)... Uploads will be appended here."
+              value={remarks}
+              onChange={e => setRemarks(e.target.value)}
+            />
+
+            {/* MEDIA PREVIEW */}
+            {remarks && (
+              <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
+                {(remarks.match(/https?:\/\/[^\s]+/g) || []).map((url, i) => {
+                  const cleanUrl = url.replace(/["')]+$/, ""); // Clean trailing punctuation just in case
+                  const lower = cleanUrl.toLowerCase();
+                  const isImg = /\.(jpeg|jpg|gif|png|webp|bmp|svg)/.test(lower);
+                  const isVid = /\.(mp4|webm|mov|avi|mkv)/.test(lower);
+
+                  if (isImg) {
+                    return (
+                      <a key={i} href={cleanUrl} target="_blank" rel="noopener noreferrer" className="block relative aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-200 hover:opacity-90 transition-opacity">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={cleanUrl} alt="Evidence" className="w-full h-full object-cover" />
+                      </a>
+                    );
+                  }
+                  if (isVid) {
+                    return (
+                      <div key={i} className="relative aspect-video bg-black rounded-lg overflow-hidden border border-gray-800">
+                        <video src={cleanUrl} controls className="w-full h-full object-contain" />
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-6 border-t border-gray-100">
@@ -1351,6 +1636,169 @@ export function AgreementForm({
         </div>
       )}
 
+      {/* MODAL: Upcoming Prompt */}
+      {showUpcomingPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 space-y-4 animate-in zoom-in-95">
+            <div className="mx-auto bg-indigo-100 w-12 h-12 rounded-full flex items-center justify-center">
+              <Calendar className="w-6 h-6 text-indigo-600" />
+            </div>
+            <div className="text-center">
+              <h3 className="font-bold text-lg text-gray-900">Upcoming Booking?</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                The start date is in the future. Should this be marked as <strong>Upcoming</strong> status?
+              </p>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => setShowUpcomingPrompt(false)}
+              >
+                No, Keep as New
+              </Button>
+              <Button
+                fullWidth
+                className="bg-indigo-600 hover:bg-indigo-700 text-white"
+                onClick={() => {
+                  setStatus("Upcoming");
+                  setShowUpcomingPrompt(false);
+                  play("ok");
+                }}
+              >
+                Yes, Set Upcoming
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Conflict Warning */}
+      {conflictData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 border-2 border-amber-300">
+            <div className="mx-auto bg-amber-100 w-12 h-12 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-amber-600" />
+            </div>
+            <div className="text-center">
+              <h3 className="font-bold text-lg text-gray-900">Vehicle Conflict Detected</h3>
+              <p className="text-sm text-gray-500 mt-2">
+                This car has another booking coming up soon!
+              </p>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3 text-left">
+                <div className="text-xs font-bold text-amber-800 uppercase tracking-wider mb-1">Conflicting Booking</div>
+                <div className="text-sm text-gray-800">Start Date: <strong>{fmtDate(conflictData.date)}</strong></div>
+                <div className="text-sm text-gray-800">Status: <strong>{conflictData.status}</strong></div>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => setConflictData(null)}
+              >
+                Ignore Warning
+              </Button>
+              <a href={`/admin/agreements/${conflictData.id}`} target="_blank" className="w-full">
+                <Button
+                  fullWidth
+                  variant="danger"
+                >
+                  View Conflict
+                </Button>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {extendModalOpen && (
+        <div className="fixed inset-0 z-70 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full space-y-4">
+            <div className="text-center">
+              <div className="mx-auto bg-indigo-100 w-12 h-12 rounded-full flex items-center justify-center mb-3">
+                <HistoryIcon className="w-6 h-6 text-indigo-600" />
+              </div>
+              <h3 className="font-bold text-lg text-gray-700">Extend Agreement?</h3>
+              <p className="text-sm text-gray-500 mt-1">
+                We noticed the end date has been moved forward. Is this an extension?
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Button
+                onClick={async () => {
+                  setExtendModalOpen(false);
+                  // Apply "Extended" status and save
+                  if (pendingSaveOpts) {
+                    const newPayload = { ...pendingSaveOpts.payload, status: "Extended" };
+                    // We need to call executeSave but we can't easily pass payload dynamically without refactoring executeSave to accept it.
+                    // Instead, we'll manually call the fetch here or modify executeSave to take raw payload.
+                    // Simpler: Just set status state and re-trigger save? No, race condition.
+                    // Best: Just manually trigger the fetch with the new payload.
+
+                    setBusy(true);
+                    try {
+                      const res = await fetch("/admin/agreements/api", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: pendingSaveOpts.action,
+                          payload: newPayload
+                        }),
+                      });
+                      const j = await res.json();
+                      if (!j.ok) throw new Error(j.error);
+                      play("ok");
+                      if (!pendingSaveOpts.silent && j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
+                      window.location.href = onDoneHref;
+                    } catch (e: any) {
+                      setErr(e.message);
+                      play("fail");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }
+                }}
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
+              >
+                Yes, Extend Agreement
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  setExtendModalOpen(false);
+                  // Just save normally (as Editted)
+                  if (pendingSaveOpts) {
+                    setBusy(true);
+                    try {
+                      const res = await fetch("/admin/agreements/api", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          action: pendingSaveOpts.action,
+                          payload: pendingSaveOpts.payload // Keep original payload
+                        }),
+                      });
+                      const j = await res.json();
+                      if (!j.ok) throw new Error(j.error);
+                      play("ok");
+                      if (!pendingSaveOpts.silent && j.whatsapp_url) window.open(j.whatsapp_url, "_blank");
+                      window.location.href = onDoneHref;
+                    } catch (e: any) {
+                      setErr(e.message);
+                      play("fail");
+                    } finally {
+                      setBusy(false);
+                    }
+                  }
+                }}
+                className="w-full"
+              >
+                No, just an edit
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAlertModal && serviceAlerts.length > 0 && (
         <div className="fixed inset-0 z-70 bg-black/60 flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white p-6 rounded-2xl border-l-4 border-amber-500 shadow-2xl max-w-sm w-full animate-in zoom-in duration-200">
@@ -1359,7 +1807,7 @@ export function AgreementForm({
             </div>
             <div className="space-y-3 mb-6">
               {serviceAlerts.map((msg, i) => (
-                <div key={i} className="flex gap-3 text-sm font-bold text-gray-700 bg-amber-50 p-3 rounded-lg border border-amber-100 italic">
+                <div key={i} className="flex gap-3 text-sm font-bold text-gray-700 font-bold bg-amber-50 p-3 rounded-lg border border-amber-100 italic">
                   <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600" />
                   {msg}
                 </div>

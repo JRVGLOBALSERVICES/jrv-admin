@@ -102,7 +102,7 @@ export default function GaStatCard({
                                             <div className="w-1 h-1 rounded-full bg-indigo-400" />
                                             <span className="font-bold text-gray-400 uppercase tracking-tighter">Comparison Period</span>
                                         </div>
-                                        <div className="font-medium text-gray-200 pl-2.5">
+                                        <div className="font-bold text-gray-200 pl-2.5">
                                             {prevDateRange}
                                         </div>
                                     </div>

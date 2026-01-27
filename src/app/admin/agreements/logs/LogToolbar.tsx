@@ -68,7 +68,7 @@ export function LogToolbar() {
       {hasFilters && (
         <button
           onClick={clearFilters}
-          className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center gap-2"
+          className="px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center gap-2"
         >
           <X className="w-4 h-4" /> Clear
         </button>

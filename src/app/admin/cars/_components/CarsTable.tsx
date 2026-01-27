@@ -357,7 +357,7 @@ export default function CarsTable({ rows }: { rows: CarListRow[] }) {
             </tbody>
           </table>
         </div>
-        <div className="p-4 border-t bg-gray-50/50 text-xs text-gray-500 font-medium">
+        <div className="p-4 border-t bg-gray-50/50 text-xs text-gray-500 font-bold">
           Showing <strong>{filtered.length}</strong> of{" "}
           <strong>{rows.length}</strong> cars
         </div>

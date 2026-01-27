@@ -390,7 +390,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                                                         <button
                                                             key={k}
                                                             onClick={() => toggleKeyword(k)}
-                                                            className="px-2 py-1 bg-indigo-600 text-white text-xs rounded-full font-medium hover:bg-indigo-700 transition flex items-center gap-1"
+                                                            className="px-2 py-1 bg-indigo-600 text-white text-xs rounded-full font-bold hover:bg-indigo-700 transition flex items-center gap-1"
                                                         >
                                                             {k} <Check className="w-3 h-3" />
                                                         </button>
@@ -462,7 +462,7 @@ export default function MarketingClient({ initialAssets }: { initialAssets: Asse
                             step === 'initial' && (
                                 <div className="h-full border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center text-gray-400 p-12">
                                     <Sparkles className="w-12 h-12 mb-4 opacity-20" />
-                                    <p className="text-sm font-medium">Your AI output will appear here</p>
+                                    <p className="text-sm font-bold">Your AI output will appear here</p>
                                 </div>
                             )
                         )}
@@ -577,7 +577,7 @@ function TabButton({ active, onClick, icon: Icon, label }: any) {
     return (
         <button
             onClick={onClick}
-            className={`flex-1 md:flex-none p-4 md:p-6 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${active
+            className={`flex-1 md:flex-none p-4 md:p-6 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all ${active
                 ? "bg-white text-indigo-600 shadow-sm"
                 : "text-gray-500 hover:text-gray-900 hover:bg-white/50"
                 }`}

@@ -104,7 +104,7 @@ export default function CurrentlyRented({
           <div className="font-black text-blue-900 text-sm uppercase tracking-wide">
             {title}
           </div>
-          <div className="text-[10px] text-blue-600 font-medium mt-0.5 flex items-center gap-1">
+          <div className="text-[10px] text-blue-600 font-bold mt-0.5 flex items-center gap-1">
             <span>Active on the road</span>
             {asOf && <span className="opacity-70">• As of {asOf}</span>}
           </div>
@@ -154,12 +154,12 @@ export default function CurrentlyRented({
                     <div className="font-bold text-gray-900">
                       {r.plate_number}
                     </div>
-                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-500 font-medium border border-gray-200">
+                    <span className="text-[10px] bg-gray-100 px-1.5 py-0.5 rounded text-gray-700 font-bold border border-gray-200">
                       {r.car_label}
                     </span>
                   </div>
-                  <div className="text-[11px] text-gray-400 font-medium">
-                    Client: <span className="text-gray-700">{client}</span>
+                  <div className="text-[11px] text-gray-600 font-bold">
+                    Client: <span className="text-gray-800">{client}</span>
                   </div>
                 </div>
 

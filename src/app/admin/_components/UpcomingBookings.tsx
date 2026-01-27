@@ -10,7 +10,7 @@ type Row = {
   car_label: string;
   customer_name: string | null;
   mobile: string | null;
-  date_end: string | null;
+  date_start: string | null;
   status: string | null;
 };
 
@@ -19,13 +19,14 @@ function fmtTime(iso?: string | null) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
   return d.toLocaleString("en-MY", {
+    weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
   });
 }
 
-export default function AvailableTomorrow({
+export default function UpcomingBookings({
   title,
   rows,
 }: {
@@ -34,25 +35,25 @@ export default function AvailableTomorrow({
 }) {
   const sorted = useMemo(() => {
     return [...rows].sort((a, b) => {
-      const A = a.date_end ? new Date(a.date_end).getTime() : Infinity;
-      const B = b.date_end ? new Date(b.date_end).getTime() : Infinity;
+      const A = a.date_start ? new Date(a.date_start).getTime() : Infinity;
+      const B = b.date_start ? new Date(b.date_start).getTime() : Infinity;
       return A - B;
     });
   }, [rows]);
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden shadow-xl shadow-gray-200/50 flex flex-col h-full">
-      <div className="px-5 py-4 border-b border-amber-100 bg-linear-to-r from-amber-50 via-orange-50 to-white flex items-center justify-between">
+      <div className="px-5 py-4 border-b border-indigo-100 bg-linear-to-r from-indigo-50 via-blue-50 to-white flex items-center justify-between">
         <div>
-          <div className="font-black text-amber-900 text-sm uppercase tracking-wide">
+          <div className="font-black text-indigo-900 text-sm uppercase tracking-wide">
             {title}
           </div>
-          <div className="text-[10px] text-amber-700 font-bold mt-0.5">
-            Returning tomorrow
+          <div className="text-[10px] text-indigo-700 font-bold mt-0.5">
+            Departing soon (48h)
           </div>
         </div>
         <Link
-          className="text-[10px] font-bold bg-white/80 text-amber-700 border border-amber-200 px-2 py-1 rounded-md hover:bg-amber-600 hover:text-white transition-colors shadow-sm"
+          className="text-[10px] font-bold bg-white/80 text-indigo-700 border border-indigo-200 px-2 py-1 rounded-md hover:bg-indigo-600 hover:text-white transition-colors shadow-sm"
           href="/admin/agreements"
         >
           View All
@@ -60,8 +61,8 @@ export default function AvailableTomorrow({
       </div>
 
       {!sorted.length ? (
-        <div className="p-8 text-sm text-gray-400 text-center italic">
-          No returns scheduled for tomorrow.
+        <div className="p-8 text-sm text-gray-600 text-center italic">
+          No upcoming bookings in the next 48h.
         </div>
       ) : (
         <div className="divide-y divide-gray-50">
@@ -71,10 +72,10 @@ export default function AvailableTomorrow({
             return (
               <div
                 key={r.agreement_id}
-                className="p-3 flex items-center justify-between hover:bg-amber-50/30 transition-colors text-sm group"
+                className="p-3 flex items-center justify-between hover:bg-indigo-50/30 transition-colors text-sm group"
               >
                 <div className="min-w-0">
-                  <div className="font-bold text-gray-900 group-hover:text-amber-800 transition-colors">
+                  <div className="font-bold text-gray-900 group-hover:text-indigo-800 transition-colors">
                     {r.plate_number}
                   </div>
                   <div className="text-xs text-gray-700 truncate">
@@ -86,14 +87,14 @@ export default function AvailableTomorrow({
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
-                    {fmtTime(r.date_end)}
+                  <div className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-1 rounded-md border border-indigo-100">
+                    {fmtTime(r.date_start)}
                   </div>
                   <Link
                     href={`/admin/agreements/${r.agreement_id}`}
                     className="mt-1 block transition-all"
                   >
-                    <span className="inline-block bg-white border border-amber-200 text-amber-700 text-[10px] font-bold px-3 py-1 rounded-full shadow-sm hover:bg-amber-50">
+                    <span className="inline-block bg-white border border-indigo-200 text-indigo-700 text-[10px] font-bold px-3 py-1 rounded-full shadow-sm hover:bg-indigo-50">
                       OPEN
                     </span>
                   </Link>

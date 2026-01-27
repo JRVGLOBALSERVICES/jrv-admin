@@ -71,7 +71,7 @@ export default async function AuditPage() {
         </div>
         <Link
           href="/admin/users"
-          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 transition shadow-sm bg-white font-medium"
+          className="rounded-lg border px-3 py-2 text-sm hover:bg-gray-50 transition shadow-sm bg-white font-bold"
         >
           ← Back to Users
         </Link>
@@ -109,13 +109,12 @@ export default async function AuditPage() {
                   </td>
                   <td className="p-4">
                     <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${
-                        l.action.includes("DELETE")
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider border ${l.action.includes("DELETE")
                           ? "border-red-100 bg-red-50 text-red-700"
                           : l.action.includes("CREATE")
-                          ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-                          : "border-blue-100 bg-blue-50 text-blue-700"
-                      }`}
+                            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                            : "border-blue-100 bg-blue-50 text-blue-700"
+                        }`}
                     >
                       {l.action.replace(/_/g, " ")}
                     </span>

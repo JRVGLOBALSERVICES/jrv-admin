@@ -14,11 +14,11 @@ type Period =
   | "custom";
 
 const inputClass =
-  "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 h-10";
+  "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-600 text-gray-800 h-10";
 
 // ✅ Helper for mobile labels
 const labelClass =
-  "block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1 md:hidden";
+  "block text-[10px] font-bold text-gray-600 uppercase tracking-wider mb-1 md:hidden";
 
 export default function DashboardFilters({
   plates,
@@ -81,9 +81,8 @@ export default function DashboardFilters({
 
   return (
     <div
-      className={`bg-white p-4 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 w-full transition-opacity ${
-        isPending ? "opacity-60 pointer-events-none" : ""
-      }`}
+      className={`bg-white p-4 rounded-2xl border border-gray-100 shadow-xl shadow-gray-200/50 w-full transition-opacity ${isPending ? "opacity-60 pointer-events-none" : ""
+        }`}
     >
       <div className="flex flex-col gap-4">
         {/* Row 1: Period Presets & Reset */}

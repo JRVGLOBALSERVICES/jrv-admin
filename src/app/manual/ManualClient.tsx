@@ -256,7 +256,7 @@ export default function ManualClient() {
               <button
                 key={filter.id}
                 onClick={() => setSelectedFilter(filter.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${selectedFilter === filter.id
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${selectedFilter === filter.id
                   ? 'bg-white text-[#FF3057] shadow-lg'
                   : 'bg-white/10 hover:bg-white/20'
                   }`}

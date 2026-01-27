@@ -71,7 +71,7 @@ export default function MarketingTrackerClient({
       <div className="flex items-center justify-between mb-4">
         <div className="font-bold text-sm text-gray-700 flex items-center gap-2 uppercase tracking-tight">
           <Filter size={18} className="text-blue-500" /> Filter Logs
-          <span className="ml-2 normal-case font-medium text-gray-400">
+          <span className="ml-2 normal-case font-bold text-gray-400">
             ({meta.total} records)
           </span>
         </div>
@@ -159,7 +159,7 @@ export default function MarketingTrackerClient({
       </div>
 
       <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-50">
-        <div className="text-xs font-medium text-gray-500 italic">
+        <div className="text-xs font-bold text-gray-500 italic">
           Page {initial.page} of {meta.totalPages}
         </div>
         <div className="flex gap-2">

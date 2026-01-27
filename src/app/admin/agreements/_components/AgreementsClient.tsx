@@ -13,7 +13,7 @@ import { useDebouncedCallback } from "use-debounce"; // 1. Import this
 const inputClass =
   "w-full border-0 bg-gray-50/50 rounded-lg px-3 py-2 text-xs md:text-sm ring-1 ring-gray-200 focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all shadow-inner placeholder:text-gray-400 text-gray-800 h-10";
 const labelClass =
-  "text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1 block";
+  "text-[10px] font-bold text-gray-700 uppercase tracking-wide mb-1 block";
 
 function WhatsAppIcon({ className }: { className?: string }) {
   return (
@@ -52,7 +52,11 @@ function StatusBadge({ status }: { status: string }) {
   else if (s === "completed")
     color = "bg-green-50 text-green-700 border-green-200";
   else if (s === "extended")
-    color = "bg-purple-50 text-purple-700 border-purple-200";
+    color = "bg-indigo-50 text-indigo-700 border-indigo-200";
+  else if (s === "upcoming")
+    color = "bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200";
+  else
+    color = "bg-gray-100 text-gray-700 border-gray-200";
   return (
     <span
       className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide border ${color}`}
@@ -116,7 +120,10 @@ export default function AgreementsClient() {
     const sp = new URLSearchParams(searchParams.toString());
     if (val) sp.set(key, val);
     else sp.delete(key);
-    sp.set("page", "1");
+    // Reset page to 1 only if we are Changing a filter (not pagination itself)
+    if (key !== "page") {
+      sp.set("page", "1");
+    }
     router.replace(`${pathname}?${sp.toString()}`);
   };
 
@@ -234,7 +241,7 @@ export default function AgreementsClient() {
               onChange={(e) => updateFilter("status", e.target.value)}
             >
               <option value="">All</option>
-              {["New", "Editted", "Cancelled", "Completed"].map((s) => (
+              {["New", "Editted", "Extended", "Completed", "Upcoming", "Cancelled"].map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -288,7 +295,7 @@ export default function AgreementsClient() {
       <Card className="overflow-hidden border border-gray-100 shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
-            <thead className="bg-gray-50/50 text-gray-500 font-semibold border-b uppercase text-xs tracking-wider">
+            <thead className="bg-gray-50/50 text-gray-700 font-semibold border-b uppercase text-xs tracking-wider">
               <tr>
                 <th className="px-4 py-3">Customer</th>
                 <th className="px-4 py-3">Car</th>
@@ -338,23 +345,23 @@ export default function AgreementsClient() {
                         <div className="font-bold text-gray-900">
                           {row.customer_name}
                         </div>
-                        <div className="text-[10px] text-gray-400 font-mono">
+                        <div className="text-[10px] text-gray-600 font-mono">
                           {row.mobile}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium text-gray-800">
+                        <div className="font-bold text-gray-800">
                           {row.plate_number}
                         </div>
-                        <div className="text-[10px] text-gray-500">
+                        <div className="text-[10px] text-gray-600">
                           {row.car_label}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-xs font-medium text-gray-700">
+                        <div className="text-xs font-bold text-gray-700">
                           {fmtDate(row.date_start)}
                         </div>
-                        <div className="text-[10px] text-gray-400">
+                        <div className="text-[10px] text-gray-600">
                           to {fmtDate(row.date_end)}
                         </div>
                       </td>
@@ -452,7 +459,7 @@ export default function AgreementsClient() {
               variant="secondary"
               size="sm"
               onClick={() => updateFilter("page", String(page - 1))}
-              className="px-3 py-1.5 h-auto font-medium"
+              className="px-3 py-1.5 h-auto font-bold"
             >
               Previous
             </Button>
@@ -461,7 +468,7 @@ export default function AgreementsClient() {
               variant="secondary"
               size="sm"
               onClick={() => updateFilter("page", String(page + 1))}
-              className="px-3 py-1.5 h-auto font-medium"
+              className="px-3 py-1.5 h-auto font-bold"
             >
               Next
             </Button>

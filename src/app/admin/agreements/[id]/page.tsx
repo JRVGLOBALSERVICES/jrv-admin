@@ -81,7 +81,10 @@ export default async function EditAgreementPage({
       creator_email,
       editor_email,
       updated_at,
-      eligible_for_event
+      eligible_for_event,
+      start_mileage,
+      booking_payment,
+      remarks
     `
     )
     .eq("id", id)
@@ -118,6 +121,9 @@ export default async function EditAgreementPage({
         updated_at: (row as any).updated_at ?? null,
         ic_url: row.ic_url ?? null, // ✅ PASSING IT DOWN
         eligible_for_event: row.eligible_for_event ?? true,
+        start_mileage: (row as any).start_mileage ?? null,
+        booking_payment: (row as any).booking_payment ?? "0",
+        remarks: (row as any).remarks ?? null,
       }}
     />
   );

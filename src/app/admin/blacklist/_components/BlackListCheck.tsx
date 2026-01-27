@@ -64,7 +64,7 @@ export default function BlacklistPage() {
   }, [items, searchTerm]);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6 animate-in fade-in">
+    <div className="p-6 max-w-7xl mx-auto space-y-6 animate-in fade-in">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <ShieldAlert className="w-8 h-8 text-red-600" />
@@ -133,16 +133,15 @@ export default function BlacklistPage() {
               >
                 <td className="p-3">
                   <span
-                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${
-                      item.type === "mobile"
-                        ? "bg-blue-50 text-blue-700 border-blue-100"
-                        : "bg-purple-50 text-purple-700 border-purple-100"
-                    }`}
+                    className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${item.type === "mobile"
+                      ? "bg-blue-50 text-blue-700 border-blue-100"
+                      : "bg-purple-50 text-purple-700 border-purple-100"
+                      }`}
                   >
                     {item.type}
                   </span>
                 </td>
-                <td className="p-3 font-mono font-medium text-gray-800">
+                <td className="p-3 font-mono font-bold text-gray-800">
                   {item.value}
                 </td>
                 <td className="p-3 text-gray-600 italic">

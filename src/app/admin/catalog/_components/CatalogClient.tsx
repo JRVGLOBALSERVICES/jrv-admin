@@ -31,7 +31,7 @@ const getBrandGradient = (make: string) => {
     if (m.includes("perodua")) return "bg-gradient-to-b from-emerald-500 to-emerald-700 shadow shadow-emerald-500/30"; // Green for Perodua
     if (m.includes("proton")) return "bg-gradient-to-b from-orange-500 to-red-600 shadow shadow-orange-500/30";
     if (m.includes("range")) return "bg-gradient-to-b from-blue-500 to-purple-600 shadow shadow-orange-500/30";
-``
+    ``
     // Default diverse palette based on first char charCode
     const colors = [
         "bg-gradient-to-b from-indigo-500 to-purple-600 shadow shadow-indigo-500/30",
@@ -245,7 +245,7 @@ function CatalogModal({ onClose, initialData }: { onClose: () => void, initialDa
                     </div>
 
                     <div className="pt-2">
-                        <Button type="submit" disabled={loading} loading={loading} className="w-full bg-black hover:bg-gray-900 text-white py-6 text-base font-medium rounded-xl shadow-lg shadow-gray-200">
+                        <Button type="submit" disabled={loading} loading={loading} className="w-full bg-black hover:bg-gray-900 text-white py-6 text-base font-bold rounded-xl shadow-lg shadow-gray-200">
                             {loading ? "Saving..." : (isEdit ? "Save Changes" : "Create Model")}
                         </Button>
                     </div>

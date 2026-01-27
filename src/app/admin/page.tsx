@@ -13,6 +13,7 @@ import UrgentActionsModal from "../admin/_components/UrgentActionsModal";
 import ExpiringSoon from "../admin/_components/ExpiringSoon";
 import AvailableNow from "../admin/_components/AvailableNow";
 import AvailableTomorrow from "../admin/_components/AvailableTomorrow";
+import UpcomingBookings from "../admin/_components/UpcomingBookings";
 import CurrentlyRented from "../admin/_components/CurrentlyRented";
 import DashboardFilters from "../admin/_components/DashboardFilters";
 import ClockKpi from "./_components/ClockKpi";
@@ -684,7 +685,36 @@ export default async function AdminDashboard({
     return Number.isFinite(endT) && endT >= tomorrowStartUTC.getTime() && endT < tomorrowEndUTC.getTime();
   });
   const availableCount = availableNowRows.length;
+  // RESTORED:
   const rentedCount = currentlyRentedRows.length;
+
+  // Fetch Upcoming Bookings (Starts within next 48 hours)
+  const nowKv = new Date();
+  const next48h = new Date(nowKv.getTime() + 48 * 60 * 60 * 1000);
+
+  const { data: upcomingData } = await supabase
+    .from("agreements")
+    .select("*")
+    .eq("status", "Upcoming")
+    .lte("date_start", next48h.toISOString())
+    .gte("date_start", nowKv.toISOString()) // Optional: don't show old "upcoming" passed? Or show them as urgent? Let's show from now.
+    .order("date_start", { ascending: true })
+    .limit(50);
+
+  const upcomingRows = (upcomingData ?? []).map((ag: any) => {
+    const car = (carsBase ?? []).find((c: any) => c?.id === ag.car_id);
+    const cat = getCatalogItem(car?.catalog_rel);
+    return {
+      agreement_id: ag.id,
+      car_id: ag.car_id,
+      plate_number: ag.plate_number || car?.plate_number || "—",
+      car_label: ag.car_type || [cat?.make, cat?.model].filter(Boolean).join(" ").trim() || "—",
+      customer_name: ag.customer_name ?? null,
+      mobile: ag.mobile ?? null,
+      date_start: ag.date_start ?? null,
+      status: ag.status ?? null,
+    };
+  });
 
   // FILTER URGENT INSURANCE/ROADTAX (<= 1 Day)
   const urgentRenewals: any[] = [];
@@ -724,7 +754,7 @@ export default async function AdminDashboard({
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <div className="text-sm text-gray-500 font-medium">
+          <div className="text-sm text-gray-700 font-bold">
             {period === "all"
               ? "All Time"
               : period === "custom"
@@ -746,7 +776,7 @@ export default async function AdminDashboard({
           <h2 className="text-lg font-bold text-gray-900">
             Financial Overview
           </h2>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-gray-600 font-bold">
             Key performance indicators for {period}
           </p>
         </div>
@@ -808,7 +838,7 @@ export default async function AdminDashboard({
                     <div className="font-bold text-gray-800 group-hover:text-indigo-700 transition-colors">
                       {p.key}
                     </div>
-                    <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">
+                    <div className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
                       {p.model}
                     </div>
                   </div>
@@ -891,7 +921,7 @@ export default async function AdminDashboard({
 
                     return (
                       <tr key={b.key} className="hover:bg-gray-50 group">
-                        <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">
+                        <td className="px-4 py-3 font-bold text-gray-800 whitespace-nowrap">
                           {b.key}
                         </td>
                         <td className="px-4 py-3 w-1/4 align-middle">
@@ -910,7 +940,7 @@ export default async function AdminDashboard({
                         <td className="px-4 py-3 text-right text-gray-600 whitespace-nowrap">
                           {b.count}
                         </td>
-                        <td className="px-4 py-3 text-right text-gray-600 font-medium bg-gray-50/50 whitespace-nowrap">
+                        <td className="px-4 py-3 text-right text-gray-600 font-bold bg-gray-50/50 whitespace-nowrap">
                           {fmtMoney(b.adr)}
                         </td>
                       </tr>
@@ -932,7 +962,7 @@ export default async function AdminDashboard({
 
       <MiniSiteAnalytics initialData={miniSiteData} dateRange={{ from: windowStart.toISOString(), to: windowEnd.toISOString() }} filters={{ model: filterModel, plate: filterPlate }} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-6">
         <ExpiringSoon
           title="Expiring Today ⏳"
           subtitle="All agreements ending today"
@@ -944,11 +974,19 @@ export default async function AdminDashboard({
           availableCount={availableCount}
           rentedCount={rentedCount}
         />
+
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-2 gap-6">
         <AvailableTomorrow
           title="Available Tomorrow 📅"
           rows={availableTomorrowRows as any}
         />
+        <UpcomingBookings
+          title="Upcoming Bookings (48H) 🚀"
+          rows={upcomingRows as any}
+        />
       </div>
+
       <div className="grid grid-cols-1">
         <CurrentlyRented
           title="Currently Rented 🚗"

@@ -16,34 +16,28 @@ export async function POST(req: Request) {
   const gate = await requireAdmin();
   if (!gate.ok) return jsonError(gate.message, gate.status);
 
-  if (!process.env.CLOUDINARY_CLOUD_NAME) return jsonError("Missing CLOUDINARY_CLOUD_NAME", 500);
-  if (!process.env.CLOUDINARY_API_KEY) return jsonError("Missing CLOUDINARY_API_KEY", 500);
-  if (!process.env.CLOUDINARY_API_SECRET) return jsonError("Missing CLOUDINARY_API_SECRET", 500);
+  // Return Signature for Direct Upload (Bypasses Server Body Limit)
+  const timestamp = Math.round(new Date().getTime() / 1000);
+  const public_id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  const folder = "jrv/evidence";
 
-  const form = await req.formData();
-  const file = form.get("file");
+  const signature = cloudinary.utils.api_sign_request(
+    {
+      timestamp,
+      folder,
+      public_id,
+      overwrite: false,
+    },
+    process.env.CLOUDINARY_API_SECRET!
+  );
 
-  if (!file || !(file instanceof File)) {
-    return jsonError("Missing file", 400);
-  }
-
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const base64 = bytes.toString("base64");
-  const dataUrl = `data:${file.type};base64,${base64}`;
-
-  // ✅ UNIQUE ID so uploads never overwrite each other
-  const unique = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-  try {
-    const result = await cloudinary.uploader.upload(dataUrl, {
-      folder: "jrv/cars",
-      public_id: unique,          // ✅ unique per upload
-      overwrite: false,           // ✅ do NOT overwrite
-      resource_type: "image",
-    });
-
-    return NextResponse.json({ ok: true, url: result.secure_url });
-  } catch (e: any) {
-    return jsonError(e?.message || "Upload failed", 500);
-  }
+  return NextResponse.json({
+    ok: true,
+    signature,
+    timestamp,
+    public_id,
+    folder,
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+  });
 }

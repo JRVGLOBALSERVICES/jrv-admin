@@ -114,7 +114,7 @@ export default function UsersClient() {
             <ShieldCheck className="text-blue-600" size={28} />
             Admin Management
           </div>
-          <div className="text-sm text-gray-500 font-medium">
+          <div className="text-sm text-gray-500 font-bold">
             Add or manage system administrators.
           </div>
         </div>
@@ -127,7 +127,7 @@ export default function UsersClient() {
       </div>
 
       {err && (
-        <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 p-4 text-sm font-medium">
+        <div className="rounded-lg border border-red-200 bg-red-50 text-red-700 p-4 text-sm font-bold">
           ⚠️ {err}
         </div>
       )}
@@ -230,7 +230,7 @@ export default function UsersClient() {
                 <tr>
                   <td
                     colSpan={4}
-                    className="p-12 text-center text-gray-400 font-medium italic"
+                    className="p-12 text-center text-gray-400 font-bold italic"
                   >
                     No admin users found.
                   </td>
@@ -245,15 +245,15 @@ export default function UsersClient() {
                       <div className="font-bold text-gray-900 whitespace-nowrap">
                         {u.email}
                       </div>
-                      <div className="text-[10px] text-gray-400 font-medium">
+                      <div className="text-[10px] text-gray-400 font-bold">
                         {u.phone ?? "No phone recorded"}
                       </div>
                     </td>
                     <td className="p-4">
                       <span
                         className={`text-[10px] font-black tracking-widest uppercase px-2 py-1 rounded border ${u.role === "superadmin"
-                            ? "bg-blue-50 text-blue-700 border-blue-100"
-                            : "bg-gray-50 text-gray-600 border-gray-100"
+                          ? "bg-blue-50 text-blue-700 border-blue-100"
+                          : "bg-gray-50 text-gray-600 border-gray-100"
                           }`}
                       >
                         {u.role}
@@ -331,7 +331,7 @@ export default function UsersClient() {
             <h3 className="text-lg font-black text-gray-900 flex items-center gap-2 uppercase tracking-tight">
               <Key className="text-blue-500" /> Reset Password
             </h3>
-            <p className="text-sm text-gray-500 font-medium">
+            <p className="text-sm text-gray-500 font-bold">
               Enter a new password for this administrator.
             </p>
             <input

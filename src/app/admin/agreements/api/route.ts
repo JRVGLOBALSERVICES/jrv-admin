@@ -456,7 +456,7 @@ export async function POST(req: Request) {
         // If it's an edit and not explicitly set to terminal status
         // ✅ FIX: Allow Superadmin to set "New" explicitly
         // Allow Completed to be upgraded to Extended when end date moves to future
-        const protectedStatuses = ["Cancelled", "Deleted", "Extended"];
+        const protectedStatuses = ["Cancelled", "Deleted", "Extended", "Upcoming"];
         if (actorRole === "superadmin") protectedStatuses.push("New");
 
         if (!protectedStatuses.includes(newStatus)) {
@@ -496,6 +496,8 @@ export async function POST(req: Request) {
         booking_duration_days: Number(payload.booking_duration_days) || 0,
         total_price: toMoneyString(payload.total_price),
         deposit_price: toMoneyString(payload.deposit_price),
+        booking_payment: toMoneyString(payload.booking_payment),
+        remarks: asStr(payload.remarks),
         deposit_refunded: Boolean(payload.deposit_refunded),
         status: newStatus,
         creator_email: isEdit ? undefined : actorEmail,
@@ -530,18 +532,73 @@ export async function POST(req: Request) {
         const pdfBuffer = await renderToBuffer(
           createElement(AgreementPdf as any, { data: pdfData }) as any
         );
-        const publicId = `${pdfData.mobile.replace("+", "")}_${
-          dbData.id_number
-        }_${dbData.plate_number}_${Date.now()}`;
+        const publicId = `${pdfData.mobile.replace("+", "")}_${dbData.id_number
+          }_${dbData.plate_number}_${Date.now()}`;
         const up = await uploadPdfBufferToCloudinary({
           buffer: Buffer.from(pdfBuffer),
           publicId,
         });
 
         dbData.agreement_url = up.secure_url;
+
+        // Whatsapp: Link + Media Evidence (Remarks)
+        const formatMediaList = (urls: string[]) => {
+          if (!urls.length) return "";
+          return urls.map((u, i) => `${i + 1}. ${u}`).join("\n");
+        };
+
+        const extractMedia = (text: string) => {
+          const urlRegex = /(https?:\/\/[^\s]+)/g;
+          const matches = text.match(urlRegex) || [];
+          const images: string[] = [];
+          const videos: string[] = [];
+          const others: string[] = [];
+
+          matches.forEach((u) => {
+            const lower = u.toLowerCase();
+            const isVid =
+              lower.match(/\.(mp4|mov|avi|webm)$/) ||
+              lower.includes("/video/upload/");
+            const isImg =
+              lower.match(/\.(png|jpg|jpeg|gif|webp)$/) ||
+              lower.includes("/image/upload/");
+
+            if (isVid) videos.push(u);
+            else if (isImg) images.push(u);
+            else others.push(u);
+          });
+
+          return { images, videos, others };
+        };
+
+        const firstName = dbData.customer_name.split(" ")[0];
+        // Prepend og_image URL to trigger WhatsApp Link Preview (card)
+        // Ensure image is < 300KB and square/landscape
+        let waText = `https://jrv-admin.vercel.app/og_image.png\n\nHi ${firstName} , here is your rental agreement and media remarks.\n\n*Agreement Link:*\n${up.secure_url}`;
+
+        if (dbData.remarks) {
+          const { images, videos, others } = extractMedia(dbData.remarks);
+
+          if (images.length > 0) {
+            waText += `\n\n*Image Remarks:*\n\`\`\`\n${formatMediaList(images)}\n\`\`\``;
+          }
+
+          if (videos.length > 0) {
+            waText += `\n\n*Video Remarks:*\n\`\`\`\n${formatMediaList(videos)}\n\`\`\``;
+          }
+
+          // If there are other non-media URLs or just text, maybe append too?
+          // User asked specifically for numbered media. 
+          // If the remarks had text notes, we should probably preserve them?
+          // For now, let's append "Other Remarks" if there's leftover text, 
+          // but simpler is just to rely on the extracted media for the "Evidence" section.
+          // Let's just append the raw remarks at the bottom if it wasn't just URLs?
+          // No, user request was specific about the format. Let's stick to the requested format.
+        }
+
         dbData.whatsapp_url = buildWhatsAppUrl(
           pdfData.mobile,
-          `Your rental agreement: ${up.secure_url}`
+          waText
         );
       }
 
@@ -576,6 +633,9 @@ export async function POST(req: Request) {
       const nextCarId = asStr(dbData.car_id);
       if (prevCarId && prevCarId !== nextCarId) await syncCarStatus(prevCarId);
       if (nextCarId) {
+        // If Logic: If we are extending (new status = "Extended"), ensure car is rented.
+        // syncCarStatus logic: checks if ANY active agreement exists. 
+        // So we just need to ensure the DB reflects this agreement as active (which it does via date_end).
         await syncCarStatus(nextCarId);
 
         // ✅ SYNC MILEAGE IF PROVIDED

@@ -74,7 +74,7 @@ function doHapticPulse(durationMs = 10) {
 }
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-lg font-medium select-none " +
+  "inline-flex items-center justify-center gap-2 rounded-lg font-bold select-none " +
   "transition will-change-transform " +
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black/60 " +
   "disabled:opacity-60 disabled:cursor-not-allowed disabled:pointer-events-none " +

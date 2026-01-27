@@ -229,9 +229,9 @@ export default function LandingPageForm({ initialData, isNew, role }: Props) {
     const sfx = lang === "en" ? "_en" : "";
 
     return (
-        <form action={onSubmit} className="space-y-6 md:space-y-8 max-w-5xl relative">
+        <form action={onSubmit} className="space-y-6 md:space-y-8 max-w-7xl relative">
             {!canEdit && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm font-medium animate-pulse">
+                <div className="bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 rounded-lg text-sm font-bold animate-pulse">
                     You are in View Only mode. Only Superadmins can edit this page.
                 </div>
             )}

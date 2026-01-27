@@ -125,7 +125,7 @@ export function InsuranceClient({ cars }: { cars: CarData[] }) {
             <h1 className="text-5xl font-black text-gray-900 tracking-tighter">
               Insurance & <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-600 to-violet-600">Roadtax</span>
             </h1>
-            <p className="text-gray-500 font-medium text-lg">
+            <p className="text-gray-500 font-bold text-lg">
               {expired.length > 0 ? (
                 <span className="flex items-center gap-2">
                   Critical: <span className="px-2 py-0.5 bg-rose-100 text-rose-700 rounded-lg font-bold">{expired.length} vehicles</span> require immediate attention.

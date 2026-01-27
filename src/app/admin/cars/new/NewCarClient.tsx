@@ -80,7 +80,7 @@ function Toggle({
 }) {
   return (
     <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2 bg-white cursor-pointer hover:bg-gray-50 transition-colors">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="text-sm font-bold text-gray-700">{label}</span>
       <button
         type="button"
         onClick={() => onChange(!value)}
@@ -306,7 +306,7 @@ export default function NewCarPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-5 max-w-5xl mx-auto pb-20">
+    <div className="p-4 md:p-6 space-y-5 max-w-7xl mx-auto pb-20">
       <div className="flex justify-between items-center gap-4">
         <h1 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-2">
           New Car Listing

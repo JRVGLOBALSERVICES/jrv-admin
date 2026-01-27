@@ -47,14 +47,14 @@ export default function UrgentActionsModal({ items }: { items: UrgentItem[] }) {
                         </div>
                         <div>
                             <h2 className="text-lg font-black text-gray-900 leading-tight">Attention Required</h2>
-                            <p className="text-sm text-red-700 font-medium">
+                            <p className="text-sm text-red-700 font-bold">
                                 {items.length} items expiring within 24 hours
                             </p>
                         </div>
                     </div>
                     <button
                         onClick={handleDismiss}
-                        className="text-gray-400 hover:text-gray-600 p-1 hover:bg-white rounded-full transition-colors"
+                        className="text-gray-600 hover:text-gray-800 p-1 hover:bg-white rounded-full transition-colors"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -78,7 +78,7 @@ export default function UrgentActionsModal({ items }: { items: UrgentItem[] }) {
                                             {item.type}
                                         </span>
                                     </div>
-                                    <div className="text-xs text-gray-500 font-medium group-hover:text-indigo-600 transition-colors">
+                                    <div className="text-xs text-gray-700 font-bold group-hover:text-indigo-600 transition-colors">
                                         Update Details →
                                     </div>
                                 </div>
@@ -87,7 +87,7 @@ export default function UrgentActionsModal({ items }: { items: UrgentItem[] }) {
                                 <div className="text-sm font-bold text-red-600">
                                     {item.days < 0 ? `Overdue (${Math.abs(item.days)}d)` : item.days === 0 ? "Today" : "Tomorrow"}
                                 </div>
-                                <div className="text-[10px] text-gray-400 font-mono">
+                                <div className="text-[10px] text-gray-600 font-mono">
                                     {item.date}
                                 </div>
                             </div>
@@ -99,7 +99,7 @@ export default function UrgentActionsModal({ items }: { items: UrgentItem[] }) {
                 <div className="bg-gray-50 px-6 py-4 flex justify-between items-center border-t border-gray-100">
                     <button
                         onClick={handleDismiss}
-                        className="text-gray-500 text-sm font-medium hover:text-gray-700 hover:underline"
+                        className="text-gray-700 text-sm font-bold hover:text-gray-900 hover:underline"
                     >
                         Dismiss
                     </button>
