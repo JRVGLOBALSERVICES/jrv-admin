@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import SplashScreen from "@/components/ui/SplashScreen"; // Import the splash screen
+import SplashScreen from "@/components/ui/SplashScreen";
+import FooterSignature from "@/components/FooterSignature";
 
 const ORANGE = "#F15828";
 const PINK = "#FF3057";
@@ -52,7 +53,7 @@ export default function LoginPage() {
     let json: any = null;
     try {
       json = JSON.parse(raw);
-    } catch { }
+    } catch {}
 
     if (!res.ok) {
       setLoading(false);
@@ -67,7 +68,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-6 bg-linear-to-br from-[#F15828] via-[#FF3057] to-slate-900">
+    <div className="relative min-h-screen flex flex-col items-center justify-center p-6 bg-linear-to-br from-[#F15828] via-[#FF3057] to-slate-900">
       {/* ✅ Show Splash Screen if state is true */}
       {showSplash && <SplashScreen onFinish={handleSplashFinish} />}
 
@@ -75,7 +76,13 @@ export default function LoginPage() {
         {/* LOGO CENTERED */}
         <div className="flex flex-col items-center text-center gap-3">
           <div className="bg-white rounded-xl p-3 shadow-md">
-            <Image src="/logo.png" alt="JRV Admin" width={90} height={90} priority />
+            <Image
+              src="/logo.png"
+              alt="JRV Admin"
+              width={90}
+              height={90}
+              priority
+            />
           </div>
           <h1 className="text-2xl font-semibold text-[#FF3057]">Admin Login</h1>
           <p className="text-sm text-black">Sign in to continue</p>
@@ -154,6 +161,17 @@ export default function LoginPage() {
           </div>
         </form>
       </Card>
+
+      {/* JRV Systems Footer */}
+      <div className="w-full max-w-5xl mt-12">
+        <FooterSignature
+          companyName="JRV Admin"
+          companyTagline="All Systems Operational"
+          legalPages={[]}
+          accentColor="#F15828"
+          logoUrl="https://res.cloudinary.com/de3gn7o77/image/upload/v1769591082/logo.png"
+        />
+      </div>
     </div>
   );
 }
